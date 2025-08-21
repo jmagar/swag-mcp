@@ -1,289 +1,246 @@
-# SWAG MCP Server
+# 🛡️ SWAG MCP Server
 
-A FastMCP server for managing SWAG (Secure Web Application Gateway) reverse proxy configurations.
+> **Intelligent reverse proxy management for SWAG (Secure Web Application Gateway) with Model Context Protocol support**
 
-## Features
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
+[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
-- **Create configurations**: Generate new SWAG proxy configs from templates
-- **MCP Support**: Specialized templates for Model Context Protocol servers with streamable-HTTP transport
-- **Health Check**: Verify reverse proxy configurations are working correctly
-- **List configurations**: View active and sample configuration files
-- **View configurations**: Read existing configuration content
-- **Edit configurations**: Modify configs with automatic backup
-- **Default settings**: Configure default auth methods and QUIC settings
-- **Security-by-default**: Authelia authentication enabled by default to prevent accidental exposure
+Transform your SWAG reverse proxy management with AI-powered automation and real-time health monitoring. Built with FastMCP for seamless Claude Desktop integration.
 
-## Installation
+---
 
-1. Install dependencies with UV:
+## ✨ Key Features
+
+### 🚀 **Core Capabilities**
+- **Smart Configuration Generation** - Create SWAG proxy configs from intelligent templates
+- **Real-time Health Monitoring** - Verify your services are accessible and running
+- **Automatic Backups** - Never lose a configuration with automatic backup on edit
+- **MCP Protocol Support** - Native support for AI/ML services with streaming transport
+
+### 🔐 **Security First**
+- **Authelia by Default** - All services protected automatically
+- **Secure Templates** - Pre-configured security headers and best practices
+- **Audit Logging** - Complete activity tracking and monitoring
+
+### 🤖 **AI-Ready**
+- **Claude Desktop Integration** - Works seamlessly with Claude AI
+- **Streaming Support** - Server-Sent Events for real-time AI responses
+- **Extended Timeouts** - Optimized for long-running AI workloads
+
+---
+
+## 🎯 Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- SWAG reverse proxy running
+- Access to SWAG configuration directory
+- UV package manager (or pip)
+
+### Installation
+
 ```bash
+# Clone the repository
+git clone https://github.com/jmagar/swag-mcp.git
+cd swag-mcp
+
+# Install dependencies with UV (recommended)
 uv install
-```
 
-2. Copy environment configuration:
-```bash
+# Or with pip
+pip install -r requirements.txt
+
+# Configure environment
 cp .env.example .env
+nano .env  # Edit with your paths
 ```
 
-3. Edit `.env` to match your SWAG setup.
+### 🏃 Running the Server
 
-## Usage
-
-### Running the Server
-
-#### For Development/Testing:
 ```bash
-# Run with FastMCP CLI for debugging
+# Development mode with live reload
 fastmcp dev swag_mcp/server.py
 
-# Test with FastMCP Inspector
+# Production mode
+python -m swag_mcp.server
+
+# With Inspector UI for debugging
 fastmcp dev swag_mcp/server.py --with inspector
 ```
 
-#### For Direct Module Execution:
-```bash
-python -m swag_mcp.server
-```
+---
 
-#### For HTTP Testing:
-```bash
-# Run with HTTP transport for testing
-fastmcp run swag_mcp/server.py --transport http
-```
+## 🔧 Configuration
 
-## Testing
+### Essential Settings
 
-This project includes comprehensive test coverage using pytest and FastMCP's in-memory testing capabilities.
-
-### Running Tests
+Create a `.env` file with your configuration:
 
 ```bash
-# Run all tests
-uv run pytest
+# Core Paths (Required)
+SWAG_PROXY_CONFS_PATH=/mnt/appdata/swag/nginx/proxy-confs
+SWAG_MCP_DATA_PATH=/mnt/appdata/swag-mcp
 
-# Run tests with coverage
-uv run pytest --cov=swag_mcp --cov-report=term-missing
+# Security (Defaults shown)
+SWAG_MCP_DEFAULT_AUTH_METHOD=authelia  # Never expose services without auth!
+SWAG_MCP_DEFAULT_CONFIG_TYPE=subdomain  # or subfolder, mcp-subdomain, mcp-subfolder
 
-# Run specific test files
-uv run pytest tests/test_services.py
-uv run pytest tests/test_tools.py
-uv run pytest tests/test_middleware.py
-uv run pytest tests/test_config.py
-
-# Run tests with verbose output
-uv run pytest -v
-
-# Run tests and stop on first failure
-uv run pytest -x
+# Server Settings
+SWAG_MCP_HOST=0.0.0.0  # For Docker/external access
+SWAG_MCP_PORT=8000
 ```
 
-### Test Structure
+<details>
+<summary>📊 Advanced Configuration Options</summary>
 
-The test suite is organized as follows:
+```bash
+# Logging
+SWAG_MCP_LOG_LEVEL=INFO
+SWAG_MCP_LOG_FILE_ENABLED=true
+SWAG_MCP_LOG_FILE_MAX_BYTES=10485760
 
-- **`tests/test_services.py`** - Tests for the core `SwagManagerService`
-- **`tests/test_tools.py`** - Tests for all MCP tools using in-memory client
-- **`tests/test_middleware.py`** - Tests for middleware components
-- **`tests/test_config.py`** - Tests for configuration loading and validation
-- **`tests/conftest.py`** - Shared fixtures and test configuration
+# Performance
+SWAG_MCP_SLOW_OPERATION_THRESHOLD_MS=1000
+SWAG_MCP_ENABLE_RETRY_MIDDLEWARE=true
+SWAG_MCP_MAX_RETRIES=3
 
-### Test Requirements
+# Rate Limiting (Optional)
+SWAG_MCP_RATE_LIMIT_ENABLED=false
+SWAG_MCP_RATE_LIMIT_RPS=10.0
+SWAG_MCP_RATE_LIMIT_BURST=20
 
-Tests require:
-- Valid SWAG proxy configurations directory (set via `SWAG_MCP_PROXY_CONFS_PATH`)
-- Write permissions to the proxy configs directory for testing file operations
-- The actual Jinja2 templates from the `templates/` directory
+# Backup Management
+SWAG_MCP_BACKUP_RETENTION_DAYS=30
+```
 
-### CI/CD Testing
+</details>
 
-The project includes GitHub Actions workflows for:
-- **Test Suite** (`.github/workflows/test.yml`) - Runs tests on Python 3.11 and 3.12
-- **Security & Dependencies** (`.github/workflows/dependencies.yml`) - Weekly dependency updates and security scans
+---
 
-The CI pipeline includes:
-- Code linting with Ruff
-- Type checking with MyPy (non-blocking)
-- Test execution with coverage reporting
-- Docker build verification
-- Integration tests
-- Security scanning with Bandit and CodeQL
+## 📚 Usage Guide
 
-The server uses streamable-http transport for Claude Desktop integration.
+### Creating a Basic Service
 
-### Available Tools
-
-#### swag_list
-List SWAG configuration files.
 ```python
-swag_list(config_type="all")  # "all", "active", or "samples"
+# Standard web service
+swag_create(
+    service_name="jellyfin",
+    server_name="jellyfin.example.com",
+    upstream_app="jellyfin",
+    upstream_port=8096
+)
 ```
+
+### Creating an MCP AI Service
+
+```python
+# AI service with streaming support
+swag_create(
+    service_name="claude-mcp",
+    server_name="ai.example.com",
+    upstream_app="claude-mcp-server",
+    upstream_port=8080,
+    config_type="mcp-subdomain"  # Enables SSE streaming
+)
+```
+
+### Health Check Verification
+
+```python
+# Verify your service is accessible
+swag_health_check(
+    domain="jellyfin.example.com"
+)
+# Returns: ✅ Health check passed: 200 (45ms)
+```
+
+---
+
+## 🛠️ Available Tools
+
+### Essential Tools
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| **`swag_create`** | Generate new proxy configuration | Create subdomain for service |
+| **`swag_health_check`** | Verify service accessibility | Test if proxy is working |
+| **`swag_list`** | List all configurations | View active/sample configs |
+| **`swag_view`** | Read configuration content | Inspect existing config |
+| **`swag_edit`** | Modify configuration safely | Update with automatic backup |
+
+### Management Tools
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| **`swag_remove`** | Delete configuration | Remove with optional backup |
+| **`swag_config`** | Set default preferences | Configure auth method |
+| **`swag_logs`** | View container logs | Debug issues |
+| **`swag_cleanup_backups`** | Manage backup files | Remove old backups |
+
+<details>
+<summary>📖 Detailed Tool Documentation</summary>
 
 #### swag_create
-Create new SWAG reverse proxy configuration.
-```python
-swag_create(
-    service_name="myapp",
-    server_name="myapp.example.com",
-    upstream_app="myapp_container",
-    upstream_port=8080,
-    upstream_proto="http",
-    config_type="subdomain",  # Options: "subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"
-    auth_method="none",  # Will default to "authelia" for security
-    enable_quic=False
-)
-```
+Creates a new reverse proxy configuration with automatic health check verification.
 
-**Security Note**: Since v2.0, `auth_method="none"` automatically defaults to "authelia" to prevent accidental exposure of services. Explicitly pass `auth_method="none"` twice or use environment variables to disable authentication.
-
-#### swag_view
-View configuration file contents.
-```python
-swag_view(config_name="jellyfin.subdomain.conf")
-```
-
-#### swag_edit
-Edit existing configuration with backup.
-```python
-swag_edit(
-    config_name="test.subdomain.conf",
-    new_content="...",
-    create_backup=True
-)
-```
-
-#### swag_config
-Configure default settings.
-```python
-swag_config(
-    default_auth="authelia",
-    enable_quic=True
-)
-```
-
-#### swag_remove
-Remove an existing SWAG configuration file.
-```python
-swag_remove(
-    config_name="test.subdomain.conf",
-    create_backup=True
-)
-```
-
-#### swag_logs
-Show SWAG docker container logs.
-```python
-swag_logs(
-    lines=100,
-    follow=False
-)
-```
-
-#### swag_cleanup_backups
-Clean up old backup files.
-```python
-swag_cleanup_backups(
-    retention_days=30  # Optional, uses config default if not specified
-)
-```
+**Parameters:**
+- `service_name` - Identifier for your service
+- `server_name` - Domain name (e.g., app.example.com)
+- `upstream_app` - Container name or IP address
+- `upstream_port` - Port number
+- `config_type` - Template type:
+  - `subdomain` - Standard subdomain proxy
+  - `subfolder` - Path-based routing
+  - `mcp-subdomain` - AI service with SSE
+  - `mcp-subfolder` - AI service on path
+- `auth_method` - Authentication (defaults to authelia)
 
 #### swag_health_check
-Verify that a SWAG reverse proxy configuration is working correctly.
-```python
-swag_health_check(
-    domain="myapp.example.com",  # Full domain to test
-    timeout=30,  # Request timeout in seconds
-    follow_redirects=True  # Follow HTTP redirects
-)
-```
+Intelligently tests service availability through multiple endpoints.
 
-The health check intelligently tests multiple endpoints:
-- First tries `/health` endpoint
-- Falls back to `/mcp` for MCP services (accepts 406 as success)
-- Finally tries root `/` endpoint
-- Returns success if the reverse proxy responds with any HTTP status
+**Smart Endpoint Detection:**
+1. Tries `/health` endpoint first
+2. Falls back to `/mcp` for AI services
+3. Finally tests root `/` endpoint
+4. Returns success for any valid HTTP response
 
-Returns formatted results with status icons (✅/❌), response time, and status codes.
+**Parameters:**
+- `domain` - Full domain to test
+- `timeout` - Max wait time (default: 30s)
+- `follow_redirects` - Handle redirects (default: true)
 
-## Configuration
+</details>
 
-Environment variables (prefix: `SWAG_MCP_`):
+---
 
-**Core Paths:**
-- `SWAG_PROXY_CONFS_PATH`: Path to SWAG proxy configurations (default: `/mnt/appdata/swag/nginx/proxy-confs`)
-- `SWAG_MCP_DATA_PATH`: Path for app data, backups, and logs (default: `/mnt/appdata/swag-mcp`)
+## 🏗️ Template System
 
-**Default Settings:**
-- `SWAG_MCP_DEFAULT_AUTH_METHOD`: Default auth method (default: `authelia` - changed from `none` for security)
-- `SWAG_MCP_DEFAULT_QUIC_ENABLED`: Default QUIC setting (default: `false`)
-- `SWAG_MCP_DEFAULT_CONFIG_TYPE`: Default config type - `subdomain`, `subfolder`, `mcp-subdomain`, or `mcp-subfolder` (default: `subdomain`)
+### Standard Templates
+Perfect for traditional web applications:
+- **`subdomain`** - `app.example.com` → `container:port`
+- **`subfolder`** - `example.com/app` → `container:port`
 
-**Server Settings:**
-- `SWAG_MCP_BACKUP_RETENTION_DAYS`: Days to retain backup files (default: `30`)
-- `SWAG_MCP_HOST`: Server host (default: `0.0.0.0` for Docker)
-- `SWAG_MCP_PORT`: Server port (default: `8000`)
+### MCP Templates
+Optimized for AI/ML services with streaming:
+- **`mcp-subdomain`** - AI service on subdomain with SSE support
+- **`mcp-subfolder`** - AI service on path with SSE support
 
-**Logging:**
-- `SWAG_MCP_LOG_LEVEL`: Logging level (default: `INFO`)
-- `SWAG_MCP_LOG_FILE_ENABLED`: Enable file logging (default: `true`)
-- `SWAG_MCP_LOG_FILE_MAX_BYTES`: Max log file size before rotation (default: `10485760` = 10MB)
+**MCP Template Features:**
+- 🚀 Zero-buffering for real-time streaming
+- ⏱️ 24-hour timeouts for long AI tasks
+- 🔄 Server-Sent Events (SSE) support
+- 📡 WebSocket upgrade capability
+- 🛡️ Authelia integration by default
 
-### Middleware Configuration
+---
 
-The server includes optional middleware for enhanced functionality:
+## 🤝 Claude Desktop Integration
 
-**Rate Limiting (Optional)**:
-- `SWAG_MCP_RATE_LIMIT_ENABLED`: Enable rate limiting (default: `false`)
-- `SWAG_MCP_RATE_LIMIT_RPS`: Requests per second limit (default: `10.0`)
-- `SWAG_MCP_RATE_LIMIT_BURST`: Burst capacity for rate limiting (default: `20`)
+### Quick Setup
 
-**Advanced Logging (Optional)**:
-- `SWAG_MCP_LOG_PAYLOADS`: Include request/response payloads in logs (default: `false`)
-- `SWAG_MCP_LOG_PAYLOAD_MAX_LENGTH`: Max length of logged payloads (default: `1000`)
-- `SWAG_MCP_ENABLE_STRUCTURED_LOGGING`: Enable JSON structured logging (default: `false`)
-
-**Performance Monitoring**:
-- `SWAG_MCP_SLOW_OPERATION_THRESHOLD_MS`: Threshold for slow operation warnings (default: `1000`)
-
-**Error Handling**:
-- `SWAG_MCP_ENABLE_RETRY_MIDDLEWARE`: Enable automatic retries (default: `true`)
-- `SWAG_MCP_MAX_RETRIES`: Maximum retry attempts (default: `3`)
-
-## Templates
-
-The server uses Jinja2 templates for generating configurations:
-
-**Standard Templates:**
-- `templates/subdomain.conf.j2`: For subdomain-based configurations
-- `templates/subfolder.conf.j2`: For subfolder-based configurations
-
-**MCP Templates (Model Context Protocol):**
-- `templates/mcp-subdomain.conf.j2`: For MCP servers on subdomains with streamable-HTTP transport
-- `templates/mcp-subfolder.conf.j2`: For MCP servers on subfolders with streamable-HTTP transport
-
-The MCP templates include special optimizations for real-time streaming:
-- Disabled buffering and caching for Server-Sent Events
-- Extended timeouts (24h) for persistent connections
-- MCP-specific headers (Mcp-Session-Id)
-- Dedicated health check endpoints
-
-## Security Best Practices
-
-### Authentication by Default
-Starting with v2.0, the SWAG MCP server defaults to Authelia authentication for all new configurations. This prevents accidental exposure of powerful services like MCP servers to the public internet.
-
-To explicitly disable authentication (not recommended for production):
-1. Set `SWAG_MCP_DEFAULT_AUTH_METHOD=none` in your `.env` file
-2. Pass `auth_method="none"` explicitly when creating configurations
-
-### MCP Services
-Model Context Protocol servers provide powerful AI capabilities and should always be protected with authentication. The MCP templates include:
-- Authelia integration by default
-- Separate health endpoints that bypass auth for monitoring
-- Long timeout settings appropriate for AI workloads
-
-## Claude Desktop Integration
-
-Add to your Claude Desktop MCP configuration:
+Add to your Claude Desktop configuration:
 
 ```json
 {
@@ -291,116 +248,197 @@ Add to your Claude Desktop MCP configuration:
     "swag-mcp": {
       "command": "python",
       "args": ["-m", "swag_mcp.server"],
-      "cwd": "/path/to/your/swag-mcp",
+      "cwd": "/path/to/swag-mcp",
       "env": {
-        "SWAG_PROXY_CONFS_PATH": "/path/to/swag/nginx/proxy-confs",
-        "SWAG_MCP_DATA_PATH": "/path/to/swag-mcp/data"
+        "SWAG_PROXY_CONFS_PATH": "/your/swag/proxy-confs",
+        "SWAG_MCP_DATA_PATH": "/your/swag-mcp/data"
       }
     }
   }
 }
 ```
 
-Or install directly with FastMCP CLI:
+### Or Use FastMCP CLI
+
 ```bash
-# Install for Claude Desktop (update paths as needed)
+# Auto-install for Claude Desktop
 fastmcp install claude-desktop /path/to/swag-mcp/swag_mcp/server.py
 
-# Generate MCP JSON config
-fastmcp install mcp-json /path/to/swag-mcp/swag_mcp/server.py > swag-mcp-config.json
+# Generate config manually
+fastmcp install mcp-json /path/to/swag-mcp/swag_mcp/server.py
 ```
 
-## Development
+---
 
-### Testing
+## 🐳 Docker Deployment
 
-Test files are not currently implemented. To add tests:
+### Quick Deploy
 
 ```bash
-# Install development dependencies
-uv sync --dev
-
-# Run tests (when implemented)
-uv run pytest
-```
-
-The project structure:
-```
-swag-mcp/
-├── swag_mcp/                    # Main package
-│   ├── server.py                # Main server entry point
-│   ├── __main__.py              # Module entry point
-│   ├── core/
-│   │   └── config.py            # Configuration management
-│   ├── models/
-│   │   └── config.py            # Pydantic data models
-│   ├── services/
-│   │   └── swag_manager.py      # Core business logic
-│   ├── tools/
-│   │   └── swag.py              # FastMCP tools
-│   └── middleware/              # Middleware components
-│       ├── __init__.py          # Middleware setup
-│       ├── error_handling.py    # Error handling & retry
-│       ├── request_logging.py   # Logging middleware
-│       ├── rate_limiting.py     # Rate limiting
-│       └── timing.py            # Performance timing
-├── templates/                   # Jinja2 templates
-│   ├── subdomain.conf.j2       # Standard subdomain proxy
-│   ├── subfolder.conf.j2       # Standard subfolder proxy
-│   ├── mcp-subdomain.conf.j2   # MCP subdomain with streaming
-│   └── mcp-subfolder.conf.j2   # MCP subfolder with streaming
-├── docker-compose.yaml          # Docker setup
-├── Dockerfile                   # Docker image configuration
-└── pyproject.toml              # Project configuration
-```
-
-## Docker Deployment
-
-The project includes Docker support for containerized deployment.
-
-### Available Commands
-
-```bash
-# Build the Docker image
-docker compose build
-
-# Run the service
+# Start the service
 docker compose up -d
 
 # View logs
 docker compose logs -f swag-mcp
 
-# Restart the service
-docker compose restart swag-mcp
-
-# Stop all services
-docker compose down
-
-# Clean up (remove containers and volumes)
-docker compose down -v
-
 # Health check
-curl -f http://localhost:8000/health
-
-# Access container shell
-docker compose exec swag-mcp /bin/bash
+curl http://localhost:8000/health
 ```
 
-### Configuration
+### Docker Commands Reference
 
-- `docker-compose.yaml`: Main Docker Compose configuration
-- `Dockerfile`: Multi-stage build configuration
-- Environment variables can be customized via `.env` file
+```bash
+# Lifecycle management
+docker compose build          # Build image
+docker compose up -d          # Start service
+docker compose restart        # Restart
+docker compose down          # Stop
+docker compose down -v       # Clean up
 
-The Docker setup includes health checks available at `http://localhost:8000/health` internally, or externally at `http://localhost:${SWAG_MCP_PORT}/health` (port configured via .env file).
+# Debugging
+docker compose logs -f       # Stream logs
+docker compose exec swag-mcp /bin/bash  # Shell access
+```
 
-### File Logging
+---
 
-The server supports dual logging output:
+## 🧪 Testing
 
-- **Console logs**: All application output for Docker logs and development
-- **File logs**: Separate rotating log files in the data directory:
-  - `swag-mcp.log`: Main application logs
-  - `swag-middleware.log`: Middleware-specific logs (timing, rate limiting, etc.)
+### Running Tests
 
-Log files are stored in `${SWAG_MCP_DATA_PATH}/logs/` and rotate when they reach the configured size limit (default 10MB), clearing old content instead of keeping backup files.
+```bash
+# Full test suite
+uv run pytest
+
+# With coverage report
+uv run pytest --cov=swag_mcp --cov-report=term-missing
+
+# Specific test categories
+uv run pytest tests/test_services.py   # Core logic
+uv run pytest tests/test_tools.py      # MCP tools
+uv run pytest tests/test_middleware.py # Middleware
+```
+
+### CI/CD Pipeline
+
+Our GitHub Actions pipeline ensures quality:
+- ✅ Multi-version Python testing (3.11, 3.12)
+- ✅ Code linting with Ruff
+- ✅ Type checking with MyPy
+- ✅ Security scanning with Bandit
+- ✅ Docker build verification
+
+---
+
+## 📂 Project Structure
+
+```
+swag-mcp/
+├── 📦 swag_mcp/              # Core application
+│   ├── 🚀 server.py          # Entry point
+│   ├── ⚙️ core/              # Configuration
+│   ├── 📊 models/            # Data models
+│   ├── 🔧 services/          # Business logic
+│   ├── 🛠️ tools/             # MCP tools
+│   └── 🔌 middleware/        # Request processing
+├── 📝 templates/             # Jinja2 templates
+│   ├── subdomain.conf.j2
+│   ├── subfolder.conf.j2
+│   ├── mcp-subdomain.conf.j2  # AI-optimized
+│   └── mcp-subfolder.conf.j2  # AI-optimized
+├── 🧪 tests/                 # Test suite
+├── 🐳 docker-compose.yaml    # Docker config
+└── 📋 .env.example           # Config template
+```
+
+---
+
+## 🔐 Security Best Practices
+
+### 🛡️ Authentication by Default
+Starting with v2.0, **all services are protected with Authelia authentication by default**. This prevents accidental exposure of services to the internet.
+
+### ⚠️ Disabling Authentication (Not Recommended)
+If you absolutely must disable authentication:
+
+1. Set environment variable: `SWAG_MCP_DEFAULT_AUTH_METHOD=none`
+2. Explicitly pass: `auth_method="none"` when creating configs
+3. **Warning**: Only do this for internal networks!
+
+### 🤖 MCP Services Security
+AI services are powerful and must be protected:
+- Always use authentication for MCP endpoints
+- Monitor access logs regularly
+- Use HTTPS in production
+- Implement rate limiting for public services
+
+---
+
+## 📊 Monitoring & Logs
+
+### Log Locations
+
+```bash
+# Application logs
+${SWAG_MCP_DATA_PATH}/logs/swag-mcp.log
+
+# Middleware logs (performance, errors)
+${SWAG_MCP_DATA_PATH}/logs/swag-middleware.log
+
+# Docker logs
+docker compose logs -f swag-mcp
+```
+
+### Health Monitoring
+
+```bash
+# Internal health endpoint
+curl http://localhost:8000/health
+
+# Check specific service
+swag_health_check domain="app.example.com"
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/jmagar/swag-mcp.git
+cd swag-mcp
+
+# Install with dev dependencies
+uv sync --dev
+
+# Run pre-commit hooks
+pre-commit install
+
+# Run tests before submitting
+uv run pytest
+```
+
+---
+
+## 📝 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [FastMCP](https://github.com/fastmcp/fastmcp) - MCP server framework
+- [SWAG](https://github.com/linuxserver/docker-swag) - Secure Web Application Gateway
+- [Authelia](https://www.authelia.com/) - Authentication and authorization server
+
+---
+
+<p align="center">
+  Made with ❤️ for the self-hosting community
+</p>
