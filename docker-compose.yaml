@@ -1,0 +1,47 @@
+services:
+  swag-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: swag-mcp
+    restart: unless-stopped
+
+    # Volume mounts
+    volumes:
+      # Main proxy configs directory (read-write access)
+      - ${SWAG_MCP_PROXY_CONFS_PATH}:/proxy-confs
+      # Persistent storage for logs
+      - ${SWAG_MCP_LOG_DIRECTORY}:/app/.swag-mcp/logs
+
+    # Network configuration
+    ports:
+      - "${SWAG_MCP_PORT}:8000"  # Map to container port 8000
+
+    # Environment variables
+    environment:
+      # Default settings
+      - SWAG_MCP_DEFAULT_AUTH_METHOD=${SWAG_MCP_DEFAULT_AUTH_METHOD}
+      - SWAG_MCP_DEFAULT_QUIC_ENABLED=${SWAG_MCP_DEFAULT_QUIC_ENABLED}
+      - SWAG_MCP_DEFAULT_CONFIG_TYPE=${SWAG_MCP_DEFAULT_CONFIG_TYPE}
+
+      # Backup settings
+      - SWAG_MCP_BACKUP_RETENTION_DAYS=${SWAG_MCP_BACKUP_RETENTION_DAYS}
+
+      # MCP Server settings
+      - SWAG_MCP_HOST=${SWAG_MCP_HOST}
+
+      # Logging
+      - SWAG_MCP_LOG_LEVEL=${SWAG_MCP_LOG_LEVEL}
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+
+networks:
+  default:
+    name: swag-mcp-network

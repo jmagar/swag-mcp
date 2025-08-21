@@ -1,0 +1,194 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHONUNBUFFERED: 1
+  PYTHONDONTWRITEBYTECODE: 1
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Create virtual environment
+      run: uv venv --python ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Lint with ruff
+      run: |
+        uv run ruff check --output-format=github .
+
+    - name: Check formatting with ruff
+      run: |
+        uv run ruff format --check .
+
+    - name: Type check with mypy
+      run: |
+        uv run mypy swag_mcp --ignore-missing-imports
+      continue-on-error: true  # Don't fail CI on type errors yet
+
+    - name: Run tests with pytest
+      run: |
+        uv run pytest tests/ -v \
+          --cov=swag_mcp \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-fail-under=80 \
+          --tb=short
+
+    - name: Upload coverage reports to Codecov
+      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Test Docker build (Ubuntu only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        docker build -t swag-mcp:test .
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Run security checks with bandit
+      run: |
+        uv run bandit -r swag_mcp/ -f json -o bandit-report.json || true
+        uv run bandit -r swag_mcp/ || true
+      continue-on-error: true
+
+    - name: Upload security scan results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-scan-results
+        path: bandit-report.json
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      nginx:
+        image: nginx:alpine
+        ports:
+          - 80:80
+          - 443:443
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Create test directories
+      run: |
+        mkdir -p /tmp/swag-test/proxy-confs
+        mkdir -p /tmp/swag-test/.swag-mcp/logs
+        mkdir -p /tmp/swag-test/templates
+
+        # Copy templates to test directory
+        cp -r templates/* /tmp/swag-test/templates/ || true
+
+    - name: Run integration tests
+      env:
+        SWAG_PROXY_CONFS_PATH: /tmp/swag-test/proxy-confs
+        SWAG_MCP_DATA_PATH: /tmp/swag-test/.swag-mcp
+        SWAG_MCP_LOG_FILE_ENABLED: false
+        SWAG_MCP_DEFAULT_AUTH_METHOD: authelia
+        SWAG_MCP_DEFAULT_CONFIG_TYPE: subdomain
+      run: |
+        uv run pytest tests/ -v \
+          -k "integration or test_tools" \
+          --tb=short
+
+    - name: Test server startup
+      env:
+        SWAG_PROXY_CONFS_PATH: /tmp/swag-test/proxy-confs
+        SWAG_MCP_DATA_PATH: /tmp/swag-test/.swag-mcp
+        SWAG_MCP_LOG_FILE_ENABLED: false
+      run: |
+        # Start server in background and test it responds
+        timeout 30 uv run python -m swag_mcp.server &
+        SERVER_PID=$!
+
+        # Wait for server to start
+        sleep 5
+
+        # Test health endpoint (if implemented)
+        curl -f http://localhost:8000/health || echo "Health endpoint not available"
+
+        # Clean shutdown
+        kill $SERVER_PID || true
+      continue-on-error: true
+
+  publish-test-results:
+    name: Publish test results
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+    if: always()
+
+    steps:
+    - name: Download test results
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Test Results
+        path: "artifacts/**/test-results-*.xml"
+        reporter: java-junit
+        fail-on-error: true
+      continue-on-error: true
