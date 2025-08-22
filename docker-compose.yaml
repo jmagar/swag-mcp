@@ -1,8 +1,13 @@
 services:
   swag-mcp:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Build locally (uncomment to build from source)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/jmagar/swag-mcp:latest
+
     container_name: swag-mcp
     restart: unless-stopped
 
