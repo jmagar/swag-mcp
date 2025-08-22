@@ -225,7 +225,7 @@ class TestRateLimitingMiddleware:
             # Immediate second request might be rate limited
             # This is tricky to test reliably due to timing, so we'll just
             # verify the middleware doesn't crash
-            result2 = await middleware(mock_context, mock_next)
+            await middleware(mock_context, mock_next)
             # Result could be success or rate limit error
 
     @pytest.mark.asyncio

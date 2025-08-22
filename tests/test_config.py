@@ -322,7 +322,7 @@ SWAG_MCP_BACKUP_RETENTION_DAYS=45
 
     def test_config_field_descriptions(self):
         """Test that all configuration fields have descriptions."""
-        config = SwagConfig()
+        SwagConfig()
 
         # Get field info from the model
         field_info = SwagConfig.model_fields

@@ -450,24 +450,29 @@ class TestSwagManagerService:
     @pytest.mark.asyncio
     async def test_get_docker_logs_timeout_error(self, swag_service: SwagManagerService):
         """Test docker logs with timeout error (lines 241-242)."""
+        from swag_mcp.models.config import SwagLogsRequest
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker logs", timeout=5)
 
             with pytest.raises(FileNotFoundError, match="No SWAG container found"):
-                await swag_service.get_docker_logs()
+                await swag_service.get_docker_logs(SwagLogsRequest())
 
     @pytest.mark.asyncio
     async def test_get_docker_logs_general_exception(self, swag_service: SwagManagerService):
         """Test docker logs with general exception (lines 243-244)."""
+        from swag_mcp.models.config import SwagLogsRequest
+
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = Exception("Docker error")
 
             with pytest.raises(FileNotFoundError, match="No SWAG container found"):
-                await swag_service.get_docker_logs()
+                await swag_service.get_docker_logs(SwagLogsRequest())
 
     @pytest.mark.asyncio
     async def test_get_docker_logs_no_container_found(self, swag_service: SwagManagerService):
         """Test docker logs when no container is found (lines 247-260)."""
+        from swag_mcp.models.config import SwagLogsRequest
 
         # Mock the docker logs commands to fail (no container)
         def mock_run_side_effect(cmd, **kwargs):
@@ -487,7 +492,7 @@ class TestSwagManagerService:
 
         with patch("subprocess.run", side_effect=mock_run_side_effect):
             with pytest.raises(FileNotFoundError) as exc_info:
-                await swag_service.get_docker_logs()
+                await swag_service.get_docker_logs(SwagLogsRequest())
 
             assert "No SWAG container found" in str(exc_info.value)
             assert "Available containers:" in str(exc_info.value)
@@ -495,9 +500,11 @@ class TestSwagManagerService:
     @pytest.mark.asyncio
     async def test_get_docker_logs_general_error_handling(self, swag_service: SwagManagerService):
         """Test docker logs general error handling (lines 262-264)."""
+        from swag_mcp.models.config import SwagLogsRequest
+
         with patch("subprocess.run", side_effect=OSError("Docker not found")):
             with pytest.raises(OSError, match="Docker not found"):
-                await swag_service.get_docker_logs()
+                await swag_service.get_docker_logs(SwagLogsRequest())
 
     @pytest.mark.asyncio
     async def test_cleanup_old_backups_error_handling(self, swag_service: SwagManagerService):
@@ -520,7 +527,6 @@ class TestSwagManagerService:
         os.utime(backup_file, (old_date.timestamp(), old_date.timestamp()))
 
         # Patch pathlib.Path.unlink to raise PermissionError for our specific file
-        original_unlink = backup_file.unlink
 
         def mock_unlink_side_effect():
             raise PermissionError("Permission denied")

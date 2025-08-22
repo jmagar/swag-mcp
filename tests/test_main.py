@@ -14,7 +14,7 @@ class TestMainModule:
     async def test_main_module_execution(self):
         """Test __main__.py module execution using runpy."""
         # Mock the main function to avoid actually starting the server
-        with patch("swag_mcp.server.main", new_callable=AsyncMock) as mock_main:
+        with patch("swag_mcp.server.main", new_callable=AsyncMock):
             # Mock asyncio.run to capture the call
             with patch("asyncio.run") as mock_asyncio_run:
                 try:
@@ -50,7 +50,7 @@ class TestMainModule:
         from swag_mcp.__main__ import main
 
         # Mock the main function to avoid actually starting server
-        with patch("swag_mcp.__main__.main", new_callable=AsyncMock) as mock_main:
+        with patch("swag_mcp.__main__.main", new_callable=AsyncMock):
             # Mock the __name__ check and asyncio.run
             with (
                 patch("swag_mcp.__main__.__name__", "__main__"),

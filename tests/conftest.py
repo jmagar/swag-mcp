@@ -18,11 +18,19 @@ from .fixtures.sample_configs import TEST_CONFIGS
 
 
 @pytest.fixture
-def mock_config() -> SwagConfig:
-    """Create a mock configuration for testing using real paths."""
-    # Just use environment variables to disable file logging during tests
+def mock_config(tmp_path) -> SwagConfig:
+    """Create a mock configuration for testing using temporary paths."""
+    # Create temporary directories for testing
+    proxy_confs_dir = tmp_path / "proxy-confs"
+    proxy_confs_dir.mkdir(exist_ok=True)
+
+    template_dir = Path(__file__).parent.parent / "templates"  # Use real templates directory
+
+    # Set up test environment variables
     test_env = {
         "SWAG_MCP_LOG_FILE_ENABLED": "false",
+        "SWAG_MCP_PROXY_CONFS_PATH": str(proxy_confs_dir),
+        "SWAG_MCP_TEMPLATE_PATH": str(template_dir),
     }
 
     with patch.dict(os.environ, test_env, clear=False):
@@ -40,14 +48,16 @@ async def swag_service(mock_config: SwagConfig) -> SwagManagerService:
 
 
 @pytest.fixture
-async def mcp_server(mock_config: SwagConfig) -> FastMCP:
+async def mcp_server(mock_config: SwagConfig, swag_service: SwagManagerService) -> FastMCP:
     """Create in-memory FastMCP server for testing."""
     # Patch the global config import to use our mock config
+    # Also patch the global swag_service to use our test service
     with (
         patch("swag_mcp.core.config.config", mock_config),
         patch("swag_mcp.server.config", mock_config),
         patch("swag_mcp.tools.swag.config", mock_config),
         patch("swag_mcp.services.swag_manager.config", mock_config),
+        patch("swag_mcp.tools.swag.swag_service", swag_service),
     ):
         # Create the server instance
         server = await create_mcp_server()
@@ -156,12 +166,12 @@ async def test_cleanup(mock_config: SwagConfig):
     config_path = mock_config.proxy_confs_path
 
     # Track files that exist before the test
-    initial_files = set(f.name for f in config_path.glob("*") if f.is_file())
+    initial_files = {f.name for f in config_path.glob("*") if f.is_file()}
 
     yield
 
     # After test completion, clean up any new files
-    current_files = set(f.name for f in config_path.glob("*") if f.is_file())
+    current_files = {f.name for f in config_path.glob("*") if f.is_file()}
     new_files = current_files - initial_files
 
     # Clean up test-related files (more aggressive cleanup for known test patterns)
