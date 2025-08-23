@@ -81,6 +81,22 @@ echo -e "${GREEN}✅ Configuration files ready${NC}\n"
 # Skip configuration if keeping existing .env
 if [ "$SKIP_CONFIG" = true ]; then
     echo "📋 Using existing configuration from .env"
+
+    # Display existing configuration details
+    EXISTING_PROXY=$(grep "^SWAG_MCP_PROXY_CONFS_PATH=" .env | cut -d'=' -f2)
+    EXISTING_LOG=$(grep "^SWAG_MCP_LOG_DIRECTORY=" .env | cut -d'=' -f2)
+    EXISTING_PORT=$(grep "^SWAG_MCP_PORT=" .env | cut -d'=' -f2)
+
+    echo ""
+    echo "Current settings:"
+    echo -e "${GREEN}📁 Proxy-confs:${NC} $EXISTING_PROXY"
+    if [ -d "$EXISTING_PROXY" ]; then
+        EXISTING_CONF_COUNT=$(find "$EXISTING_PROXY" -maxdepth 1 -name "*.conf" ! -name "*.conf.sample" 2>/dev/null | wc -l)
+        echo -e "${GREEN}   Active configs:${NC} $EXISTING_CONF_COUNT .conf files"
+    fi
+    echo -e "${GREEN}📝 Log directory:${NC} $EXISTING_LOG"
+    echo -e "${GREEN}🌐 Service port:${NC} $EXISTING_PORT"
+    echo ""
 else
     # Auto-discover SWAG proxy-confs location
     echo "🔍 Searching for SWAG installation..."
@@ -146,7 +162,10 @@ else
 
     # Handle proxy-confs path
     if [ -n "$PROXY_CONFS" ]; then
+        # Count active .conf files (excluding .conf.sample)
+        CONF_COUNT=$(find "$PROXY_CONFS" -maxdepth 1 -name "*.conf" ! -name "*.conf.sample" 2>/dev/null | wc -l)
         echo -e "${GREEN}✅ Found proxy-confs at: $PROXY_CONFS${NC}"
+        echo -e "${GREEN}   📊 Active configurations: $CONF_COUNT .conf files${NC}"
         read -p "Use this path? [Y/n]: " response
 
         if [[ ! "$response" =~ ^[Nn]$ ]]; then
@@ -155,11 +174,19 @@ else
         else
             read -p "Enter the path to your SWAG proxy-confs directory: " CUSTOM_PATH
             sed -i.bak "s|SWAG_MCP_PROXY_CONFS_PATH=.*|SWAG_MCP_PROXY_CONFS_PATH=$CUSTOM_PATH|" .env
+            PROXY_CONFS="$CUSTOM_PATH"
         fi
     else
         echo -e "${YELLOW}⚠️  Could not auto-detect SWAG proxy-confs location${NC}"
         read -p "Enter the path to your SWAG proxy-confs directory: " CUSTOM_PATH
         sed -i.bak "s|SWAG_MCP_PROXY_CONFS_PATH=.*|SWAG_MCP_PROXY_CONFS_PATH=$CUSTOM_PATH|" .env
+        PROXY_CONFS="$CUSTOM_PATH"
+    fi
+
+    # Count configs if we haven't already
+    if [ -d "$PROXY_CONFS" ] && [ -z "$CONF_COUNT" ]; then
+        CONF_COUNT=$(find "$PROXY_CONFS" -maxdepth 1 -name "*.conf" ! -name "*.conf.sample" 2>/dev/null | wc -l)
+        echo -e "${GREEN}   📊 Active configurations: $CONF_COUNT .conf files${NC}"
     fi
 
     # Create log directory
@@ -229,9 +256,17 @@ fi  # End of SKIP_CONFIG check
 echo ""
 echo "📋 Configuration Summary:"
 echo "========================="
-echo "Proxy-confs: $(grep "^SWAG_MCP_PROXY_CONFS_PATH=" .env | cut -d'=' -f2)"
-echo "Log directory: $(grep "^SWAG_MCP_LOG_DIRECTORY=" .env | cut -d'=' -f2)"
-echo "Port: $(grep "^SWAG_MCP_PORT=" .env | cut -d'=' -f2)"
+FINAL_PROXY_PATH=$(grep "^SWAG_MCP_PROXY_CONFS_PATH=" .env | cut -d'=' -f2)
+FINAL_LOG_DIR=$(grep "^SWAG_MCP_LOG_DIRECTORY=" .env | cut -d'=' -f2)
+FINAL_PORT=$(grep "^SWAG_MCP_PORT=" .env | cut -d'=' -f2)
+
+echo -e "${GREEN}📁 Proxy-confs path:${NC} $FINAL_PROXY_PATH"
+if [ -d "$FINAL_PROXY_PATH" ]; then
+    FINAL_CONF_COUNT=$(find "$FINAL_PROXY_PATH" -maxdepth 1 -name "*.conf" ! -name "*.conf.sample" 2>/dev/null | wc -l)
+    echo -e "${GREEN}   Active configs:${NC} $FINAL_CONF_COUNT .conf files"
+fi
+echo -e "${GREEN}📝 Log directory:${NC} $FINAL_LOG_DIR"
+echo -e "${GREEN}🌐 Service port:${NC} $FINAL_PORT"
 echo ""
 
 read -p "Proceed with deployment? [Y/n]: " response
@@ -250,13 +285,23 @@ $DOCKER_COMPOSE up -d
 sleep 3
 if $DOCKER_COMPOSE ps | grep -q "swag-mcp.*running"; then
     PORT=$(grep "^SWAG_MCP_PORT=" .env | cut -d'=' -f2)
+    LOG_DIR=$(grep "^SWAG_MCP_LOG_DIRECTORY=" .env | cut -d'=' -f2)
+    PROXY_PATH=$(grep "^SWAG_MCP_PROXY_CONFS_PATH=" .env | cut -d'=' -f2)
+
     echo ""
     echo -e "${GREEN}✨ SWAG MCP successfully deployed!${NC}"
     echo ""
-    echo "🌐 Access URL: http://localhost:$PORT"
-    echo "📝 View logs: $DOCKER_COMPOSE logs -f swag-mcp"
-    echo "🔧 Edit config: nano .env"
-    echo "🔄 Update: $DOCKER_COMPOSE pull && $DOCKER_COMPOSE up -d"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${GREEN}🌐 Service running on port:${NC} $PORT"
+    echo -e "${GREEN}📁 Managing configs in:${NC} $PROXY_PATH"
+    echo -e "${GREEN}📝 Logs stored in:${NC} $LOG_DIR"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "🔧 Quick Commands:"
+    echo "  Access URL:  http://localhost:$PORT"
+    echo "  View logs:   $DOCKER_COMPOSE logs -f swag-mcp"
+    echo "  Edit config: nano .env"
+    echo "  Update:      $DOCKER_COMPOSE pull && $DOCKER_COMPOSE up -d"
     echo ""
     echo "Next steps:"
     echo "1. Check the service: curl http://localhost:$PORT/health"
