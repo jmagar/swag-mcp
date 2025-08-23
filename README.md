@@ -4,6 +4,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
 Transform your SWAG reverse proxy management with AI-powered automation and real-time health monitoring. Built with FastMCP for seamless Claude Desktop integration.
@@ -30,44 +31,57 @@ Transform your SWAG reverse proxy management with AI-powered automation and real
 
 ---
 
-## 🎯 Quick Start
+## 🚀 Quick Install (One Line!)
 
-### Prerequisites
+```bash
+curl -sSL https://raw.githubusercontent.com/jmagar/swag-mcp/main/install.sh | bash
+```
 
-- Python 3.11+
-- SWAG reverse proxy running
-- Access to SWAG configuration directory
-- UV package manager (or pip)
+This intelligent installer will:
+- ✅ **Auto-discover** your SWAG proxy-confs location
+- ✅ **Find an available port** automatically
+- ✅ **Download and configure** everything
+- ✅ **Start the service** immediately
 
-### Installation
+---
+
+## 🎯 Installation Options
+
+### Option 1: Docker Compose (Recommended)
+
+The one-line installer above is the fastest way. For manual Docker installation:
+
+```bash
+# Download files manually
+curl -O https://raw.githubusercontent.com/jmagar/swag-mcp/main/docker-compose.yaml
+curl -O https://raw.githubusercontent.com/jmagar/swag-mcp/main/.env.example
+mv .env.example .env
+
+# Edit .env with your paths
+nano .env
+
+# Deploy
+docker compose up -d
+```
+
+### Option 2: Development Installation
+
+For development or customization:
 
 ```bash
 # Clone the repository
 git clone https://github.com/jmagar/swag-mcp.git
 cd swag-mcp
 
-# Install dependencies with UV (recommended)
+# Install dependencies with UV
 uv install
 
-# Or with pip
-pip install -r requirements.txt
-
-# Configure environment
+# Configure
 cp .env.example .env
-nano .env  # Edit with your paths
-```
+nano .env
 
-### 🏃 Running the Server
-
-```bash
-# Development mode with live reload
+# Run in development mode
 fastmcp dev swag_mcp/server.py
-
-# Production mode
-python -m swag_mcp.server
-
-# With Inspector UI for debugging
-fastmcp dev swag_mcp/server.py --with inspector
 ```
 
 ---
@@ -270,35 +284,38 @@ fastmcp install mcp-json /path/to/swag-mcp/swag_mcp/server.py
 
 ---
 
-## 🐳 Docker Deployment
+## 🐳 Docker Management
 
-### Quick Deploy
+### Container Operations
 
 ```bash
-# Start the service
+# Update to latest version
+docker compose pull
 docker compose up -d
 
 # View logs
 docker compose logs -f swag-mcp
 
 # Health check
-curl http://localhost:8000/health
+curl http://localhost:$(grep SWAG_MCP_PORT .env | cut -d'=' -f2)/health
+
+# Restart service
+docker compose restart
+
+# Stop service
+docker compose down
+
+# Shell access for debugging
+docker compose exec swag-mcp /bin/bash
 ```
 
-### Docker Commands Reference
+### Why Docker?
 
-```bash
-# Lifecycle management
-docker compose build          # Build image
-docker compose up -d          # Start service
-docker compose restart        # Restart
-docker compose down          # Stop
-docker compose down -v       # Clean up
-
-# Debugging
-docker compose logs -f       # Stream logs
-docker compose exec swag-mcp /bin/bash  # Shell access
-```
+- ✅ **No Python dependencies** - Everything is containerized
+- ✅ **Automatic updates** - Just `docker compose pull`
+- ✅ **Consistent environment** - Works the same everywhere
+- ✅ **Easy rollback** - Tag-based versioning
+- ✅ **Pre-built and tested** - Ready to run immediately
 
 ---
 
