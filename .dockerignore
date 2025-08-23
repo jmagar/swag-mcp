@@ -42,13 +42,16 @@ docs/
 # Keep README.md for build
 
 # Testing
+tests/
 .pytest_cache/
 .coverage
 .tox/
 .cache
+htmlcov/
 
 # Environment files
-.env.example
+.env
+.env.*
 
 # Claude specific
 .claude/
