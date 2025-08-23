@@ -24,7 +24,6 @@ def get_logging_middleware() -> LoggingMiddleware | StructuredLoggingMiddleware:
         return StructuredLoggingMiddleware(
             logger=middleware_logger,
             include_payloads=config.log_payloads,
-            max_payload_length=config.log_payload_max_length,
         )
     else:
         return LoggingMiddleware(
