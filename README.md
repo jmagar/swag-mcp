@@ -14,10 +14,10 @@ Transform your SWAG reverse proxy management with AI-powered automation and real
 ## ✨ Key Features
 
 ### 🚀 **Core Capabilities**
-- **Smart Configuration Generation** - Create SWAG proxy configs from intelligent templates
+- **Smart Configuration Generation** - Create SWAG proxy configs from intelligent templates, including remote MCP servers
 - **Real-time Health Monitoring** - Verify your services are accessible and running
 - **Automatic Backups** - Never lose a configuration with automatic backup on edit
-- **MCP Protocol Support** - Generates steamable-http SWAG proxy configs
+- **MCP Protocol Support** - Generates Streamable-HTTP SWAG proxy configs
 
 ### 🔐 **Security First**
 - **Authelia by Default** - All services protected automatically
