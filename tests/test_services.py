@@ -1,5 +1,6 @@
 """Tests for SwagManagerService."""
 
+import contextlib
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -192,10 +193,8 @@ class TestSwagManagerService:
         assert backup_file.exists()
 
         # Clean up backup file (the autouse fixture will also clean it up, but be explicit)
-        try:
+        with contextlib.suppress(PermissionError, OSError):
             backup_file.unlink()
-        except (PermissionError, OSError):
-            pass  # Ignore cleanup errors
 
     @pytest.mark.asyncio
     async def test_update_config_not_found(self, swag_service: SwagManagerService):
@@ -235,10 +234,8 @@ class TestSwagManagerService:
         )
 
         # Clean up backup file since we created it for testing
-        try:
+        with contextlib.suppress(PermissionError, OSError):
             backup_file.unlink()
-        except (PermissionError, OSError):
-            pass  # Ignore cleanup errors
 
     @pytest.mark.asyncio
     async def test_delete_config_without_backup(
@@ -502,9 +499,11 @@ class TestSwagManagerService:
         """Test docker logs general error handling (lines 262-264)."""
         from swag_mcp.models.config import SwagLogsRequest
 
-        with patch("subprocess.run", side_effect=OSError("Docker not found")):
-            with pytest.raises(OSError, match="Docker not found"):
-                await swag_service.get_docker_logs(SwagLogsRequest())
+        with (
+            patch("subprocess.run", side_effect=OSError("Docker not found")),
+            pytest.raises(OSError, match="Docker not found"),
+        ):
+            await swag_service.get_docker_logs(SwagLogsRequest())
 
     @pytest.mark.asyncio
     async def test_cleanup_old_backups_error_handling(self, swag_service: SwagManagerService):

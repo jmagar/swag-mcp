@@ -122,7 +122,10 @@ def register_tools(mcp: FastMCP) -> None:
                 health_result = await swag_service.health_check(health_request)
 
                 if health_result.success:
-                    health_status = f"✅ Health check passed: {health_result.status_code} ({health_result.response_time_ms}ms)"
+                    health_status = (
+                        f"✅ Health check passed: {health_result.status_code} "
+                        f"({health_result.response_time_ms}ms)"
+                    )
                     await ctx.info(f"Health check successful for {server_name}")
                 else:
                     health_status = (
@@ -233,7 +236,8 @@ def register_tools(mcp: FastMCP) -> None:
             ctx: FastMCP context for logging and communication
             default_auth: Default authentication method
             enable_quic: Default QUIC setting
-            default_config_type: Default configuration type ("subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder")
+            default_config_type: Default configuration type
+                ("subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder")
 
         Returns:
             Current defaults if no params provided, or confirmation of updated defaults
@@ -246,7 +250,10 @@ def register_tools(mcp: FastMCP) -> None:
             "default_quic_enabled": config.default_quic_enabled,
             "default_config_type": config.default_config_type,
         }
-        message = f"Current defaults: {current_defaults}\n\nNote: To change these values, update your .env file and restart the server."
+        message = (
+            f"Current defaults: {current_defaults}\n\n"
+            "Note: To change these values, update your .env file and restart the server."
+        )
         await ctx.info(message)
         return message
 
@@ -367,7 +374,8 @@ def register_tools(mcp: FastMCP) -> None:
 
         Args:
             ctx: FastMCP context for logging and communication
-            domain: Full domain to check health for (e.g., "docker-mcp.tootie.tv", "swag-mcp.tootie.tv")
+            domain: Full domain to check health for
+                (e.g., "docker-mcp.tootie.tv", "swag-mcp.tootie.tv")
             timeout: Request timeout in seconds (1-300)
             follow_redirects: Whether to follow HTTP redirects
 
