@@ -370,7 +370,7 @@ server {
         # Mock subprocess.run to simulate docker logs output
         mock_result = MagicMock()
         mock_result.stdout = (
-            "2025-01-15 10:00:00 SWAG initialized\n" "2025-01-15 10:00:01 Server started"
+            "2025-01-15 10:00:00 SWAG initialized\n2025-01-15 10:00:01 Server started"
         )
         mock_result.stderr = ""
         mock_result.returncode = 0
