@@ -37,6 +37,8 @@ class TestErrorHandlingMiddleware:
     @pytest.mark.asyncio
     async def test_error_handling_middleware_catches_exception(self, caplog):
         """Test error handling middleware catches and logs exceptions."""
+        from mcp import McpError
+
         middleware = get_error_handling_middleware()
 
         mock_context = MagicMock(spec=MiddlewareContext)
@@ -47,8 +49,8 @@ class TestErrorHandlingMiddleware:
 
         with (
             caplog.at_level(logging.ERROR),
-            pytest.raises(ValueError, match="Test error"),
-        ):  # More specific exception matching
+            pytest.raises(McpError, match="Invalid params: Test error"),
+        ):  # Expect McpError since transform_errors=True
             await middleware(mock_context, failing_next)
 
         # Check that error was logged (look for any error log with "Test error")

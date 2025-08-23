@@ -1,6 +1,6 @@
 """Tests for SWAG MCP tools using in-memory client."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastmcp import Client
@@ -516,23 +516,27 @@ class TestSwagToolsErrorHandling:
     @pytest.mark.asyncio
     async def test_swag_list_error_handling(self, mcp_client: Client):
         """Test swag_list tool error handling (lines 49-51)."""
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.list_configs = MagicMock(side_effect=Exception("List error"))
-            mock_service_class.return_value = mock_service
+        from fastmcp.exceptions import ToolError
 
-            with pytest.raises(Exception, match="List error"):
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            mock_service.list_configs = AsyncMock(side_effect=Exception("List error"))
+
+            with pytest.raises(ToolError, match="List error"):
                 await mcp_client.call_tool("swag_list", {"config_type": "all"})
 
     @pytest.mark.asyncio
     async def test_swag_create_error_handling(self, mcp_client: Client):
         """Test swag_create tool error handling (lines 123-126)."""
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.create_config = MagicMock(side_effect=Exception("Create error"))
-            mock_service_class.return_value = mock_service
+        from fastmcp.exceptions import ToolError
 
-            with pytest.raises(Exception, match="Create error"):
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            # Mock validate_template_exists to succeed so we reach create_config
+            mock_service.validate_template_exists = AsyncMock(return_value=True)
+            mock_service.create_config = AsyncMock(side_effect=Exception("Create error"))
+
+            with pytest.raises(ToolError, match="Create error"):
                 await mcp_client.call_tool(
                     "swag_create",
                     {
@@ -548,10 +552,9 @@ class TestSwagToolsErrorHandling:
         """Test swag_view tool error handling (lines 150-153)."""
         from fastmcp.exceptions import ToolError
 
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.read_config = MagicMock(side_effect=Exception("Read error"))
-            mock_service_class.return_value = mock_service
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            mock_service.read_config = AsyncMock(side_effect=Exception("Read error"))
 
             with pytest.raises(ToolError, match="Read error"):
                 await mcp_client.call_tool("swag_view", {"config_name": "test.conf"})
@@ -559,12 +562,13 @@ class TestSwagToolsErrorHandling:
     @pytest.mark.asyncio
     async def test_swag_edit_error_handling(self, mcp_client: Client):
         """Test swag_edit tool error handling (lines 193-196)."""
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.edit_config = MagicMock(side_effect=Exception("Edit error"))
-            mock_service_class.return_value = mock_service
+        from fastmcp.exceptions import ToolError
 
-            with pytest.raises(Exception, match="Edit error"):
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            mock_service.update_config = AsyncMock(side_effect=Exception("Edit error"))
+
+            with pytest.raises(ToolError, match="Edit error"):
                 await mcp_client.call_tool(
                     "swag_edit", {"config_name": "test.conf", "new_content": "# New content"}
                 )
@@ -572,30 +576,40 @@ class TestSwagToolsErrorHandling:
     @pytest.mark.asyncio
     async def test_swag_remove_error_handling(self, mcp_client: Client):
         """Test swag_remove tool error handling (lines 265-268)."""
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.remove_config = MagicMock(side_effect=Exception("Remove error"))
-            mock_service_class.return_value = mock_service
+        from fastmcp.exceptions import ToolError
 
-            with pytest.raises(Exception, match="Remove error"):
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            mock_service.remove_config = AsyncMock(side_effect=Exception("Remove error"))
+
+            with pytest.raises(ToolError, match="Remove error"):
                 await mcp_client.call_tool("swag_remove", {"config_name": "test.conf"})
 
     @pytest.mark.asyncio
     async def test_swag_logs_error_handling(self, mcp_client: Client):
         """Test swag_logs tool error handling (lines 293-304)."""
-        with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
-            mock_service = MagicMock()
-            mock_service.get_docker_logs = MagicMock(side_effect=Exception("Logs error"))
-            mock_service_class.return_value = mock_service
+        from fastmcp.exceptions import ToolError
 
-            with pytest.raises(Exception, match="Logs error"):
+        # Patch the global swag_service instance
+        with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            mock_service.get_docker_logs = AsyncMock(side_effect=Exception("Logs error"))
+
+            with pytest.raises(ToolError, match="Logs error"):
                 await mcp_client.call_tool("swag_logs", {})
 
     @pytest.mark.asyncio
     async def test_swag_config_error_handling(self, mcp_client: Client):
         """Test swag_config tool error handling (lines 328-335)."""
-        with patch("swag_mcp.tools.swag.get_user_config") as mock_get_config:
-            mock_get_config.side_effect = Exception("Config error")
+        from unittest.mock import PropertyMock
 
-            with pytest.raises(Exception, match="Config error"):
+        from fastmcp.exceptions import ToolError
+
+        # Patch the config object to raise an error when accessing attributes
+        with patch("swag_mcp.tools.swag.config") as mock_config:
+            # Use PropertyMock to raise an exception when the property is accessed
+            type(mock_config).default_auth_method = PropertyMock(
+                side_effect=Exception("Config error")
+            )
+
+            with pytest.raises(ToolError, match="Config error"):
                 await mcp_client.call_tool("swag_config", {})

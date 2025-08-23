@@ -345,7 +345,9 @@ SWAG_MCP_BACKUP_RETENTION_DAYS=45
         for field_name in required_descriptions:
             assert field_name in field_info
             assert field_info[field_name].description is not None
-            assert len(field_info[field_name].description) > 0
+            description = field_info[field_name].description
+            assert description is not None
+            assert len(description) > 0
 
     def test_empty_environment_variables(self):
         """Test handling of empty environment variable values."""

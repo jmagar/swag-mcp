@@ -22,11 +22,15 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
+        files: ^swag_mcp/
         additional_dependencies:
           - fastmcp>=2.11.3
           - pydantic>=2.11.7
           - pydantic-settings>=2.7.0
           - jinja2>=3.1.6
           - aiofiles>=24.1.0
+          - types-aiofiles
           - pyyaml>=6.0.0
+          - pytest
+          - types-requests
         args: [--config-file=pyproject.toml]

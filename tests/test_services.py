@@ -450,7 +450,15 @@ class TestSwagManagerService:
         from swag_mcp.models.config import SwagLogsRequest
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker logs", timeout=5)
+            # First 4 calls timeout (for each container name tried)
+            # Then return empty result for docker ps
+            mock_run.side_effect = [
+                subprocess.TimeoutExpired(cmd="docker logs", timeout=30),
+                subprocess.TimeoutExpired(cmd="docker logs", timeout=30),
+                subprocess.TimeoutExpired(cmd="docker logs", timeout=30),
+                subprocess.TimeoutExpired(cmd="docker logs", timeout=30),
+                MagicMock(returncode=0, stdout="", stderr=""),  # docker ps
+            ]
 
             with pytest.raises(FileNotFoundError, match="No SWAG container found"):
                 await swag_service.get_docker_logs(SwagLogsRequest())
@@ -461,7 +469,15 @@ class TestSwagManagerService:
         from swag_mcp.models.config import SwagLogsRequest
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = Exception("Docker error")
+            # First 4 calls raise general exception (for each container name tried)
+            # Then return empty result for docker ps
+            mock_run.side_effect = [
+                Exception("Docker error"),
+                Exception("Docker error"),
+                Exception("Docker error"),
+                Exception("Docker error"),
+                MagicMock(returncode=0, stdout="", stderr=""),  # docker ps
+            ]
 
             with pytest.raises(FileNotFoundError, match="No SWAG container found"):
                 await swag_service.get_docker_logs(SwagLogsRequest())
