@@ -134,9 +134,9 @@ class TestSwagConfig:
         for env_value, expected_bool in boolean_tests:
             with patch.dict(os.environ, {"SWAG_MCP_LOG_FILE_ENABLED": env_value}, clear=False):
                 config = SwagConfig()
-                assert (
-                    config.log_file_enabled is expected_bool
-                ), f"Failed for env_value: {env_value}"
+                assert config.log_file_enabled is expected_bool, (
+                    f"Failed for env_value: {env_value}"
+                )
 
     def test_numeric_validation(self):
         """Test validation of numeric fields."""

@@ -344,9 +344,9 @@ class TestLoggingMiddleware:
 
             # Check that error was logged to our custom handler
             log_contents = log_stream.getvalue()
-            assert (
-                "Test error" in log_contents
-            ), f"Expected 'Test error' in logs, got: {log_contents}"
+            assert "Test error" in log_contents, (
+                f"Expected 'Test error' in logs, got: {log_contents}"
+            )
             assert "failing_tool" in log_contents or "Failed message" in log_contents
 
         finally:
