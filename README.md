@@ -17,17 +17,17 @@ Transform your SWAG reverse proxy management with AI-powered automation and real
 - **Smart Configuration Generation** - Create SWAG proxy configs from intelligent templates
 - **Real-time Health Monitoring** - Verify your services are accessible and running
 - **Automatic Backups** - Never lose a configuration with automatic backup on edit
-- **MCP Protocol Support** - Native support for AI/ML services with streaming transport
+- **MCP Protocol Support** - Generates steamable-http SWAG proxy configs
 
 ### 🔐 **Security First**
 - **Authelia by Default** - All services protected automatically
 - **Secure Templates** - Pre-configured security headers and best practices
 - **Audit Logging** - Complete activity tracking and monitoring
 
-### 🤖 **AI-Ready**
-- **Claude Desktop Integration** - Works seamlessly with Claude AI
+### 🤖 **MCP Ready**
+- **Claude Desktop Integration** - Works seamlessly with Claude AI, Claude Code, Cursor, Windsurf, Cline, Roo Code, KiloCode, Goose, etx 
 - **Streaming Support** - Server-Sent Events for real-time AI responses
-- **Extended Timeouts** - Optimized for long-running AI workloads
+- **Extended Timeouts** - Optimized for remote MCP servers.
 
 ---
 
@@ -40,7 +40,7 @@ curl -sSL https://raw.githubusercontent.com/jmagar/swag-mcp/main/install.sh | ba
 This intelligent installer will:
 - ✅ **Auto-discover** your SWAG proxy-confs location
 - ✅ **Find an available port** automatically
-- ✅ **Download and configure** everything
+- ✅ **Download and configure** automagically
 - ✅ **Start the service** immediately
 
 ---
@@ -55,7 +55,7 @@ The one-line installer above is the fastest way. For manual Docker installation:
 # Download files manually
 curl -O https://raw.githubusercontent.com/jmagar/swag-mcp/main/docker-compose.yaml
 curl -O https://raw.githubusercontent.com/jmagar/swag-mcp/main/.env.example
-mv .env.example .env
+cp .env.example .env
 
 # Edit .env with your paths
 nano .env
@@ -74,7 +74,7 @@ git clone https://github.com/jmagar/swag-mcp.git
 cd swag-mcp
 
 # Install dependencies with UV
-uv install
+uv sync
 
 # Configure
 cp .env.example .env
@@ -147,7 +147,7 @@ swag_create(
 )
 ```
 
-### Creating an MCP AI Service
+### Creating a Streamable-HTTP MCP service
 
 ```python
 # AI service with streaming support
@@ -156,7 +156,7 @@ swag_create(
     server_name="ai.example.com",
     upstream_app="claude-mcp-server",
     upstream_port=8080,
-    config_type="mcp-subdomain"  # Enables SSE streaming
+    config_type="mcp-subdomain"  # Enables Streamable-HTTP/SSE streaming
 )
 ```
 
@@ -237,9 +237,9 @@ Perfect for traditional web applications:
 - **`subfolder`** - `example.com/app` → `container:port`
 
 ### MCP Templates
-Optimized for AI/ML services with streaming:
-- **`mcp-subdomain`** - AI service on subdomain with SSE support
-- **`mcp-subfolder`** - AI service on path with SSE support
+Optimized for remote MCP services with streaming:
+- **`mcp-subdomain`** - MCP service on subdomain with Streamable-HTTP/SSE support
+- **`mcp-subfolder`** - MCP service on path with Streamable-HTTP/SSE support
 
 **MCP Template Features:**
 - 🚀 Zero-buffering for real-time streaming
@@ -284,41 +284,6 @@ fastmcp install mcp-json /path/to/swag-mcp/swag_mcp/server.py
 
 ---
 
-## 🐳 Docker Management
-
-### Container Operations
-
-```bash
-# Update to latest version
-docker compose pull
-docker compose up -d
-
-# View logs
-docker compose logs -f swag-mcp
-
-# Health check
-curl http://localhost:$(grep SWAG_MCP_PORT .env | cut -d'=' -f2)/health
-
-# Restart service
-docker compose restart
-
-# Stop service
-docker compose down
-
-# Shell access for debugging
-docker compose exec swag-mcp /bin/bash
-```
-
-### Why Docker?
-
-- ✅ **No Python dependencies** - Everything is containerized
-- ✅ **Automatic updates** - Just `docker compose pull`
-- ✅ **Consistent environment** - Works the same everywhere
-- ✅ **Easy rollback** - Tag-based versioning
-- ✅ **Pre-built and tested** - Ready to run immediately
-
----
-
 ## 🧪 Testing
 
 ### Running Tests
@@ -335,15 +300,6 @@ uv run pytest tests/test_services.py   # Core logic
 uv run pytest tests/test_tools.py      # MCP tools
 uv run pytest tests/test_middleware.py # Middleware
 ```
-
-### CI/CD Pipeline
-
-Our GitHub Actions pipeline ensures quality:
-- ✅ Multi-version Python testing (3.11, 3.12)
-- ✅ Code linting with Ruff
-- ✅ Type checking with MyPy
-- ✅ Security scanning with Bandit
-- ✅ Docker build verification
 
 ---
 
@@ -383,7 +339,7 @@ If you absolutely must disable authentication:
 3. **Warning**: Only do this for internal networks!
 
 ### 🤖 MCP Services Security
-AI services are powerful and must be protected:
+MCP servers are powerful and must be protected:
 - Always use authentication for MCP endpoints
 - Monitor access logs regularly
 - Use HTTPS in production
