@@ -159,13 +159,17 @@ class TestSwagConfig:
 
     def test_invalid_numeric_values(self):
         """Test handling of invalid numeric values."""
-        with patch.dict(os.environ, {"SWAG_MCP_BACKUP_RETENTION_DAYS": "invalid"}, clear=False):
-            with pytest.raises(ValidationError):
-                SwagConfig()
+        with (
+            patch.dict(os.environ, {"SWAG_MCP_BACKUP_RETENTION_DAYS": "invalid"}, clear=False),
+            pytest.raises(ValidationError),
+        ):
+            SwagConfig()
 
-        with patch.dict(os.environ, {"SWAG_MCP_RATE_LIMIT_RPS": "not_a_float"}, clear=False):
-            with pytest.raises(ValidationError):
-                SwagConfig()
+        with (
+            patch.dict(os.environ, {"SWAG_MCP_RATE_LIMIT_RPS": "not_a_float"}, clear=False),
+            pytest.raises(ValidationError),
+        ):
+            SwagConfig()
 
     def test_path_handling(self):
         """Test path field handling and validation."""
@@ -374,9 +378,11 @@ class TestConfigurationValidation:
         invalid_booleans = ["maybe", "2", "invalid", "true/false"]
 
         for invalid_bool in invalid_booleans:
-            with patch.dict(os.environ, {"SWAG_MCP_LOG_FILE_ENABLED": invalid_bool}, clear=False):
-                with pytest.raises(ValidationError):
-                    SwagConfig()
+            with (
+                patch.dict(os.environ, {"SWAG_MCP_LOG_FILE_ENABLED": invalid_bool}, clear=False),
+                pytest.raises(ValidationError),
+            ):
+                SwagConfig()
 
     def test_negative_numeric_values(self):
         """Test handling of negative numeric values."""

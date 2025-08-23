@@ -187,10 +187,17 @@ class TestServerIntegration:
         from swag_mcp.server import main
 
         # This should execute the main async path (lines 175-189)
-        with (
-            patch("swag_mcp.server.config.host", "localhost"),
-            patch("swag_mcp.server.config.port", 8000),
-        ):
+        # We can't patch properties directly, so mock the config object
+        with patch("swag_mcp.server.config") as mock_config:
+            mock_config.host = "localhost"
+            mock_config.port = 8000
+            mock_config.proxy_confs_path = Path("/test/proxy-confs")
+            mock_config.data_path = Path("/test/data")
+            mock_config.templates_path = Path("/test/templates")
+            mock_config.default_auth_method = "authelia"
+            mock_config.default_config_type = "subdomain"
+            mock_config.default_quic_enabled = False
+
             # Mock run_async to avoid actual server startup
             mock_server.run_async = AsyncMock()
 

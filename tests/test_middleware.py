@@ -45,9 +45,11 @@ class TestErrorHandlingMiddleware:
         async def failing_next(ctx):
             raise ValueError("Test error")
 
-        with caplog.at_level(logging.ERROR):
-            with pytest.raises(Exception):  # Could be McpError or other exception
-                await middleware(mock_context, failing_next)
+        with (
+            caplog.at_level(logging.ERROR),
+            pytest.raises(ValueError, match="Test error"),
+        ):  # More specific exception matching
+            await middleware(mock_context, failing_next)
 
         # Check that error was logged (look for any error log with "Test error")
         assert any("Test error" in record.message for record in caplog.records)

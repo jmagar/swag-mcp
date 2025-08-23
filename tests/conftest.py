@@ -1,5 +1,6 @@
 """Shared fixtures and configuration for SWAG MCP server tests."""
 
+import contextlib
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -245,7 +246,5 @@ server {
         # Also remove any backup files created from these test files
         backup_pattern = f"{file_path.name}.backup.*"
         for backup_file in config_path.glob(backup_pattern):
-            try:
+            with contextlib.suppress(PermissionError, OSError):
                 backup_file.unlink()
-            except (PermissionError, OSError):
-                pass  # Ignore cleanup errors

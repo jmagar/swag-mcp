@@ -64,7 +64,9 @@ class TestSwagTools:
     @pytest.mark.asyncio
     async def test_swag_view_nonexistent_config(self, mcp_client: Client):
         """Test swag_view tool with non-existent configuration."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool("swag_view", {"config_name": "nonexistent.conf"})
 
     @pytest.mark.asyncio
@@ -197,7 +199,9 @@ class TestSwagTools:
     @pytest.mark.asyncio
     async def test_swag_create_duplicate_file(self, mcp_client: Client, sample_configs):
         """Test swag_create tool when file already exists."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool(
                 "swag_create",
                 {
@@ -345,34 +349,58 @@ server {
     @pytest.mark.asyncio
     async def test_swag_remove_sample_file_error(self, mcp_client: Client, sample_configs):
         """Test swag_remove tool with .sample file (should fail)."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool("swag_remove", {"config_name": "sampleapp.conf.sample"})
 
     @pytest.mark.asyncio
     async def test_swag_remove_nonexistent_config(self, mcp_client: Client):
         """Test swag_remove tool with non-existent configuration."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool("swag_remove", {"config_name": "nonexistent.conf"})
 
     @pytest.mark.asyncio
     async def test_swag_logs_default(self, mcp_client: Client):
         """Test swag_logs tool with default parameters."""
-        result = await mcp_client.call_tool("swag_logs")
+        from unittest.mock import MagicMock, patch
 
-        assert not result.is_error
-        message = result.data
-        assert isinstance(message, str)
-        # Since we're in test mode with file logging disabled,
-        # we should get an appropriate message
+        # Mock subprocess.run to simulate docker logs output
+        mock_result = MagicMock()
+        mock_result.stdout = (
+            "2025-01-15 10:00:00 SWAG initialized\n" "2025-01-15 10:00:01 Server started"
+        )
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = await mcp_client.call_tool("swag_logs")
+
+            assert not result.is_error
+            message = result.data
+            assert isinstance(message, str)
+            assert "SWAG initialized" in message
 
     @pytest.mark.asyncio
     async def test_swag_logs_specific_lines(self, mcp_client: Client):
         """Test swag_logs tool with specific line count."""
-        result = await mcp_client.call_tool("swag_logs", {"lines": 50})
+        from unittest.mock import MagicMock, patch
 
-        assert not result.is_error
-        message = result.data
-        assert isinstance(message, str)
+        # Mock subprocess.run to simulate docker logs output
+        mock_result = MagicMock()
+        mock_result.stdout = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result):
+            result = await mcp_client.call_tool("swag_logs", {"lines": 50})
+
+            assert not result.is_error
+            message = result.data
+            assert isinstance(message, str)
+            assert "Line 1" in message
 
     @pytest.mark.asyncio
     async def test_swag_cleanup_backups(self, mcp_client: Client, mock_config):
@@ -406,13 +434,17 @@ class TestSwagToolsValidation:
     @pytest.mark.asyncio
     async def test_invalid_config_type(self, mcp_client: Client):
         """Test tools with invalid config_type parameter."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool("swag_list", {"config_type": "invalid"})
 
     @pytest.mark.asyncio
     async def test_invalid_auth_method(self, mcp_client: Client):
         """Test swag_create with invalid auth_method."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool(
                 "swag_create",
                 {
@@ -427,7 +459,9 @@ class TestSwagToolsValidation:
     @pytest.mark.asyncio
     async def test_invalid_port_number(self, mcp_client: Client):
         """Test swag_create with invalid port number."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool(
                 "swag_create",
                 {
@@ -441,7 +475,9 @@ class TestSwagToolsValidation:
     @pytest.mark.asyncio
     async def test_invalid_service_name(self, mcp_client: Client):
         """Test swag_create with invalid service name."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool(
                 "swag_create",
                 {
@@ -455,7 +491,9 @@ class TestSwagToolsValidation:
     @pytest.mark.asyncio
     async def test_empty_config_content(self, mcp_client: Client, sample_configs):
         """Test swag_edit with empty content."""
-        with pytest.raises(Exception):
+        from fastmcp.exceptions import ToolError
+
+        with pytest.raises(ToolError):
             await mcp_client.call_tool(
                 "swag_edit", {"config_name": "testapp.subdomain.conf", "new_content": ""}
             )
@@ -463,10 +501,12 @@ class TestSwagToolsValidation:
     @pytest.mark.asyncio
     async def test_invalid_config_name_pattern(self, mcp_client: Client):
         """Test tools with invalid configuration file names."""
+        from fastmcp.exceptions import ToolError
+
         invalid_names = ["../../../etc/passwd", "config.txt", "test.conf.backup", "test..conf"]
 
         for invalid_name in invalid_names:
-            with pytest.raises(Exception):
+            with pytest.raises(ToolError):
                 await mcp_client.call_tool("swag_view", {"config_name": invalid_name})
 
 
@@ -506,12 +546,14 @@ class TestSwagToolsErrorHandling:
     @pytest.mark.asyncio
     async def test_swag_view_error_handling(self, mcp_client: Client):
         """Test swag_view tool error handling (lines 150-153)."""
+        from fastmcp.exceptions import ToolError
+
         with patch("swag_mcp.tools.swag.SwagManagerService") as mock_service_class:
             mock_service = MagicMock()
             mock_service.read_config = MagicMock(side_effect=Exception("Read error"))
             mock_service_class.return_value = mock_service
 
-            with pytest.raises(Exception, match="Read error"):
+            with pytest.raises(ToolError, match="Read error"):
                 await mcp_client.call_tool("swag_view", {"config_name": "test.conf"})
 
     @pytest.mark.asyncio
