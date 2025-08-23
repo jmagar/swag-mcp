@@ -7,7 +7,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
-Transform your SWAG reverse proxy management with AI-powered automation and real-time health monitoring. Built with FastMCP for seamless Claude Desktop integration.
+Transform your SWAG reverse proxy management with AI-powered automation and real-time health monitoring. Generates SWAG proxy configs for your self-hosted services and MCP servers.
 
 ---
 
