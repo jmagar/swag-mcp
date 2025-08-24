@@ -1,9 +1,37 @@
 """Pydantic models for SWAG configuration management."""
 
-import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from ..constants import (
+    AUTH_AUTHELIA,
+    AUTH_AUTHENTIK,
+    AUTH_LDAP,
+    AUTH_NONE,
+    AUTH_TINYAUTH,
+    CONFIG_FILE_PATTERN,
+    DEFAULT_LOG_LINES,
+    DEFAULT_TIMEOUT,
+    MAX_CONFIG_CONTENT_LENGTH,
+    MAX_DOMAIN_LENGTH,
+    MAX_LOG_LINES,
+    MAX_PORT,
+    MAX_SERVICE_NAME_LENGTH,
+    MAX_UPSTREAM_APP_LENGTH,
+    MIN_LOG_LINES,
+    MIN_PORT,
+    PROTO_HTTP,
+    PROTO_HTTPS,
+    RESPONSE_BODY_MAX_LENGTH,
+    SERVICE_NAME_PATTERN,
+    TEMPLATE_MCP_SUBDOMAIN,
+    TEMPLATE_MCP_SUBFOLDER,
+    TEMPLATE_SUBDOMAIN,
+    TEMPLATE_SUBFOLDER,
+    UPSTREAM_APP_PATTERN,
+)
+from ..validators import validate_domain, validate_service_name
 
 
 class SwagConfigRequest(BaseModel):
@@ -11,32 +39,32 @@ class SwagConfigRequest(BaseModel):
 
     service_name: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_-]+$",
-        max_length=50,
+        pattern=SERVICE_NAME_PATTERN,
+        max_length=MAX_SERVICE_NAME_LENGTH,
         description="Service identifier used for filename",
     )
 
-    server_name: str = Field(..., max_length=253, description="Domain name for the service")
+    server_name: str = Field(..., max_length=MAX_DOMAIN_LENGTH, description="Domain name for the service")
 
     upstream_app: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_.-]+$",
-        max_length=100,
+        pattern=UPSTREAM_APP_PATTERN,
+        max_length=MAX_UPSTREAM_APP_LENGTH,
         description="Container name or IP address",
     )
 
-    upstream_port: int = Field(..., ge=1, le=65535, description="Port number the service runs on")
+    upstream_port: int = Field(..., ge=MIN_PORT, le=MAX_PORT, description="Port number the service runs on")
 
-    upstream_proto: Literal["http", "https"] = Field(
-        default="http", description="Protocol for upstream connection"
+    upstream_proto: Literal[PROTO_HTTP, PROTO_HTTPS] = Field(
+        default=PROTO_HTTP, description="Protocol for upstream connection"
     )
 
-    config_type: Literal["subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"] = Field(
-        default="subdomain", description="Type of configuration to generate"
+    config_type: Literal[TEMPLATE_SUBDOMAIN, TEMPLATE_SUBFOLDER, TEMPLATE_MCP_SUBDOMAIN, TEMPLATE_MCP_SUBFOLDER] = Field(
+        default=TEMPLATE_SUBDOMAIN, description="Type of configuration to generate"
     )
 
-    auth_method: Literal["none", "ldap", "authelia", "authentik", "tinyauth"] = Field(
-        default="none", description="Authentication method to use"
+    auth_method: Literal[AUTH_NONE, AUTH_LDAP, AUTH_AUTHELIA, AUTH_AUTHENTIK, AUTH_TINYAUTH] = Field(
+        default=AUTH_NONE, description="Authentication method to use"
     )
 
     enable_quic: bool = Field(default=False, description="Enable QUIC support")
@@ -45,26 +73,13 @@ class SwagConfigRequest(BaseModel):
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
-        if not v or ".." in v or v.startswith(".") or v.endswith("."):
-            raise ValueError("Invalid server name format")
-
-        # Basic domain validation
-        domain_pattern = (
-            r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
-            + r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
-        )
-        if not re.match(domain_pattern, v):
-            raise ValueError("Invalid hostname format")
-
-        return v.lower()
+        return validate_domain(v)
 
     @field_validator("service_name")
     @classmethod
-    def validate_service_name(cls, v: str) -> str:
+    def validate_service_name_field(cls, v: str) -> str:
         """Validate service name."""
-        if not v or v.startswith("-") or v.endswith("-"):
-            raise ValueError("Service name cannot start or end with hyphen")
-        return v.lower()
+        return validate_service_name(v)
 
 
 class SwagConfigResult(BaseModel):
@@ -96,12 +111,12 @@ class SwagEditRequest(BaseModel):
 
     config_name: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_.-]+\.(conf|sample)$",
+        pattern=CONFIG_FILE_PATTERN,
         description="Name of configuration file to edit",
     )
 
     new_content: str = Field(
-        ..., min_length=1, description="New content for the configuration file"
+        ..., min_length=1, max_length=MAX_CONFIG_CONTENT_LENGTH, description="New content for the configuration file"
     )
 
     create_backup: bool = Field(
@@ -126,7 +141,7 @@ class SwagRemoveRequest(BaseModel):
 class SwagLogsRequest(BaseModel):
     """Request model for SWAG docker logs."""
 
-    lines: int = Field(default=100, ge=1, le=1000, description="Number of log lines to retrieve")
+    lines: int = Field(default=DEFAULT_LOG_LINES, ge=MIN_LOG_LINES, le=MAX_LOG_LINES, description="Number of log lines to retrieve")
 
     follow: bool = Field(default=False, description="Follow log output (stream mode)")
 
@@ -144,32 +159,19 @@ class SwagHealthCheckRequest(BaseModel):
 
     domain: str = Field(
         ...,
-        max_length=253,
+        max_length=MAX_DOMAIN_LENGTH,
         description="Domain to check health for (e.g., docker-mcp.tootie.tv)",
     )
 
-    timeout: int = Field(default=30, ge=1, le=300, description="Request timeout in seconds")
+    timeout: int = Field(default=DEFAULT_TIMEOUT, ge=1, le=300, description="Request timeout in seconds")
 
     follow_redirects: bool = Field(default=True, description="Whether to follow HTTP redirects")
 
     @field_validator("domain")
     @classmethod
-    def validate_domain(cls, v: str) -> str:
+    def validate_domain_field(cls, v: str) -> str:
         """Validate domain format."""
-        if not v or ".." in v or v.startswith(".") or v.endswith("."):
-            raise ValueError("Invalid domain format")
-
-        # Basic domain validation
-        domain_pattern = (
-            r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
-            + r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
-        )
-        import re
-
-        if not re.match(domain_pattern, v):
-            raise ValueError("Invalid domain format")
-
-        return v.lower()
+        return validate_domain(v)
 
 
 class SwagHealthCheckResult(BaseModel):
@@ -183,7 +185,7 @@ class SwagHealthCheckResult(BaseModel):
 
     response_time_ms: int | None = Field(default=None, description="Response time in milliseconds")
 
-    response_body: str | None = Field(default=None, description="Response body (truncated)")
+    response_body: str | None = Field(default=None, max_length=RESPONSE_BODY_MAX_LENGTH, description="Response body (truncated)")
 
     success: bool = Field(..., description="Whether the health check was successful")
 

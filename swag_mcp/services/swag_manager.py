@@ -5,8 +5,25 @@ from datetime import datetime
 from pathlib import Path
 
 import aiofiles
-from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
+from ..constants import (
+    BACKUP_FILE_PATTERN,
+    BACKUP_PATTERN,
+    CONF_EXTENSION,
+    CONFIG_TYPE_ACTIVE,
+    CONFIG_TYPE_ALL,
+    CONFIG_TYPE_SAMPLES,
+    DOCKER_COMMAND_TIMEOUT,
+    HEALTH_CHECK_TIMEOUT,
+    HTTP_NOT_ACCEPTABLE,
+    HTTP_NOT_FOUND,
+    HTTP_OK_MAX,
+    HTTP_OK_MIN,
+    MCP_ENDPOINT_PATH,
+    RESPONSE_BODY_MAX_LENGTH,
+    SAMPLE_EXTENSION,
+    SWAG_CONTAINER_NAMES,
+)
 from ..core.config import config
 from ..models.config import (
     SwagConfigRequest,
@@ -19,6 +36,8 @@ from ..models.config import (
     SwagRemoveRequest,
     SwagResourceList,
 )
+from .health_check import get_health_check_service
+from .template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +55,8 @@ class SwagManagerService:
         self.template_path = template_path or config.template_path
         self._directory_checked = False
 
-        # Initialize Jinja2 environment
-        self.template_env = Environment(
-            loader=FileSystemLoader(str(self.template_path)),
-            autoescape=False,  # NGINX configs don't need HTML escaping
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
+        # Initialize template manager
+        self.template_manager = TemplateManager(self.template_path)
 
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
 
@@ -59,16 +73,17 @@ class SwagManagerService:
 
         configs = []
 
-        if config_type in ["all", "active"]:
+        if config_type in [CONFIG_TYPE_ALL, CONFIG_TYPE_ACTIVE]:
             # List active configurations (.conf files, not .sample)
             active_configs = [
-                f.name for f in self.config_path.glob("*.conf") if not f.name.endswith(".sample")
+                f.name for f in self.config_path.glob(f"*{CONF_EXTENSION}") 
+                if not f.name.endswith(SAMPLE_EXTENSION)
             ]
             configs.extend(active_configs)
 
-        if config_type in ["all", "samples"]:
+        if config_type in [CONFIG_TYPE_ALL, CONFIG_TYPE_SAMPLES]:
             # List sample configurations (.sample files)
-            sample_configs = [f.name for f in self.config_path.glob("*.sample")]
+            sample_configs = [f.name for f in self.config_path.glob(f"*{SAMPLE_EXTENSION}")]
             configs.extend(sample_configs)
 
         # Remove duplicates and sort
@@ -98,38 +113,30 @@ class SwagManagerService:
         logger.info(f"Creating {request.config_type} configuration for {request.service_name}")
         self._ensure_config_directory()
 
-        # Determine template and filename
-        if request.config_type == "mcp-subdomain":
-            template_name = "mcp-subdomain.conf.j2"
-            filename = f"{request.service_name}.subdomain.conf"
-        elif request.config_type == "mcp-subfolder":
-            template_name = "mcp-subfolder.conf.j2"
-            filename = f"{request.service_name}.subfolder.conf"
-        else:
-            template_name = f"{request.config_type}.conf.j2"
-            filename = f"{request.service_name}.{request.config_type}.conf"
+        # Get template and filename from template manager
+        filename = self.template_manager.get_config_filename(
+            request.service_name, request.config_type
+        )
 
         # Check if configuration already exists
         config_file = self.config_path / filename
         if config_file.exists():
             raise ValueError(f"Configuration {filename} already exists")
 
-        try:
-            # Render template
-            template = self.template_env.get_template(template_name)
-            content = template.render(
-                service_name=request.service_name,
-                server_name=request.server_name,
-                upstream_app=request.upstream_app,
-                upstream_port=request.upstream_port,
-                upstream_proto=request.upstream_proto,
-                auth_method=request.auth_method,
-                enable_quic=request.enable_quic,
-            )
-        except TemplateNotFound as e:
-            raise ValueError(f"Template {template_name} not found") from e
-        except Exception as e:
-            raise ValueError(f"Failed to render template: {str(e)}") from e
+        # Render template using template manager
+        template_context = {
+            "service_name": request.service_name,
+            "server_name": request.server_name,
+            "upstream_app": request.upstream_app,
+            "upstream_port": request.upstream_port,
+            "upstream_proto": request.upstream_proto,
+            "auth_method": request.auth_method,
+            "enable_quic": request.enable_quic,
+        }
+        
+        content = self.template_manager.render_template(
+            request.config_type, template_context
+        )
 
         # Write configuration
         async with aiofiles.open(config_file, "w") as f:
@@ -182,17 +189,7 @@ class SwagManagerService:
 
     async def validate_template_exists(self, config_type: str) -> bool:
         """Validate that the required template exists."""
-        if config_type == "mcp-subdomain":
-            template_name = "mcp-subdomain.conf.j2"
-        elif config_type == "mcp-subfolder":
-            template_name = "mcp-subfolder.conf.j2"
-        else:
-            template_name = f"{config_type}.conf.j2"
-        try:
-            self.template_env.get_template(template_name)
-            return True
-        except TemplateNotFound:
-            return False
+        return self.template_manager.validate_template_exists(config_type)
 
     async def remove_config(self, remove_request: SwagRemoveRequest) -> SwagConfigResult:
         """Remove configuration with optional backup."""
@@ -225,10 +222,10 @@ class SwagManagerService:
         )
 
     async def get_docker_logs(self, logs_request: SwagLogsRequest) -> str:
-        """Get SWAG docker container logs."""
+        """Get SWAG docker container logs using async subprocess."""
         logger.info(f"Getting SWAG docker logs: {logs_request.lines} lines")
 
-        import subprocess
+        import asyncio
 
         try:
             # Build docker logs command
@@ -236,36 +233,53 @@ class SwagManagerService:
             if logs_request.follow:
                 cmd.append("--follow")
 
-            # Try common SWAG container names
-            container_names = ["swag", "letsencrypt", "nginx", "swag-nginx"]
+            # Try common SWAG container names from constants
+            container_names = list(SWAG_CONTAINER_NAMES)
 
             for container_name in container_names:
                 try:
-                    result = subprocess.run(
-                        cmd + [container_name], capture_output=True, text=True, timeout=30
+                    # Use async subprocess for non-blocking execution
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd, container_name,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
                     )
-                    if result.returncode == 0:
+                    
+                    # Wait for command with timeout
+                    try:
+                        stdout, stderr = await asyncio.wait_for(
+                            proc.communicate(), 
+                            timeout=DOCKER_COMMAND_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                        logger.warning(f"Timeout retrieving logs from container: {container_name}")
+                        continue
+                    
+                    if proc.returncode == 0:
                         logger.info(f"Successfully retrieved logs from container: {container_name}")
-                        return result.stdout + result.stderr
+                        # Decode bytes to string
+                        return stdout.decode('utf-8') + stderr.decode('utf-8')
                     else:
                         logger.debug(
                             f"Container {container_name} failed with return code "
-                            f"{result.returncode}: {result.stderr}"
+                            f"{proc.returncode}: {stderr.decode('utf-8')}"
                         )
-                except subprocess.TimeoutExpired:
-                    logger.warning(f"Timeout retrieving logs from container: {container_name}")
                 except Exception as e:
                     logger.debug(f"Exception for container {container_name}: {e}")
 
-            # If no container found, list available containers
-            result = subprocess.run(
-                ["docker", "ps", "--format", "table {{.Names}}\t{{.Image}}"],
-                capture_output=True,
-                text=True,
+            # If no container found, list available containers (async)
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "ps", "--format", "table {{.Names}}\t{{.Image}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-
+            
+            stdout, stderr = await proc.communicate()
+            
             available_containers = (
-                result.stdout if result.returncode == 0 else "Unable to list containers"
+                stdout.decode('utf-8') if proc.returncode == 0 else "Unable to list containers"
             )
 
             raise FileNotFoundError(
@@ -284,8 +298,8 @@ class SwagManagerService:
         # Get active configurations (excluding samples and backups)
         active_configs = [
             f.name
-            for f in self.config_path.glob("*.conf")
-            if not f.name.endswith(".sample") and ".backup." not in f.name
+            for f in self.config_path.glob(f"*{CONF_EXTENSION}")
+            if not f.name.endswith(SAMPLE_EXTENSION) and BACKUP_PATTERN not in f.name
         ]
 
         # Sort the list
@@ -300,7 +314,7 @@ class SwagManagerService:
         logger.info("Getting sample configuration files for resources")
 
         # Get sample configurations
-        sample_configs = [f.name for f in self.config_path.glob("*.sample")]
+        sample_configs = [f.name for f in self.config_path.glob(f"*{SAMPLE_EXTENSION}")]
 
         # Sort the list
         sample_configs = sorted(sample_configs)
@@ -315,8 +329,8 @@ class SwagManagerService:
 
         # Look for both subdomain and subfolder samples for the service
         patterns = [
-            f"{service_name}.subdomain.conf.sample",
-            f"{service_name}.subfolder.conf.sample",
+            f"{service_name}.subdomain{CONF_EXTENSION}{SAMPLE_EXTENSION}",
+            f"{service_name}.subfolder{CONF_EXTENSION}{SAMPLE_EXTENSION}",
         ]
 
         found_configs = []
@@ -343,9 +357,9 @@ class SwagManagerService:
 
         # Strict pattern: filename.backup.YYYYMMDD_HHMMSS
         # This ensures we only match backups created by our _create_backup method
-        backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}$")
+        backup_pattern = re.compile(BACKUP_FILE_PATTERN)
 
-        for backup_file in self.config_path.glob("*.backup.*"):
+        for backup_file in self.config_path.glob(f"*{BACKUP_PATTERN}*"):
             # Additional safety checks:
             # 1. Must match our exact timestamp format
             # 2. Must be a regular file (not directory)
@@ -373,124 +387,6 @@ class SwagManagerService:
         return cleaned_count
 
     async def health_check(self, request: SwagHealthCheckRequest) -> SwagHealthCheckResult:
-        """Perform health check on a service endpoint."""
-        import time
-
-        logger.info(f"Performing health check for domain: {request.domain}")
-
-        # Try multiple endpoints to test if the reverse proxy is working
-        endpoints_to_try = ["/health", "/mcp", "/"]
-        urls_to_try = [f"https://{request.domain}{endpoint}" for endpoint in endpoints_to_try]
-
-        for url in urls_to_try:
-            logger.debug(f"Trying health check URL: {url}")
-
-            try:
-                # Configure SSL context for self-signed certificates
-                import ssl
-
-                import aiohttp
-
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-
-                # Create connector with SSL context
-                connector = aiohttp.TCPConnector(ssl=ssl_context)
-
-                # Record start time
-                start_time = time.time()
-
-                async with (
-                    aiohttp.ClientSession(
-                        connector=connector, timeout=aiohttp.ClientTimeout(total=request.timeout)
-                    ) as session,
-                    session.get(url, allow_redirects=request.follow_redirects) as response,
-                ):
-                    # Calculate response time
-                    response_time_ms = int((time.time() - start_time) * 1000)
-
-                    # Read response body (limited to 1000 chars)
-                    response_text = await response.text()
-                    response_body = response_text[:1000]
-                    if len(response_text) > 1000:
-                        response_body += "... (truncated)"
-
-                    # Determine success based on endpoint and status code
-                    endpoint = url.split(request.domain)[1] if request.domain in url else "unknown"
-
-                    if 200 <= response.status < 300:
-                        # 2xx is always successful
-                        success = True
-                    elif response.status == 406 and endpoint == "/mcp":
-                        # 406 for /mcp means endpoint exists (MCP requires POST)
-                        success = True
-                    elif response.status == 404 and endpoint in ["/health", "/"]:
-                        # 404 for /health or / means try next endpoint
-                        success = False
-                    else:
-                        # Any other HTTP response means proxy is working
-                        success = True
-
-                    logger.info(
-                        f"Health check for {request.domain} - "
-                        f"URL: {url}, Status: {response.status}, "
-                        f"Time: {response_time_ms}ms, Success: {success}"
-                    )
-
-                    if success:
-                        # Return successful result immediately
-                        return SwagHealthCheckResult(
-                            domain=request.domain,
-                            url=url,
-                            status_code=response.status,
-                            response_time_ms=response_time_ms,
-                            response_body=response_body,
-                            success=True,
-                            error=None,
-                        )
-                    else:
-                        # Log the failure and continue to next endpoint
-                        logger.debug(
-                            f"Endpoint {endpoint} failed with {response.status}, "
-                            "trying next endpoint"
-                        )
-                        continue
-
-            except TimeoutError:
-                error_msg = f"Timeout after {request.timeout} seconds"
-                logger.warning(f"Health check timeout for {url}: {error_msg}")
-                # Continue to try next URL
-                continue
-
-            except aiohttp.ClientConnectorError as e:
-                error_msg = f"Connection failed: {str(e)}"
-                logger.warning(f"Health check connection error for {url}: {error_msg}")
-                # Continue to try next URL
-                continue
-
-            except aiohttp.ClientResponseError as e:
-                error_msg = f"HTTP error: {e.status} {e.message}"
-                logger.warning(f"Health check HTTP error for {url}: {error_msg}")
-                # Continue to try next URL for HTTP errors
-                continue
-
-            except Exception as e:
-                error_msg = f"Unexpected error: {str(e)}"
-                logger.warning(f"Health check unexpected error for {url}: {error_msg}")
-                # Continue to try next URL
-                continue
-
-        # If we get here, all URLs failed
-        error_msg = f"All health check URLs failed for domain {request.domain}"
-        logger.error(error_msg)
-
-        return SwagHealthCheckResult(
-            domain=request.domain,
-            url=urls_to_try[0],  # Report the first URL attempted
-            status_code=None,
-            response_time_ms=None,
-            response_body=None,
-            success=False,
-            error=error_msg,
-        )
+        """Perform health check on a service endpoint using connection pooling."""
+        health_service = get_health_check_service()
+        return await health_service.health_check_parallel(request)

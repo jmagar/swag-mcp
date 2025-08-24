@@ -10,6 +10,7 @@ from fastmcp.resources import DirectoryResource, FileResource
 from starlette.requests import Request
 from starlette.responses import Response
 
+from swag_mcp.constants import HEALTH_CHECK_PATH
 from swag_mcp.core.config import config
 from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
@@ -113,7 +114,7 @@ async def create_mcp_server() -> FastMCP:
     await register_resources(mcp, swag_service)
 
     # Add health check endpoint for Docker health checks
-    @mcp.custom_route("/health", methods=["GET"])
+    @mcp.custom_route(HEALTH_CHECK_PATH, methods=["GET"])
     async def health_check(request: Request) -> Response:
         """Health check endpoint for Docker."""
         return Response(
@@ -130,10 +131,6 @@ async def create_mcp_server() -> FastMCP:
     logger.info(f"MCP Transport: streamable-http on {config.host}:{config.port}")
 
     return mcp
-
-
-# Create the MCP server instance (will be set up in main functions)
-mcp = None
 
 
 def setup_templates() -> None:
@@ -184,76 +181,36 @@ async def main() -> None:
     await mcp_server.run_async(transport="streamable-http", host=config.host, port=config.port)
 
 
-def main_sync() -> None:
-    """Run server in synchronous mode for direct execution."""
-    logger.info("Starting SWAG MCP Server with streamable-http transport (sync mode)...")
-
-    setup_templates()
-
-    async def _setup_and_run() -> None:
-        # Clean up old backup files on startup
-        await cleanup_old_backups()
-
-        # Create the MCP server
-        mcp_server = await create_mcp_server()
-
-        # Use run() with streamable-http transport configuration
-        # Creates its own event loop for synchronous context
-        await mcp_server.run_async(transport="streamable-http", host=config.host, port=config.port)
-
-    # Run with asyncio for sync context
-    asyncio.run(_setup_and_run())
-
-
-def detect_execution_context() -> str:
-    """Detect the execution context and choose the appropriate entry point.
+def is_event_loop_running() -> bool:
+    """Check if an event loop is already running.
 
     Returns:
-        str: 'async' if already in an event loop, 'sync' otherwise
-
+        bool: True if an event loop is running, False otherwise
     """
     try:
-        # Try to get the running event loop
-        loop = asyncio.get_running_loop()
-        logger.debug(f"Detected running event loop: {type(loop)}")
-        return "async"
+        asyncio.get_running_loop()
+        return True
     except RuntimeError:
-        logger.debug("No running event loop detected")
-        return "sync"
+        return False
 
 
 if __name__ == "__main__":
     try:
-        context = detect_execution_context()
-
-        if context == "async":
-            # We're already in an async context (e.g., Jupyter, test runners, or uv run)
-            logger.info("Detected existing async context - this may cause issues")
-            logger.info("Recommended: Use 'python -m swag_mcp' or 'fastmcp dev' instead")
-
-            # Try to run anyway using the sync entry point
-            # This will fail gracefully if there's a conflict
-            main_sync()
-        else:
-            # No async context, safe to use asyncio.run()
-            logger.info("Using standard asyncio.run() execution")
-            asyncio.run(main())
-
+        if is_event_loop_running():
+            # Event loop already running - provide clear error message
+            logger.error("Cannot start server: Event loop already running")
+            logger.error("Please use one of these methods instead:")
+            logger.error("  1. python -m swag_mcp")
+            logger.error("  2. fastmcp dev")
+            logger.error("  3. Run directly: python swag_mcp/server.py")
+            sys.exit(1)
+        
+        # No event loop running - safe to start
+        logger.info("Starting SWAG MCP Server...")
+        asyncio.run(main())
+        
     except KeyboardInterrupt:
         logger.info("Server shutdown by user")
-    except RuntimeError as e:
-        if "Already running" in str(e):
-            logger.error("Event loop conflict detected!")
-            logger.error(
-                "This script cannot be run from an async context that already has an event loop."
-            )
-            logger.error("Solutions:")
-            logger.error("  1. Use 'python -m swag_mcp' instead")
-            logger.error("  2. Use 'fastmcp dev' instead")
-            logger.error("  3. Run this script directly with 'python swag_mcp/server.py'")
-            sys.exit(1)
-        else:
-            raise
     except Exception as e:
         logger.error(f"Server error: {str(e)}")
         raise

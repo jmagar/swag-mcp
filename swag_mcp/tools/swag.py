@@ -5,6 +5,15 @@ import logging
 from fastmcp import Context, FastMCP
 from pydantic import ValidationError
 
+from ..constants import (
+    AUTH_AUTHELIA,
+    AUTH_NONE,
+    CONFIG_TYPE_ACTIVE,
+    CONFIG_TYPE_ALL,
+    CONFIG_TYPE_SAMPLES,
+    DEFAULT_LOG_LINES,
+    HEALTH_CHECK_TIMEOUT,
+)
 from ..core.config import config
 from ..models.config import (
     SwagConfigRequest,
@@ -25,7 +34,7 @@ def register_tools(mcp: FastMCP) -> None:
     """Register all SWAG tools with the FastMCP server."""
 
     @mcp.tool
-    async def swag_list(ctx: Context, config_type: str = "all") -> list[str]:
+    async def swag_list(ctx: Context, config_type: str = CONFIG_TYPE_ALL) -> list[str]:
         """List SWAG configuration files.
 
         Args:
@@ -38,7 +47,7 @@ def register_tools(mcp: FastMCP) -> None:
         """
         await ctx.info(f"Listing SWAG configurations: {config_type}")
 
-        if config_type not in ["all", "active", "samples"]:
+        if config_type not in [CONFIG_TYPE_ALL, CONFIG_TYPE_ACTIVE, CONFIG_TYPE_SAMPLES]:
             raise ValueError("config_type must be 'all', 'active', or 'samples'")
 
         try:
@@ -80,8 +89,8 @@ def register_tools(mcp: FastMCP) -> None:
 
         """
         # Use defaults from environment configuration if not specified
-        if auth_method == "none":
-            auth_method = "authelia"  # Default to Authelia for security
+        if auth_method == AUTH_NONE:
+            auth_method = AUTH_AUTHELIA  # Default to Authelia for security
         if not enable_quic:
             enable_quic = config.default_quic_enabled
         if config_type is None:
@@ -115,7 +124,7 @@ def register_tools(mcp: FastMCP) -> None:
             try:
                 health_request = SwagHealthCheckRequest(
                     domain=server_name,
-                    timeout=15,  # Shorter timeout for create flow
+                    timeout=HEALTH_CHECK_TIMEOUT,  # Shorter timeout for create flow
                     follow_redirects=True,
                 )
 
@@ -300,7 +309,7 @@ def register_tools(mcp: FastMCP) -> None:
             raise
 
     @mcp.tool
-    async def swag_logs(ctx: Context, lines: int = 100, follow: bool = False) -> str:
+    async def swag_logs(ctx: Context, lines: int = DEFAULT_LOG_LINES, follow: bool = False) -> str:
         """Show SWAG docker container logs.
 
         Args:
