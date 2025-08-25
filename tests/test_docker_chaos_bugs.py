@@ -5,6 +5,7 @@ real-world Docker failures and edge cases that commonly occur in production.
 """
 
 import asyncio
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -133,9 +134,16 @@ class TestDockerChaosBugs:
             # Test scenarios with different log sizes
             log_size_scenarios = [
                 {"size_mb": 10, "description": "10MB log file"},
-                {"size_mb": 50, "description": "50MB log file (large)"},
-                {"size_mb": 100, "description": "100MB log file (very large)"},
             ]
+
+            # Add large scenarios only when not in CI to keep tests fast
+            if not os.getenv("CI"):
+                log_size_scenarios.extend(
+                    [
+                        {"size_mb": 50, "description": "50MB log file (large)"},
+                        {"size_mb": 100, "description": "100MB log file (very large)"},
+                    ]
+                )
 
             for scenario in log_size_scenarios:
                 # Create mock log data of specified size
@@ -146,7 +154,8 @@ class TestDockerChaosBugs:
                     """Generator for large log data to avoid loading all into memory."""
                     for i in range(num_lines):
                         log_entry = (
-                            f"2025-01-24T12:00:{i:02d}.000Z [INFO] Log line {i} - "
+                            f"2025-01-24T12:{(i % 60):02d}:{(i % 60):02d}.000Z [INFO] "
+                            f"Log line {i} - "
                             "This is a sample log entry with enough content to "
                             "simulate real logs\n"
                         )
@@ -174,7 +183,7 @@ class TestDockerChaosBugs:
                 except TimeoutError:
                     pytest.fail(
                         f"Log processing timed out for {scenario['description']} - "
-                        f"possible memory exhaustion"
+                        "possible memory exhaustion"
                     )
 
                 except MemoryError:

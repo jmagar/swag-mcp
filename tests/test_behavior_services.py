@@ -123,10 +123,8 @@ server {
                 content = backup_file.read_text()
                 backup_contents.append(content)
 
-            # All backups should contain the content that was replaced,
-            # progressing through the updates
-            # The logic is each backup contains the previous file content before the current update
-            # expected_ports removed as unused  # What each backup should contain
+            # Each backup at index i holds the file content as it existed before the i-th update
+            # (backups progress by storing previous contents)
             for i, content in enumerate(backup_contents):
                 assert (
                     f"808{i}" in content
@@ -304,7 +302,6 @@ server {
     @pytest.mark.asyncio
     async def test_concurrent_access_behavior(self, swag_service: SwagManagerService):
         """Test service behavior under concurrent access patterns."""
-        import asyncio
 
         config_name = "concurrent-test.conf"
         config_file = swag_service.config_path / config_name

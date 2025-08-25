@@ -21,7 +21,7 @@ class TestTemplateInjectionBugs:
     async def test_server_side_template_injection_attempts(self, mcp_client: Client):
         """Test server behavior against server-side template injection attacks."""
         # These are actual SSTI payloads that could execute code or reveal information
-        ssti_payloads = [
+        ssti_payloads: list[str] = [
             # Jinja2 expression evaluation attempts
             "{{7*7}}",
             "{{config}}",

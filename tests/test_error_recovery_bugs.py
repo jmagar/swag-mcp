@@ -424,11 +424,9 @@ class TestErrorRecoveryBugs:
 
         finally:
             if config_file.exists():
-                try:
+                with contextlib.suppress(OSError, PermissionError):
                     config_file.chmod(0o666)
                     config_file.unlink()
-                except (OSError, PermissionError):
-                    pass
 
     @pytest.mark.asyncio
     async def test_transaction_rollback_scenarios(self, swag_service: SwagManagerService):

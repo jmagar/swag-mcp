@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 from swag_mcp.models.config import SwagConfigRequest
 from swag_mcp.services.swag_manager import SwagManagerService
 
@@ -56,9 +57,13 @@ class TestConcurrencyRaceBugs:
         )
 
         # One should succeed, others should fail gracefully with descriptive errors
-        successes = [r for r in results if not isinstance(r, ToolError)]
+        successes = [r for r in results if not isinstance(r, Exception)]
         failures = [r for r in results if isinstance(r, ToolError)]
+        unexpected = [
+            r for r in results if isinstance(r, Exception) and not isinstance(r, ToolError)
+        ]
 
+        assert len(unexpected) == 0, f"Unexpected exceptions: {unexpected}"
         assert len(successes) == 1, "Exactly one config creation should succeed"
         assert len(failures) == 2, "Two should fail with proper errors"
 
@@ -84,8 +89,14 @@ class TestConcurrencyRaceBugs:
 
         # All should succeed or fail gracefully with user-friendly errors
         for i, result in enumerate(results):
+            error_msg = None
             if isinstance(result, Exception):
                 error_msg = str(result).lower()
+            elif hasattr(result, "is_error") and result.is_error:
+                msg = getattr(result, "error_message", getattr(result, "message", str(result)))
+                error_msg = str(msg).lower()
+
+            if error_msg:
                 # Check that sensitive information isn't exposed in validation errors
                 assert (
                     "pydantic" not in error_msg
@@ -280,31 +291,32 @@ server {{
 
         async def failing_operation():
             """Perform operation that might fail and leak resources."""
-            # Create config that will cause various failure modes
-            failing_configs = [
+            # Create config data that will cause various failure modes
+            failing_config_data = [
                 # Invalid template data that might cause partial processing
-                SwagConfigRequest(
-                    service_name="leak-test",
-                    server_name="",  # Invalid empty server name
-                    upstream_app="test",
-                    upstream_port=8080,
-                ),
-                SwagConfigRequest(
-                    service_name="",  # Invalid empty service name
-                    server_name="leak.example.com",
-                    upstream_app="test",
-                    upstream_port=8080,
-                ),
-                SwagConfigRequest(
-                    service_name="leak-test",
-                    server_name="leak.example.com",
-                    upstream_app="test",
-                    upstream_port=-1,  # Invalid port
-                ),
+                {
+                    "service_name": "leak-test",
+                    "server_name": "",  # Invalid empty server name
+                    "upstream_app": "test",
+                    "upstream_port": 8080,
+                },
+                {
+                    "service_name": "",  # Invalid empty service name
+                    "server_name": "leak.example.com",
+                    "upstream_app": "test",
+                    "upstream_port": 8080,
+                },
+                {
+                    "service_name": "leak-test",
+                    "server_name": "leak.example.com",
+                    "upstream_app": "test",
+                    "upstream_port": -1,  # Invalid port
+                },
             ]
 
-            for config in failing_configs:
-                with contextlib.suppress(Exception):
+            for config_data in failing_config_data:
+                with contextlib.suppress(ValueError, ValidationError):
+                    config = SwagConfigRequest(**config_data)
                     await swag_service.create_config(config)
 
         # Run many failing operations to amplify any resource leaks

@@ -430,9 +430,10 @@ def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
                         )
                         # This is a valid extended Unicode character (emoji, etc.)
                         # Log for debugging if needed
-                        logger.debug(
-                            f"Valid surrogate pair at position {i}: U+{full_codepoint:06X}"
-                        )
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(
+                                "Valid surrogate pair at position %d: U+%06X", i, full_codepoint
+                            )
                         # Skip both surrogates since they form a valid pair
                         i += 2
                         continue
