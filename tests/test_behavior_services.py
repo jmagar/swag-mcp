@@ -4,8 +4,8 @@ Tests focus on service behavior under various conditions rather than
 implementation details or mocked responses.
 """
 
+import asyncio
 import os
-import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -111,7 +111,7 @@ server {
                 assert result.backup_created is not None
 
                 # Small delay to ensure different timestamps
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
 
             # Verify behavior: should have multiple distinct backup files
             backup_files = list(swag_service.config_path.glob("stress-test.conf.backup.*"))

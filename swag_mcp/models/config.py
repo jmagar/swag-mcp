@@ -12,7 +12,8 @@ class SwagConfigRequest(BaseModel):
 
     service_name: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        # Allow Unicode letters, numbers, hyphens, and underscores
+        pattern=r"^[\p{L}0-9_-]+$",
         max_length=50,
         description="Service identifier used for filename",
     )

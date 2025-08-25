@@ -274,7 +274,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         # Using Unicode property classes for proper international support
         try:
             # Try to use regex module for better Unicode support
-            import regex
+            import regex  # type: ignore[import-untyped]
 
             if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
                 raise ValueError(
@@ -511,8 +511,9 @@ def detect_and_handle_encoding(content: bytes) -> str:
     except UnicodeDecodeError:
         pass
 
-    # Try common Latin encodings
-    for encoding in ["latin-1", "cp1252", "iso-8859-1"]:
+    # Try common Western encodings in a realistic order:
+    # cp1252 first (most common), then iso-8859-1, and finally latin-1 catch-all
+    for encoding in ["cp1252", "iso-8859-1", "latin-1"]:
         try:
             text = content.decode(encoding)
             return normalize_unicode_text(text, remove_bom=True)

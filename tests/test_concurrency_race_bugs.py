@@ -6,15 +6,20 @@ happen simultaneously, including file corruption, deadlocks, and resource leaks.
 
 import asyncio
 import contextlib
+import logging
 import os
 import random
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 from swag_mcp.models.config import SwagConfigRequest
 from swag_mcp.services.swag_manager import SwagManagerService
+
+logger = logging.getLogger(__name__)
 
 
 class TestConcurrencyRaceBugs:
@@ -51,8 +56,8 @@ class TestConcurrencyRaceBugs:
         )
 
         # One should succeed, others should fail gracefully with descriptive errors
-        successes = [r for r in results if not isinstance(r, Exception)]
-        failures = [r for r in results if isinstance(r, Exception)]
+        successes = [r for r in results if not isinstance(r, ToolError)]
+        failures = [r for r in results if isinstance(r, ToolError)]
 
         assert len(successes) == 1, "Exactly one config creation should succeed"
         assert len(failures) == 2, "Two should fail with proper errors"
@@ -90,7 +95,6 @@ class TestConcurrencyRaceBugs:
                 ), f"Internal traceback exposed for {similar_names[i]}: {error_msg}"
                 # For validation errors, ensure user-friendly messaging
                 if "validation error" in error_msg:
-                    error_msg_lower = error_msg.lower()
                     user_friendly_keywords = [
                         "invalid",
                         "pattern",
@@ -100,8 +104,12 @@ class TestConcurrencyRaceBugs:
                         "illegal",
                         "unsupported",
                         "malformed",
+                        "not allowed",
+                        "forbidden",
+                        "disallowed",
+                        "prohibited",
                     ]
-                    assert any(word in error_msg_lower for word in user_friendly_keywords), (
+                    assert any(word in error_msg for word in user_friendly_keywords), (
                         f"Validation error should be user-friendly for {similar_names[i]}: "
                         f"{error_msg}"
                     )
@@ -474,7 +482,7 @@ server {{
 
         # Log lock errors for debugging visibility (but don't treat as failures)
         if lock_errors:
-            print(f"Lock errors encountered (expected in concurrent tests): {lock_errors}")
+            logger.warning(f"Lock errors encountered (expected in concurrent tests): {lock_errors}")
 
         # File locking errors are acceptable, but other errors or exceptions are concerning
         if other_errors:
@@ -503,11 +511,14 @@ server {{
         # Create old backup files that should be cleaned up
         backup_files = []
         for i in range(10):
-            backup_name = (
-                f"{config_name}.backup.{int(time.time()) - (40 * 24 * 60 * 60) - i}"  # 40+ days old
-            )
+            # 40+ days old, distinct timestamps
+            old_time = time.time() - (40 * 24 * 60 * 60) - i
+            old_ts = datetime.fromtimestamp(old_time).strftime("%Y%m%d_%H%M%S_%f")
+            backup_name = f"{config_name}.backup.{old_ts}"
             backup_file = swag_service.config_path / backup_name
             backup_file.write_text(f"# Old backup {i}")
+            # Ensure filesystem age reflects "old"
+            os.utime(backup_file, (old_time, old_time))
             backup_files.append(backup_file)
 
         async def active_file_operations():

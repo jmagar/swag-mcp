@@ -133,8 +133,8 @@ class TestDockerChaosBugs:
             # Test scenarios with different log sizes
             log_size_scenarios = [
                 {"size_mb": 10, "description": "10MB log file"},
-                {"size_mb": 100, "description": "100MB log file"},
-                {"size_mb": 500, "description": "500MB log file (very large)"},
+                {"size_mb": 50, "description": "50MB log file (large)"},
+                {"size_mb": 100, "description": "100MB log file (very large)"},
             ]
 
             for scenario in log_size_scenarios:

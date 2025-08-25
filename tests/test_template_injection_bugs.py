@@ -160,7 +160,7 @@ class TestTemplateInjectionBugs:
                 if hasattr(result, "content"):
                     content = result.content
                     # Should not contain unprocessed template syntax
-                    assert "{{" not in content or "}}" not in content
+                    assert "{{" not in content and "}}" not in content
                     # Should not contain error traces or stack dumps
                     assert "traceback" not in content.lower()
                     assert "exception" not in content.lower()
