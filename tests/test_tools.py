@@ -1,6 +1,6 @@
 """Tests for SWAG MCP tools using in-memory client."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp import Client
@@ -532,6 +532,10 @@ class TestSwagToolsErrorHandling:
 
         # Patch the global swag_service instance
         with patch("swag_mcp.tools.swag.swag_service") as mock_service:
+            # Mock prepare_config_defaults to return expected defaults
+            mock_service.prepare_config_defaults = MagicMock(
+                return_value=("authelia", False, "subdomain")
+            )
             # Mock validate_template_exists to succeed so we reach create_config
             mock_service.validate_template_exists = AsyncMock(return_value=True)
             mock_service.create_config = AsyncMock(side_effect=Exception("Create error"))

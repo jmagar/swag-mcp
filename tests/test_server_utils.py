@@ -53,9 +53,11 @@ class TestServerUtilityFunctions:
         with tempfile.TemporaryDirectory() as temp_dir:
             template_path = Path(temp_dir)
 
-            # Create template files
+            # Create all required template files
             (template_path / "subdomain.conf.j2").touch()
             (template_path / "subfolder.conf.j2").touch()
+            (template_path / "mcp-subdomain.conf.j2").touch()
+            (template_path / "mcp-subfolder.conf.j2").touch()
 
             with patch("swag_mcp.server.config.template_path", template_path):
                 setup_templates()
@@ -88,11 +90,13 @@ class TestServerUtilityFunctions:
             with patch("swag_mcp.server.config.template_path", template_path):
                 setup_templates()
 
-            # Should log errors for missing templates
-            assert mock_logger.error.call_count == 2
+            # Should log errors for missing templates (4 templates: subdomain, subfolder, mcp-subdomain, mcp-subfolder)
+            assert mock_logger.error.call_count == 4
             error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
-            assert any("Subdomain template not found" in call for call in error_calls)
-            assert any("Subfolder template not found" in call for call in error_calls)
+            assert any("subdomain.conf.j2" in call for call in error_calls)
+            assert any("subfolder.conf.j2" in call for call in error_calls)
+            assert any("mcp-subdomain.conf.j2" in call for call in error_calls)
+            assert any("mcp-subfolder.conf.j2" in call for call in error_calls)
 
     def test_detect_execution_context_no_loop(self):
         """Test detect_execution_context when no event loop is running."""

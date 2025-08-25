@@ -11,6 +11,23 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from swag_mcp.core.config import config
+from swag_mcp.core.constants import (
+    BACKUP_MARKER,
+    CONF_EXTENSION,
+    CONF_PATTERN,
+    CONFIG_TYPE_SUBDOMAIN,
+    CONFIG_TYPE_SUBFOLDER,
+    HEALTH_ENDPOINT,
+    HTTP_METHOD_GET,
+    MIME_TYPE_APPLICATION_JSON,
+    MIME_TYPE_TEXT_PLAIN,
+    SAMPLE_EXTENSION,
+    SAMPLE_PATTERN,
+    SERVICE_NAME,
+    STATUS_HEALTHY,
+    SWAG_URI_BASE,
+    SWAG_URI_SAMPLES,
+)
 from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
 from swag_mcp.services.swag_manager import SwagManagerService
@@ -30,56 +47,56 @@ async def register_resources(mcp: FastMCP, swag_service: SwagManagerService) -> 
     # Register DirectoryResource for listing active configs
     mcp.add_resource(
         DirectoryResource(
-            uri="swag://",  # type: ignore[arg-type]
+            uri=SWAG_URI_BASE,  # type: ignore[arg-type]
             name="Active SWAG Configurations",
             description=(
                 "List of all active SWAG reverse proxy configurations "
-                "(.conf files, excluding samples)"
+                f"({CONF_EXTENSION} files, excluding samples)"
             ),
             path=config_path,
-            pattern="*.conf",
+            pattern=CONF_PATTERN,
         )
     )
 
     # Register DirectoryResource for listing sample configs
     mcp.add_resource(
         DirectoryResource(
-            uri="swag://samples/",  # type: ignore[arg-type]
+            uri=SWAG_URI_SAMPLES,  # type: ignore[arg-type]
             name="SWAG Sample Configurations",
             description=(
-                "List of available SWAG sample configurations (.sample files) "
+                f"List of available SWAG sample configurations ({SAMPLE_EXTENSION} files) "
                 "that can be used as templates"
             ),
             path=config_path,
-            pattern="*.sample",
+            pattern=SAMPLE_PATTERN,
         )
     )
 
     # Register FileResource instances for each config file
     # Register active config files
-    for conf_file in config_path.glob("*.conf"):
-        if not conf_file.name.endswith(".sample") and ".backup." not in conf_file.name:
+    for conf_file in config_path.glob(CONF_PATTERN):
+        if not conf_file.name.endswith(SAMPLE_EXTENSION) and BACKUP_MARKER not in conf_file.name:
             service_name = _extract_service_name(conf_file.name)
             mcp.add_resource(
                 FileResource(
-                    uri=f"swag://{service_name}",  # type: ignore[arg-type]
+                    uri=f"{SWAG_URI_BASE}{service_name}",  # type: ignore[arg-type]
                     name=f"SWAG Config: {service_name}",
                     description=f"Active SWAG configuration for {service_name} service",
                     path=conf_file,
-                    mime_type="text/plain",
+                    mime_type=MIME_TYPE_TEXT_PLAIN,
                 )
             )
 
     # Register sample config files
-    for sample_file in config_path.glob("*.sample"):
-        service_name = _extract_service_name(sample_file.name.replace(".sample", ""))
+    for sample_file in config_path.glob(SAMPLE_PATTERN):
+        service_name = _extract_service_name(sample_file.name.replace(SAMPLE_EXTENSION, ""))
         mcp.add_resource(
             FileResource(
-                uri=f"swag://samples/{service_name}",  # type: ignore[arg-type]
+                uri=f"{SWAG_URI_SAMPLES}{service_name}",  # type: ignore[arg-type]
                 name=f"SWAG Sample: {service_name}",
                 description=f"Sample SWAG configuration template for {service_name} service",
                 path=sample_file,
-                mime_type="text/plain",
+                mime_type=MIME_TYPE_TEXT_PLAIN,
             )
         )
 
@@ -87,11 +104,11 @@ async def register_resources(mcp: FastMCP, swag_service: SwagManagerService) -> 
 def _extract_service_name(filename: str) -> str:
     """Extract service name from config filename."""
     # Remove .conf extension and any type suffixes like .subdomain or .subfolder
-    name = filename.replace(".conf", "")
-    if name.endswith(".subdomain"):
-        return name.replace(".subdomain", "")
-    elif name.endswith(".subfolder"):
-        return name.replace(".subfolder", "")
+    name = filename.replace(CONF_EXTENSION, "")
+    if name.endswith(f".{CONFIG_TYPE_SUBDOMAIN}"):
+        return name.replace(f".{CONFIG_TYPE_SUBDOMAIN}", "")
+    elif name.endswith(f".{CONFIG_TYPE_SUBFOLDER}"):
+        return name.replace(f".{CONFIG_TYPE_SUBFOLDER}", "")
     return name
 
 
@@ -113,12 +130,12 @@ async def create_mcp_server() -> FastMCP:
     await register_resources(mcp, swag_service)
 
     # Add health check endpoint for Docker health checks
-    @mcp.custom_route("/health", methods=["GET"])
+    @mcp.custom_route(HEALTH_ENDPOINT, methods=[HTTP_METHOD_GET])
     async def health_check(request: Request) -> Response:
         """Health check endpoint for Docker."""
         return Response(
-            content='{"status": "healthy", "service": "swag-mcp"}',
-            media_type="application/json",
+            content=f'{{"status": "{STATUS_HEALTHY}", "service": "{SERVICE_NAME}"}}',
+            media_type=MIME_TYPE_APPLICATION_JSON,
             status_code=200,
         )
 
@@ -132,10 +149,6 @@ async def create_mcp_server() -> FastMCP:
     return mcp
 
 
-# Create the MCP server instance (will be set up in main functions)
-mcp = None
-
-
 def setup_templates() -> None:
     """Set up and validate template directory."""
     # Ensure template directory exists
@@ -144,14 +157,20 @@ def setup_templates() -> None:
         logger.warning(f"Template directory {template_path} does not exist, creating...")
         template_path.mkdir(parents=True, exist_ok=True)
 
-    # Check if templates exist
-    subdomain_template = template_path / "subdomain.conf.j2"
-    subfolder_template = template_path / "subfolder.conf.j2"
+    # Check if required templates exist
+    required_templates = [
+        f"{CONFIG_TYPE_SUBDOMAIN}.conf.j2",
+        f"{CONFIG_TYPE_SUBFOLDER}.conf.j2",
+        f"mcp-{CONFIG_TYPE_SUBDOMAIN}.conf.j2",
+        f"mcp-{CONFIG_TYPE_SUBFOLDER}.conf.j2",
+    ]
 
-    if not subdomain_template.exists():
-        logger.error(f"Subdomain template not found: {subdomain_template}")
-    if not subfolder_template.exists():
-        logger.error(f"Subfolder template not found: {subfolder_template}")
+    for template_name in required_templates:
+        template_file = template_path / template_name
+        if not template_file.exists():
+            logger.error(f"Template not found: {template_file}")
+        else:
+            logger.debug(f"Template found: {template_file}")
 
 
 async def cleanup_old_backups() -> None:

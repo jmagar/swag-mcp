@@ -6,6 +6,31 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
+from ..utils.validators import validate_empty_string
+from .constants import (
+    DEFAULT_AUTH_METHOD,
+    DEFAULT_CONFIG_TYPE,
+    DEFAULT_HOST,
+    DEFAULT_LOG_LEVEL,
+)
+
+
+def create_empty_string_validator(default_value: str) -> Any:
+    """Create a validator that converts empty strings to a default value.
+
+    Args:
+        default_value: The default value to use when the input is empty
+
+    Returns:
+        A validator function that can be used with @field_validator
+
+    """
+
+    def validator(cls: type, v: Any) -> str:
+        return validate_empty_string(v, default_value)
+
+    return classmethod(validator)
+
 
 class SwagConfig(BaseSettings):
     """SWAG MCP server configuration."""
@@ -94,37 +119,19 @@ class SwagConfig(BaseSettings):
         default=3, description="Maximum number of retries for failed operations"
     )
 
-    @field_validator("default_auth_method", mode="before")
-    @classmethod
-    def handle_empty_auth_method(cls, v: Any) -> Any:
-        """Convert empty auth method string to default value."""
-        if isinstance(v, str) and v.strip() == "":
-            return "authelia"
-        return v
-
-    @field_validator("default_config_type", mode="before")
-    @classmethod
-    def handle_empty_config_type(cls, v: Any) -> Any:
-        """Convert empty config type string to default value."""
-        if isinstance(v, str) and v.strip() == "":
-            return "subdomain"
-        return v
-
-    @field_validator("host", mode="before")
-    @classmethod
-    def handle_empty_host(cls, v: Any) -> Any:
-        """Convert empty host string to default value."""
-        if isinstance(v, str) and v.strip() == "":
-            return "127.0.0.1"
-        return v
-
-    @field_validator("log_level", mode="before")
-    @classmethod
-    def handle_empty_log_level(cls, v: Any) -> Any:
-        """Convert empty log level string to default value."""
-        if isinstance(v, str) and v.strip() == "":
-            return "INFO"
-        return v
+    # Validators to handle empty string values
+    handle_empty_auth_method = field_validator("default_auth_method", mode="before")(
+        create_empty_string_validator(DEFAULT_AUTH_METHOD)
+    )
+    handle_empty_config_type = field_validator("default_config_type", mode="before")(
+        create_empty_string_validator(DEFAULT_CONFIG_TYPE)
+    )
+    handle_empty_host = field_validator("host", mode="before")(
+        create_empty_string_validator(DEFAULT_HOST)
+    )
+    handle_empty_log_level = field_validator("log_level", mode="before")(
+        create_empty_string_validator(DEFAULT_LOG_LEVEL)
+    )
 
     model_config = {
         "env_file": ".env",

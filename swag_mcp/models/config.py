@@ -1,9 +1,10 @@
 """Pydantic models for SWAG configuration management."""
 
-import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from ..utils.validators import validate_domain_format
 
 
 class SwagConfigRequest(BaseModel):
@@ -45,18 +46,7 @@ class SwagConfigRequest(BaseModel):
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
-        if not v or ".." in v or v.startswith(".") or v.endswith("."):
-            raise ValueError("Invalid server name format")
-
-        # Basic domain validation
-        domain_pattern = (
-            r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
-            + r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
-        )
-        if not re.match(domain_pattern, v):
-            raise ValueError("Invalid hostname format")
-
-        return v.lower()
+        return validate_domain_format(v)
 
     @field_validator("service_name")
     @classmethod
@@ -156,20 +146,7 @@ class SwagHealthCheckRequest(BaseModel):
     @classmethod
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
-        if not v or ".." in v or v.startswith(".") or v.endswith("."):
-            raise ValueError("Invalid domain format")
-
-        # Basic domain validation
-        domain_pattern = (
-            r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
-            + r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
-        )
-        import re
-
-        if not re.match(domain_pattern, v):
-            raise ValueError("Invalid domain format")
-
-        return v.lower()
+        return validate_domain_format(v)
 
 
 class SwagHealthCheckResult(BaseModel):
