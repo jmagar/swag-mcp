@@ -37,11 +37,9 @@ class TestTemplateInjectionBugs:
             "{% import os %}{{ os.system('echo pwned') }}",
             # Nested template injection
             "{{ (lipsum|attr('\\x5f\\x5fglobals\\x5f\\x5f'))['os'].system('ls') }}",
-            (
-                "{{ request['application']['\\x5f\\x5fglobals\\x5f\\x5f']"
-                "['\\x5f\\x5fbuiltins\\x5f\\x5f']['\\x5f\\x5fimport\\x5f\\x5f']"
-                "('os').system('id') }}"
-            ),
+            "{{ request['application']['\\x5f\\x5fglobals\\x5f\\x5f']"
+            "['\\x5f\\x5fbuiltins\\x5f\\x5f']['\\x5f\\x5fimport\\x5f\\x5f']"
+            "('os').system('id') }}",
         ]
 
         for payload in ssti_payloads:

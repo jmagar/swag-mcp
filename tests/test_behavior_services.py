@@ -240,8 +240,7 @@ server {
 
         try:
             # Create first configuration
-            # request1 = SwagConfigRequest(**base_config)  # Unused variable
-            # result1 = await swag_service.create_config(request1)  # Unused variable
+            await swag_service.create_config(SwagConfigRequest(**base_config))
             assert config_file.exists()
 
             # Attempt to create duplicate configuration

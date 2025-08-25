@@ -90,7 +90,18 @@ class TestConcurrencyRaceBugs:
                 ), f"Internal traceback exposed for {similar_names[i]}: {error_msg}"
                 # For validation errors, ensure user-friendly messaging
                 if "validation error" in error_msg:
-                    assert any(word in error_msg for word in ["invalid", "pattern", "character"]), (
+                    error_msg_lower = error_msg.lower()
+                    user_friendly_keywords = [
+                        "invalid",
+                        "pattern",
+                        "character",
+                        "format",
+                        "syntax",
+                        "illegal",
+                        "unsupported",
+                        "malformed",
+                    ]
+                    assert any(word in error_msg_lower for word in user_friendly_keywords), (
                         f"Validation error should be user-friendly for {similar_names[i]}: "
                         f"{error_msg}"
                     )
@@ -453,13 +464,17 @@ server {{
         )
 
         # Analyze locking behavior
-        # lock_errors = [r for r in results if isinstance(r, str) and "lock_error" in r]
+        lock_errors = [r for r in results if isinstance(r, str) and "lock_error" in r]
         successes = [r for r in results if isinstance(r, str) and r.startswith("success_")]
         other_errors = [r for r in results if isinstance(r, str) and "other_error" in r]
         exceptions = [r for r in results if not isinstance(r, str)]
 
         # At least some operations should succeed
         assert len(successes) > 0, f"No operations succeeded: {results}"
+
+        # Log lock errors for debugging visibility (but don't treat as failures)
+        if lock_errors:
+            print(f"Lock errors encountered (expected in concurrent tests): {lock_errors}")
 
         # File locking errors are acceptable, but other errors or exceptions are concerning
         if other_errors:

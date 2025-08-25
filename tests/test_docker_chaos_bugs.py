@@ -142,17 +142,18 @@ class TestDockerChaosBugs:
                 line_size = 200  # Average log line size in bytes
                 num_lines = (scenario["size_mb"] * 1024 * 1024) // line_size
 
-                def generate_large_logs(num_lines=num_lines):
+                def generate_large_logs(num_lines):
                     """Generator for large log data to avoid loading all into memory."""
                     for i in range(num_lines):
-                        log_entry = f"2025-01-24T12:00:{i:02d}.000Z [INFO] Log line {i} - "(
+                        log_entry = (
+                            f"2025-01-24T12:00:{i:02d}.000Z [INFO] Log line {i} - "
                             "This is a sample log entry with enough content to "
                             "simulate real logs\n"
                         )
                         yield log_entry.encode()
 
                 # Mock container.logs to return large data
-                mock_container.logs.return_value = b"".join(generate_large_logs())
+                mock_container.logs.return_value = b"".join(generate_large_logs(num_lines))
 
                 try:
                     # Test with timeout to prevent hanging

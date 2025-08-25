@@ -38,6 +38,7 @@ dev-dependencies = [
     "pip-audit>=2.0.0",
     "types-aiofiles",
     "types-PyYAML",
+    "types-regex>=2025.7.34.20250809",
 ]
 
 [tool.pytest.ini_options]
@@ -115,14 +116,9 @@ disallow_untyped_decorators = false
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["regex", "aiohttp"]
+module = ["aiohttp", "regex"]
 ignore_missing_imports = true
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]
 skips = ["B101", "B601"]  # Skip assert_used, paramiko_calls
-
-[dependency-groups]
-dev = [
-    "types-regex>=2025.7.34.20250809",
-]

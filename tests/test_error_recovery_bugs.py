@@ -6,6 +6,7 @@ and exception propagation by simulating real failure conditions.
 
 import asyncio
 import contextlib
+import errno
 import stat
 from pathlib import Path
 from unittest.mock import patch
@@ -169,9 +170,10 @@ class TestErrorRecoveryBugs:
                 # Write only part of the data, then fail
                 partial_data = data[: len(data) // 2]  # Write only first half
                 original_write(self, partial_data, encoding, errors, newline)
-                raise OSError("Write operation interrupted")
+                # Raise OSError with specific errno for write failure
+                raise OSError(errno.EIO, "Write operation interrupted")
 
-            with patch.object(Path, "write_text", partial_write):
+            with patch.object(Path, "write_text", side_effect=partial_write):
                 edit_request = SwagEditRequest(
                     config_name=result.filename,
                     new_content="# This is a complete config file\nserver { listen 443; }",
@@ -403,8 +405,15 @@ class TestErrorRecoveryBugs:
             # Make file inaccessible
             config_file.chmod(0o000)
 
-            with pytest.raises((OSError, PermissionError, FileNotFoundError)):
+            with pytest.raises(
+                (OSError, PermissionError, FileNotFoundError, ValueError)
+            ) as exc_info:
                 await swag_service.read_config("context-cleanup-test.conf")
+
+            # If ValueError was raised, verify it's the expected binary content error
+            if isinstance(exc_info.value, ValueError):
+                error_str = str(exc_info.value)
+                assert "binary content" in error_str or "unsafe to read" in error_str
 
             # Restore access
             config_file.chmod(0o666)

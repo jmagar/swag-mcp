@@ -1,9 +1,12 @@
 """Validation utilities for SWAG MCP server."""
 
+import logging
 import re
 import unicodedata
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def validate_domain_format(domain: str) -> str:
@@ -422,10 +425,14 @@ def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
                     next_codepoint = ord(next_char)
                     if 0xDC00 <= next_codepoint <= 0xDFFF:  # Low surrogate
                         # Valid surrogate pair - reconstruct the full character
-                        # full_codepoint = (
-                        #     0x10000 + ((codepoint - 0xD800) << 10) + (next_codepoint - 0xDC00)
-                        # )
+                        full_codepoint = (
+                            0x10000 + ((codepoint - 0xD800) << 10) + (next_codepoint - 0xDC00)
+                        )
                         # This is a valid extended Unicode character (emoji, etc.)
+                        # Log for debugging if needed
+                        logger.debug(
+                            f"Valid surrogate pair at position {i}: U+{full_codepoint:06X}"
+                        )
                         # Skip both surrogates since they form a valid pair
                         i += 2
                         continue
@@ -556,7 +563,8 @@ def validate_file_content_safety(file_path: Path) -> bool:
         try:
             decoded_text = detect_and_handle_encoding(sample)
             # Additional check: ensure the decoded content is reasonable text
-            return not (len(decoded_text.strip()) == 0 and len(sample) > 0)
+            is_decoded_empty_with_sample = len(decoded_text.strip()) == 0 and len(sample) > 0
+            return not is_decoded_empty_with_sample
         except (ValueError, UnicodeDecodeError):
             return False
 
