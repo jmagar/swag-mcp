@@ -145,3 +145,6 @@ Thumbs.db
 # Project specific
 *.log
 .swag-mcp/
+
+# AI review and fix documentation
+*-fixes.md

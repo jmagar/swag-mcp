@@ -4,6 +4,7 @@ These tests focus on finding bugs related to text encoding, Unicode handling,
 and internationalization issues that commonly cause production failures.
 """
 
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -101,10 +102,8 @@ class TestUnicodeEncodingBugs:
             # Clean up created files
             for file_path in created_files:
                 if file_path.exists():
-                    try:
-                        file_path.unlink()
-                    except OSError:
-                        pass  # May fail on some filesystems with Unicode issues
+                    with contextlib.suppress(OSError):
+                        file_path.unlink()  # May fail on some filesystems
 
     @pytest.mark.asyncio
     async def test_mixed_encoding_content_handling(self, swag_service: SwagManagerService):
@@ -379,7 +378,7 @@ class TestUnicodeEncodingBugs:
                     invalid_utf8_file.unlink()
 
     @pytest.mark.asyncio
-    async def test_locale_specific_character_handling(self, mcp_client: Client):
+    async def test_locale_specific_character_handling(self, mcp_client: Client, mock_config):
         """Test handling of locale-specific characters and case conversions."""
 
         # Locale-specific test cases
@@ -432,7 +431,10 @@ class TestUnicodeEncodingBugs:
                             "swag_edit",
                             {
                                 "config_name": created_file.name,
-                                "new_content": f"# Locale test: {test_case['service_name']}\nserver {{ listen 443; }}",
+                                "new_content": (
+                                    f"# Locale test: {test_case['service_name']}\n"
+                                    f"server {{ listen 443; }}"
+                                ),
                             },
                         )
 
@@ -602,7 +604,7 @@ server {
                     backup_file.unlink()
 
     @pytest.mark.asyncio
-    async def test_surrogate_pair_handling(self, mcp_client: Client):
+    async def test_surrogate_pair_handling(self, mcp_client: Client, mock_config):
         """Test handling of Unicode surrogate pairs and edge cases."""
 
         # Test cases with Unicode surrogate pairs and edge cases

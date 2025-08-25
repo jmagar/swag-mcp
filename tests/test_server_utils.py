@@ -90,7 +90,8 @@ class TestServerUtilityFunctions:
             with patch("swag_mcp.server.config.template_path", template_path):
                 setup_templates()
 
-            # Should log errors for missing templates (4 templates: subdomain, subfolder, mcp-subdomain, mcp-subfolder)
+            # Should log errors for missing templates
+            # (4 templates: subdomain, subfolder, mcp-subdomain, mcp-subfolder)
             assert mock_logger.error.call_count == 4
             error_calls = [call[0][0] for call in mock_logger.error.call_args_list]
             assert any("subdomain.conf.j2" in call for call in error_calls)
