@@ -114,6 +114,15 @@ disallow_untyped_defs = false
 disallow_untyped_decorators = false
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["regex", "aiohttp"]
+ignore_missing_imports = true
+
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]
 skips = ["B101", "B601"]  # Skip assert_used, paramiko_calls
+
+[dependency-groups]
+dev = [
+    "types-regex>=2025.7.34.20250809",
+]

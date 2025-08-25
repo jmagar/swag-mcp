@@ -5,9 +5,9 @@ import re
 from typing import Any
 
 from fastmcp.exceptions import ToolError
-from fastmcp.server.context import Context
-from fastmcp.server.middleware import Middleware
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware, RetryMiddleware
+from mcp import types as mt
 
 from ..core.config import config
 
@@ -118,11 +118,20 @@ def create_user_friendly_error(error: Exception) -> str:
     if "ValidationError" in error_type:
         if "string_pattern_mismatch" in error_str:
             if "service_name" in error_str.lower():
-                return "Invalid service name. Please use only letters, numbers, hyphens, and underscores."
+                return (
+                    "Invalid service name. Please use only letters, numbers, hyphens, "
+                    "and underscores."
+                )
             elif "upstream_app" in error_str.lower():
-                return "Invalid upstream app name. Please use only letters, numbers, hyphens, underscores, and dots."
+                return (
+                    "Invalid upstream app name. Please use only letters, numbers, "
+                    "hyphens, underscores, and dots."
+                )
             else:
-                return "Invalid characters in input. Please use only letters, numbers, hyphens, and underscores."
+                return (
+                    "Invalid characters in input. Please use only letters, numbers, "
+                    "hyphens, and underscores."
+                )
         elif "string_too_long" in error_str:
             if "service_name" in error_str.lower():
                 return "Service name is too long. Please use 50 characters or less."
@@ -169,7 +178,9 @@ def create_user_friendly_error(error: Exception) -> str:
 class SecurityErrorMiddleware(Middleware):
     """Security-focused error handling middleware that sanitizes error messages."""
 
-    async def on_request(self, context: Context, call_next):
+    async def on_request(
+        self, context: MiddlewareContext[mt.Request], call_next: CallNext[mt.Request, Any]
+    ) -> Any:
         """Handle request with security-focused error sanitization."""
         try:
             return await call_next(context)

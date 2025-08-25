@@ -5,6 +5,7 @@ and exception propagation by simulating real failure conditions.
 """
 
 import asyncio
+import contextlib
 import stat
 from pathlib import Path
 from unittest.mock import patch
@@ -60,7 +61,7 @@ class TestErrorRecoveryBugs:
                 )
 
                 # First attempt should fail due to disk full
-                with pytest.raises(Exception) as exc_info:
+                with pytest.raises((OSError, IOError, ValueError)) as exc_info:
                     await swag_service.update_config(edit_request)
 
                 error_msg = str(exc_info.value).lower()
@@ -138,10 +139,8 @@ class TestErrorRecoveryBugs:
         finally:
             # Ensure permissions are restored and clean up
             if config_file.exists():
-                try:
+                with contextlib.suppress(OSError, PermissionError):
                     config_file.chmod(0o666)
-                except:
-                    pass
                 config_file.unlink()
             for backup_file in config_dir.glob(f"{result.filename}.backup.*"):
                 backup_file.unlink()
@@ -179,7 +178,7 @@ class TestErrorRecoveryBugs:
                     create_backup=True,
                 )
 
-                with pytest.raises(Exception):
+                with pytest.raises((OSError, PermissionError, FileNotFoundError)):
                     await swag_service.update_config(edit_request)
 
             # File should now be corrupted (partially written)
@@ -187,7 +186,7 @@ class TestErrorRecoveryBugs:
             assert len(corrupted_content) < len(original_content) + 50  # Should be truncated
 
             # Try to read the corrupted config
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises((OSError, IOError, ValueError)):
                 content = await swag_service.read_config(result.filename)
                 # If read succeeds, content should be detectably corrupted
                 if "server {" in content and "}" not in content:
@@ -238,7 +237,7 @@ class TestErrorRecoveryBugs:
 
             # Try to read the corrupted backup
             try:
-                content = backup_file.read_text()
+                backup_file.read_text()
                 pytest.fail("Corrupted backup was read as text without error")
             except UnicodeDecodeError:
                 # Expected - backup is corrupted
@@ -267,10 +266,8 @@ class TestErrorRecoveryBugs:
             if config_file.exists():
                 config_file.unlink()
             for backup_file in config_dir.glob(f"{result.filename}.backup.*"):
-                try:
+                with contextlib.suppress(OSError, FileNotFoundError):
                     backup_file.unlink()
-                except:
-                    pass
 
     @pytest.mark.asyncio
     async def test_template_rendering_error_recovery(self, swag_service: SwagManagerService):
@@ -406,7 +403,7 @@ class TestErrorRecoveryBugs:
             # Make file inaccessible
             config_file.chmod(0o000)
 
-            with pytest.raises(Exception):
+            with pytest.raises((OSError, PermissionError, FileNotFoundError)):
                 await swag_service.read_config("context-cleanup-test.conf")
 
             # Restore access
@@ -421,7 +418,7 @@ class TestErrorRecoveryBugs:
                 try:
                     config_file.chmod(0o666)
                     config_file.unlink()
-                except:
+                except (OSError, PermissionError):
                     pass
 
     @pytest.mark.asyncio
@@ -465,7 +462,7 @@ class TestErrorRecoveryBugs:
                     create_backup=True,
                 )
 
-                with pytest.raises(Exception):
+                with pytest.raises((OSError, IOError)):
                     await swag_service.update_config(edit_request)
 
             # Check transaction state after failure
@@ -520,7 +517,7 @@ class TestErrorRecoveryBugs:
         for scenario in timeout_scenarios:
             try:
                 # Use asyncio.wait_for to simulate network timeout
-                result = await asyncio.wait_for(
+                await asyncio.wait_for(
                     mcp_client.call_tool(scenario["tool"], scenario["params"]),
                     timeout=scenario["timeout"],
                 )
@@ -562,24 +559,20 @@ class TestErrorRecoveryBugs:
             await asyncio.sleep(0.05)
             task.cancel()
 
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                # Expected - operation was cancelled
-                pass
 
             # Check for resource leaks
-            remaining_temp_files = [f for f in cleanup_test_files if f.exists()]
+            # remaining_temp_files = [f for f in cleanup_test_files if f.exists()]
 
             # Some temp files might remain (this is acceptable for this test)
             # But there shouldn't be excessive file descriptor leaks
-            # This is a basic test - more sophisticated resource tracking would be needed for production
+            # This is a basic test - more sophisticated resource tracking
+            # would be needed for production
 
         finally:
             # Manual cleanup
             for temp_file in cleanup_test_files:
                 if temp_file.exists():
-                    try:
+                    with contextlib.suppress(OSError, FileNotFoundError):
                         temp_file.unlink()
-                    except:
-                        pass

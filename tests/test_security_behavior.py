@@ -216,7 +216,7 @@ server {
 }""",
         ]
 
-        for i, malicious_content in enumerate(malicious_contents):
+        for _i, malicious_content in enumerate(malicious_contents):
             # Test behavior: server should reject dangerous content with proper error messages
             with pytest.raises(Exception) as exc_info:
                 await mcp_client.call_tool(

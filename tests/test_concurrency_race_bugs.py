@@ -5,6 +5,7 @@ happen simultaneously, including file corruption, deadlocks, and resource leaks.
 """
 
 import asyncio
+import contextlib
 import os
 import random
 import time
@@ -89,9 +90,10 @@ class TestConcurrencyRaceBugs:
                 ), f"Internal traceback exposed for {similar_names[i]}: {error_msg}"
                 # For validation errors, ensure user-friendly messaging
                 if "validation error" in error_msg:
-                    assert any(
-                        word in error_msg for word in ["invalid", "pattern", "character"]
-                    ), f"Validation error should be user-friendly for {similar_names[i]}: {error_msg}"
+                    assert any(word in error_msg for word in ["invalid", "pattern", "character"]), (
+                        f"Validation error should be user-friendly for {similar_names[i]}: "
+                        f"{error_msg}"
+                    )
 
         # Clean up any created configs
         for name in similar_names:
@@ -232,7 +234,8 @@ server {{
 
         if len(backup_names) != len(unique_backups):
             pytest.fail(
-                f"Backup name collision detected: {len(backup_names)} backups, {len(unique_backups)} unique names"
+                f"Backup name collision detected: {len(backup_names)} backups, "
+                f"{len(unique_backups)} unique names"
             )
 
         # Verify all backup files exist and have content
@@ -282,11 +285,8 @@ server {{
             ]
 
             for config in failing_configs:
-                try:
+                with contextlib.suppress(Exception):
                     await swag_service.create_config(config)
-                except Exception:
-                    # Expected to fail, but shouldn't leak resources
-                    pass
 
         # Run many failing operations to amplify any resource leaks
         tasks = [failing_operation() for _ in range(20)]
@@ -332,14 +332,12 @@ server {{
 
                 try:
                     if operation_type == "read":
-                        result = await mcp_client.call_tool(
-                            "swag_view", {"config_name": config_name}
-                        )
+                        await mcp_client.call_tool("swag_view", {"config_name": config_name})
                         operations.append(f"read_{i}")
 
                     elif operation_type == "edit":
                         new_content = f"# Edit {i}\nserver {{ listen 443; }}"
-                        result = await mcp_client.call_tool(
+                        await mcp_client.call_tool(
                             "swag_edit",
                             {
                                 "config_name": config_name,
@@ -389,7 +387,8 @@ server {{
                 error_count = len([op for op in ops if op.startswith("error_")])
                 if error_count > 5:  # More than half failed
                     pytest.fail(
-                        f"Excessive errors for {config_names[i]}: {error_count}/10 operations failed"
+                        f"Excessive errors for {config_names[i]}: "
+                        f"{error_count}/10 operations failed"
                     )
 
         except TimeoutError:
@@ -431,7 +430,7 @@ server {{
                     new_content=f"# Modified by iteration {iteration}\n{content}",
                     create_backup=True,
                 )
-                result = await swag_service.update_config(edit_request)
+                await swag_service.update_config(edit_request)
                 return f"success_{iteration}"
 
             except Exception as e:
@@ -454,7 +453,7 @@ server {{
         )
 
         # Analyze locking behavior
-        lock_errors = [r for r in results if isinstance(r, str) and "lock_error" in r]
+        # lock_errors = [r for r in results if isinstance(r, str) and "lock_error" in r]
         successes = [r for r in results if isinstance(r, str) and r.startswith("success_")]
         other_errors = [r for r in results if isinstance(r, str) and "other_error" in r]
         exceptions = [r for r in results if not isinstance(r, str)]
@@ -513,7 +512,7 @@ server {{
                         new_content=f"# Active operation {i}\n{content}",
                         create_backup=True,
                     )
-                    result = await swag_service.update_config(edit_request)
+                    await swag_service.update_config(edit_request)
                     operations.append(f"edit_{i}")
 
                     await asyncio.sleep(0.01)  # Small delay

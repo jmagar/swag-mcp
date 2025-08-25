@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 from jinja2 import FileSystemLoader, TemplateNotFound
@@ -89,6 +90,13 @@ class SwagManagerService:
         """Context manager for atomic multi-file operations with rollback support."""
 
         def __init__(self, manager: "SwagManagerService", transaction_id: str):
+            """Initialize atomic transaction.
+
+            Args:
+                manager: SwagManagerService instance
+                transaction_id: Unique identifier for this transaction
+
+            """
             self.manager = manager
             self.transaction_id = transaction_id
             self.created_files: list[Path] = []
@@ -96,7 +104,8 @@ class SwagManagerService:
             self.deleted_files: list[tuple[Path, str]] = []  # (file_path, original_content)
             self._completed = False
 
-        async def __aenter__(self):
+        async def __aenter__(self) -> "SwagManagerService.AtomicTransaction":
+            """Enter async context manager and initialize transaction."""
             async with self.manager._transaction_lock:
                 if self.transaction_id in self.manager._active_transactions:
                     raise ValueError(f"Transaction {self.transaction_id} is already active")
@@ -107,7 +116,10 @@ class SwagManagerService:
                 }
             return self
 
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
+        async def __aexit__(
+            self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
+        ) -> None:
+            """Exit async context manager and handle rollback if needed."""
             async with self.manager._transaction_lock:
                 try:
                     if exc_type is not None and not self._completed:
@@ -124,11 +136,11 @@ class SwagManagerService:
                     # Clean up transaction tracking
                     self.manager._active_transactions.pop(self.transaction_id, None)
 
-        async def track_file_creation(self, file_path: Path):
+        async def track_file_creation(self, file_path: Path) -> None:
             """Track a file that will be created in this transaction."""
             self.created_files.append(file_path)
 
-        async def track_file_modification(self, file_path: Path):
+        async def track_file_modification(self, file_path: Path) -> None:
             """Track a file that will be modified in this transaction."""
             if file_path.exists():
                 try:
@@ -143,7 +155,7 @@ class SwagManagerService:
                     )
                     # Continue without backup - not ideal but better than failing the operation
 
-        async def track_file_deletion(self, file_path: Path):
+        async def track_file_deletion(self, file_path: Path) -> None:
             """Track a file that will be deleted in this transaction."""
             if file_path.exists():
                 try:
@@ -157,11 +169,11 @@ class SwagManagerService:
                         f"Could not backup content for rollback of deleted file {file_path}: {e}"
                     )
 
-        async def commit(self):
+        async def commit(self) -> None:
             """Explicitly commit the transaction (optional - auto-commits on successful exit)."""
             self._completed = True
 
-        async def _rollback(self):
+        async def _rollback(self) -> None:
             """Rollback all changes made in this transaction."""
             rollback_errors = []
 
@@ -202,10 +214,11 @@ class SwagManagerService:
             if rollback_errors:
                 # Log all rollback errors but don't raise - we're already in error handling
                 logger.error(
-                    f"Rollback of transaction {self.transaction_id} had errors: {'; '.join(rollback_errors)}"
+                    f"Rollback of transaction {self.transaction_id} had errors: "
+                    f"{'; '.join(rollback_errors)}"
                 )
 
-    def begin_transaction(self, transaction_id: str = None) -> AtomicTransaction:
+    def begin_transaction(self, transaction_id: str | None = None) -> AtomicTransaction:
         """Begin an atomic transaction for multi-file operations.
 
         Args:
@@ -255,7 +268,7 @@ class SwagManagerService:
         }
 
         # Customize sandbox to block additional dangerous operations
-        def is_safe_attribute(obj, attr, value):
+        def is_safe_attribute(obj: Any, attr: str, value: Any) -> bool:
             """Check if attribute access is safe."""
             # Block access to private/dunder methods
             if attr.startswith("_"):
@@ -316,15 +329,15 @@ class SwagManagerService:
             if "subprocess" in str(type(obj)).lower() or "popen" in attr.lower():
                 return False
 
-            # Block access to file system operations
-            if any(fs_attr in attr.lower() for fs_attr in ["file", "open", "read", "write"]):
-                if not isinstance(obj, (str, int, float, bool, list, dict, tuple)):
-                    return False
-
-            return True
+            # Block access to file system operations - return True if safe, False if blocked
+            fs_access = any(
+                fs_attr in attr.lower() for fs_attr in ["file", "open", "read", "write"]
+            )
+            safe_type = isinstance(obj, str | int | float | bool | list | dict | tuple)
+            return not (fs_access and not safe_type)
 
         # Override the sandboxed environment's security checks
-        env.is_safe_attribute = is_safe_attribute
+        env.is_safe_attribute = is_safe_attribute  # type: ignore[method-assign]
 
         # Disable dangerous template features
         env.filters.clear()  # Remove potentially dangerous filters
@@ -458,7 +471,8 @@ class SwagManagerService:
             r"data:.*base64",  # Data URLs with base64
             r"vbscript:",  # VBScript URLs
             # Shell command injection attempts (more specific to avoid nginx syntax)
-            r";\s*(ls|cat|rm|cp|mv|mkdir|grep|sed|awk|curl|wget|nc|ncat|bash|sh|python|perl|ruby|php)[^a-zA-Z0-9_]",  # Common shell commands after semicolon
+            r";\s*(ls|cat|rm|cp|mv|mkdir|grep|sed|awk|curl|wget|nc|ncat|bash|sh|python|perl|ruby|php)[^a-zA-Z0-9_]",
+            # Common shell commands after semicolon
             r"\$\([^)]*\)",  # Command substitution
             r"`[^`]*`",  # Backtick command execution
             # File system access attempts
@@ -479,7 +493,8 @@ class SwagManagerService:
         for pattern in dangerous_patterns:
             if re.search(pattern, content, re.IGNORECASE):
                 logger.warning(
-                    f"Blocked dangerous content in configuration '{config_name}': matched pattern {pattern}"
+                    f"Blocked dangerous content in configuration '{config_name}': "
+                    f"matched pattern {pattern}"
                 )
                 raise ValueError("Configuration content contains potentially dangerous patterns")
 
@@ -508,7 +523,9 @@ class SwagManagerService:
         operation_name: str = "file write",
         use_lock: bool = True,
     ) -> None:
-        """Safely write content to file with proper error handling for disk full scenarios and Unicode normalization.
+        """Safely write content to file with proper error handling for disk full scenarios.
+
+        Includes Unicode normalization.
 
         Args:
             file_path: Path to write the file to
@@ -527,7 +544,7 @@ class SwagManagerService:
         except ValueError as e:
             raise ValueError(f"Invalid Unicode content for {operation_name}: {str(e)}") from e
 
-        async def _perform_write():
+        async def _perform_write() -> None:
             """Perform the actual write operation."""
             # Create temporary file for atomic write
             temp_path = file_path.with_suffix(f"{file_path.suffix}.tmp.{os.getpid()}")
@@ -577,16 +594,23 @@ class SwagManagerService:
                         os.fsync(f.fileno())
 
                 except OSError as e:
-                    # Handle specific disk-related errors with user-friendly messages
+                    # Handle specific disk-related errors
+                    # with user-friendly messages
                     if e.errno == errno.ENOSPC:
                         raise OSError(
                             errno.ENOSPC,
-                            f"Disk full during {operation_name}. Please free up space and try again.",
+                            (
+                                f"Disk full during {operation_name}. "
+                                "Please free up space and try again."
+                            ),
                         ) from e
                     elif e.errno == errno.EDQUOT:
                         raise OSError(
                             errno.EDQUOT,
-                            f"Disk quota exceeded during {operation_name}. Please free up space and try again.",
+                            (
+                                f"Disk quota exceeded during {operation_name}. "
+                                "Please free up space and try again."
+                            ),
                         ) from e
                     elif e.errno == errno.EACCES:
                         raise OSError(
@@ -601,7 +625,10 @@ class SwagManagerService:
                     elif e.errno == errno.EIO:
                         raise OSError(
                             errno.EIO,
-                            f"I/O error during {operation_name}. This may indicate disk corruption or hardware issues.",
+                            (
+                                f"I/O error during {operation_name}. This may indicate "
+                                "disk corruption or hardware issues."
+                            ),
                         ) from e
                     else:
                         # Generic I/O error
@@ -772,7 +799,8 @@ class SwagManagerService:
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
             raise ValueError(
-                f"Configuration file {validated_name} contains binary content or is unsafe to read"
+                f"Configuration file {validated_name} contains binary content "
+                "or is unsafe to read"
             )
 
         try:
@@ -791,7 +819,10 @@ class SwagManagerService:
             elif e.errno == errno.EIO:
                 raise OSError(
                     errno.EIO,
-                    f"I/O error reading configuration file: {validated_name}. This may indicate disk corruption.",
+                    (
+                        f"I/O error reading configuration file: {validated_name}. "
+                        "This may indicate disk corruption."
+                    ),
                 ) from e
             else:
                 raise OSError(
@@ -800,7 +831,8 @@ class SwagManagerService:
                 ) from e
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters: {validated_name}: {str(e)}"
+                f"Configuration file has invalid text encoding or Unicode characters: "
+                f"{validated_name}: {str(e)}"
             ) from e
         except Exception as e:
             raise OSError(
@@ -945,29 +977,44 @@ class SwagManagerService:
                     if e.errno == errno.EACCES:
                         raise OSError(
                             errno.EACCES,
-                            f"Permission denied reading configuration file for backup: {validated_name}",
+                            (
+                                f"Permission denied reading configuration file for backup: "
+                                f"{validated_name}"
+                            ),
                         ) from e
                     elif e.errno == errno.EIO:
                         raise OSError(
                             errno.EIO,
-                            f"I/O error reading configuration file for backup: {validated_name}. This may indicate disk corruption.",
+                            (
+                                f"I/O error reading configuration file for backup: "
+                                f"{validated_name}. "
+                                "This may indicate disk corruption."
+                            ),
                         ) from e
                     else:
                         raise OSError(
                             e.errno or errno.EIO,
-                            f"Error reading configuration file for backup: {validated_name}: {str(e)}",
+                            (
+                                f"Error reading configuration file for backup: {validated_name}: "
+                                f"{str(e)}"
+                            ),
                         ) from e
                 except (ValueError, UnicodeDecodeError) as e:
                     raise ValueError(
-                        f"Configuration file has invalid text encoding or Unicode characters for backup: {validated_name}: {str(e)}"
+                        f"Configuration file has invalid text encoding or Unicode characters "
+                        f"for backup: {validated_name}: {str(e)}"
                     ) from e
                 except Exception as e:
                     raise OSError(
                         errno.EIO,
-                        f"Unexpected error reading configuration file for backup: {validated_name}: {str(e)}",
+                        (
+                            f"Unexpected error reading configuration file for backup: "
+                            f"{validated_name}: {str(e)}"
+                        ),
                     ) from e
 
-                # Write backup safely with proper error handling (no lock since we're already in one)
+                # Write backup safely with proper error handling
+                # (no lock since we're already in one)
                 await self._safe_write_file(
                     backup_file, content, f"backup creation for {backup_name}", use_lock=False
                 )
@@ -1021,7 +1068,8 @@ class SwagManagerService:
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
             raise ValueError(
-                f"Configuration file {validated_name} contains binary content or is unsafe to read"
+                f"Configuration file {validated_name} contains binary content "
+                "or is unsafe to read"
             )
 
         # Read content for backup and response with error handling and Unicode normalization
@@ -1042,21 +1090,31 @@ class SwagManagerService:
             elif e.errno == errno.EIO:
                 raise OSError(
                     errno.EIO,
-                    f"I/O error reading configuration file for removal: {validated_name}. This may indicate disk corruption.",
+                    (
+                        f"I/O error reading configuration file for removal: {validated_name}. "
+                        "This may indicate disk corruption."
+                    ),
                 ) from e
             else:
                 raise OSError(
                     e.errno or errno.EIO,
-                    f"Error reading configuration file for removal: {validated_name}: {str(e)}",
+                    (
+                        f"Error reading configuration file for removal: {validated_name}: "
+                        f"{str(e)}"
+                    ),
                 ) from e
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters for removal: {validated_name}: {str(e)}"
+                f"Configuration file has invalid text encoding or Unicode characters "
+                f"for removal: {validated_name}: {str(e)}"
             ) from e
         except Exception as e:
             raise OSError(
                 errno.EIO,
-                f"Unexpected error reading configuration file for removal: {validated_name}: {str(e)}",
+                (
+                    f"Unexpected error reading configuration file for removal: "
+                    f"{validated_name}: {str(e)}"
+                ),
             ) from e
 
         backup_name = None
@@ -1215,106 +1273,101 @@ class SwagManagerService:
 
         logger.info(f"Cleaning up backups older than {retention_days} days")
 
-        # Use cleanup lock to prevent multiple cleanup operations and coordinate with backup creation
-        async with self._cleanup_lock:
-            # Additional coordination with backup operations
-            async with self._backup_lock:
-                cutoff_time = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
-                cleaned_count = 0
+        # Use cleanup lock to prevent multiple cleanup operations
+        # and coordinate with backup creation
+        async with self._cleanup_lock, self._backup_lock:
+            cutoff_time = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
+            cleaned_count = 0
 
-                # Enhanced pattern: filename.backup.YYYYMMDD_HHMMSS[_microseconds][.counter]
-                # This matches our improved backup naming scheme
-                backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}(_\d{6})?(\.\d+)?$")
+            # Enhanced pattern: filename.backup.YYYYMMDD_HHMMSS[_microseconds][.counter]
+            # This matches our improved backup naming scheme
+            backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}(_\d{6})?(\.\d+)?$")
 
-                # Get list of backup files first (snapshot in time to avoid race conditions)
-                backup_candidates = []
+            # Get list of backup files first (snapshot in time to avoid race conditions)
+            backup_candidates = []
+            try:
+                for backup_file in self.config_path.glob("*.backup.*"):
+                    if backup_file.is_file():
+                        backup_candidates.append(backup_file)
+            except OSError as e:
+                logger.warning(f"Error scanning backup files: {e}")
+                return 0
+
+            # Process each candidate backup file
+            for backup_file in backup_candidates:
                 try:
-                    for backup_file in self.config_path.glob("*.backup.*"):
-                        if backup_file.is_file():
-                            backup_candidates.append(backup_file)
-                except OSError as e:
-                    logger.warning(f"Error scanning backup files: {e}")
-                    return 0
-
-                # Process each candidate backup file
-                for backup_file in backup_candidates:
-                    try:
-                        # Double-check file still exists (another process might have cleaned it)
-                        if not backup_file.exists():
-                            continue
-
-                        # Additional safety checks:
-                        # 1. Must match our exact timestamp format
-                        # 2. Must be a regular file (not directory)
-                        # 3. Must be older than retention period
-                        # 4. Must not be currently being written (check for temp files)
-
-                        if not backup_pattern.match(backup_file.name):
-                            logger.debug(f"Skipping file (wrong format): {backup_file.name}")
-                            continue
-
-                        if not backup_file.is_file():
-                            logger.debug(f"Skipping non-file: {backup_file.name}")
-                            continue
-
-                        # Check if file is currently being written (has corresponding temp file)
-                        temp_file = backup_file.with_suffix(
-                            f"{backup_file.suffix}.tmp.{os.getpid()}"
-                        )
-                        if temp_file.exists():
-                            logger.debug(f"Skipping backup being written: {backup_file.name}")
-                            continue
-
-                        # Check modification time
-                        try:
-                            file_stat = backup_file.stat()
-                            if file_stat.st_mtime >= cutoff_time:
-                                continue  # File is not old enough to delete
-                        except OSError as e:
-                            logger.debug(f"Could not get stats for {backup_file.name}: {e}")
-                            continue
-
-                        # Check if file is currently locked by getting its lock (non-blocking)
-                        file_lock = await self._get_file_lock(backup_file)
-                        if file_lock.locked():
-                            logger.debug(f"Skipping locked backup file: {backup_file.name}")
-                            continue
-
-                        # Attempt to acquire lock briefly for deletion
-                        try:
-                            # Use asyncio.wait_for to timeout if lock can't be acquired quickly
-                            async with asyncio.timeout(1.0):  # 1 second timeout
-                                async with file_lock:
-                                    # Double-check file still exists and meets criteria
-                                    if (
-                                        backup_file.exists()
-                                        and backup_file.is_file()
-                                        and backup_file.stat().st_mtime < cutoff_time
-                                    ):
-                                        logger.debug(f"Deleting old backup: {backup_file.name}")
-                                        backup_file.unlink()
-                                        cleaned_count += 1
-
-                        except TimeoutError:
-                            logger.debug(
-                                f"Timeout acquiring lock for cleanup of {backup_file.name}"
-                            )
-                            continue
-                        except (PermissionError, OSError) as e:
-                            logger.warning(f"Failed to delete backup {backup_file.name}: {e}")
-                            continue
-                        except Exception as e:
-                            logger.warning(
-                                f"Unexpected error cleaning up backup {backup_file.name}: {e}"
-                            )
-                            continue
-
-                    except Exception as e:
-                        logger.warning(f"Error processing backup file {backup_file}: {e}")
+                    # Double-check file still exists (another process might have cleaned it)
+                    if not backup_file.exists():
                         continue
 
-                logger.info(f"Cleaned up {cleaned_count} old backup files")
-                return cleaned_count
+                    # Additional safety checks:
+                    # 1. Must match our exact timestamp format
+                    # 2. Must be a regular file (not directory)
+                    # 3. Must be older than retention period
+                    # 4. Must not be currently being written (check for temp files)
+
+                    if not backup_pattern.match(backup_file.name):
+                        logger.debug(f"Skipping file (wrong format): {backup_file.name}")
+                        continue
+
+                    if not backup_file.is_file():
+                        logger.debug(f"Skipping non-file: {backup_file.name}")
+                        continue
+
+                    # Check if file is currently being written (has corresponding temp file)
+                    temp_file = backup_file.with_suffix(f"{backup_file.suffix}.tmp.{os.getpid()}")
+                    if temp_file.exists():
+                        logger.debug(f"Skipping backup being written: {backup_file.name}")
+                        continue
+
+                    # Check modification time
+                    try:
+                        file_stat = backup_file.stat()
+                        if file_stat.st_mtime >= cutoff_time:
+                            continue  # File is not old enough to delete
+                    except OSError as e:
+                        logger.debug(f"Could not get stats for {backup_file.name}: {e}")
+                        continue
+
+                    # Check if file is currently locked by getting its lock (non-blocking)
+                    file_lock = await self._get_file_lock(backup_file)
+                    if file_lock.locked():
+                        logger.debug(f"Skipping locked backup file: {backup_file.name}")
+                        continue
+
+                    # Attempt to acquire lock briefly for deletion
+                    try:
+                        # Use asyncio.wait_for to timeout if lock can't be acquired quickly
+                        async with asyncio.timeout(1.0):  # 1 second timeout
+                            async with file_lock:
+                                # Double-check file still exists and meets criteria
+                                if (
+                                    backup_file.exists()
+                                    and backup_file.is_file()
+                                    and backup_file.stat().st_mtime < cutoff_time
+                                ):
+                                    logger.debug(f"Deleting old backup: {backup_file.name}")
+                                    backup_file.unlink()
+                                    cleaned_count += 1
+
+                    except TimeoutError:
+                        logger.debug(f"Timeout acquiring lock for cleanup of {backup_file.name}")
+                        continue
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Failed to delete backup {backup_file.name}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.warning(
+                            f"Unexpected error cleaning up backup {backup_file.name}: {e}"
+                        )
+                        continue
+
+                except Exception as e:
+                    logger.warning(f"Error processing backup file {backup_file}: {e}")
+                    continue
+
+            logger.info(f"Cleaned up {cleaned_count} old backup files")
+            return cleaned_count
 
     async def health_check(self, request: SwagHealthCheckRequest) -> SwagHealthCheckResult:
         """Perform health check on a service endpoint."""

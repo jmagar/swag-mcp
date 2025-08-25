@@ -58,7 +58,8 @@ def validate_domain_format(domain: str) -> str:
             # even though they're not strictly RFC compliant
             if not re.match(r"^[a-zA-Z0-9_-]+$", part):
                 raise ValueError(
-                    f"Domain part '{part}' contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed"
+                    f"Domain part '{part}' contains invalid characters. Only letters, "
+                    f"numbers, hyphens, and underscores are allowed"
                 )
 
         # Ensure it doesn't start with a number (for domain names, not subdomains)
@@ -179,7 +180,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         "Cn",  # Unassigned characters - unstable
     }
 
-    # Note: We no longer block 'Cs' (surrogates) here since normalize_unicode_text handles them properly
+    # Note: We no longer block 'Cs' (surrogates) here since
+    # normalize_unicode_text handles them properly
 
     # Check characters with emoji awareness
     has_emoji = False
@@ -191,7 +193,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         if category in dangerous_categories_for_names:
             char_name = unicodedata.name(char, "UNKNOWN")
             raise ValueError(
-                f"Service name contains dangerous Unicode character at position {i}: U+{codepoint:04X} ({char_name})"
+                f"Service name contains dangerous Unicode character at position {i}: "
+                f"U+{codepoint:04X} ({char_name})"
             )
 
         # Block most control characters except common ones
@@ -206,7 +209,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
             if not allow_emoji:
                 char_name = unicodedata.name(char, "UNKNOWN")
                 raise ValueError(
-                    f"Service name contains emoji/extended Unicode character at position {i}: U+{codepoint:04X} ({char_name}). Set allow_emoji=True to permit."
+                    f"Service name contains emoji/extended Unicode character at position {i}: "
+                    f"U+{codepoint:04X} ({char_name}). Set allow_emoji=True to permit."
                 )
 
         # Check for common emoji ranges even in the Basic Multilingual Plane
@@ -221,13 +225,15 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
             if not allow_emoji:
                 char_name = unicodedata.name(char, "UNKNOWN")
                 raise ValueError(
-                    f"Service name contains emoji character at position {i}: U+{codepoint:04X} ({char_name}). Set allow_emoji=True to permit."
+                    f"Service name contains emoji character at position {i}: "
+                    f"U+{codepoint:04X} ({char_name}). Set allow_emoji=True to permit."
                 )
 
         # Block directional override characters (security risk)
         if char in "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069":
             raise ValueError(
-                f"Service name contains directional override character at position {i}: U+{codepoint:04X}"
+                f"Service name contains directional override character at position {i}: "
+                f"U+{codepoint:04X}"
             )
 
     # Use the validated Unicode version for further processing
@@ -257,7 +263,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
             ):  # Supplemental Symbols and Pictographs
                 char_name = unicodedata.name(char, "UNKNOWN")
                 raise ValueError(
-                    f"Service name contains invalid character at position {i}: U+{codepoint:04X} ({char_name})"
+                    f"Service name contains invalid character at position {i}: "
+                    f"U+{codepoint:04X} ({char_name})"
                 )
     else:
         # Standard validation without emoji
@@ -268,7 +275,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
 
             if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
                 raise ValueError(
-                    "Service name can only contain Unicode letters, numbers, hyphens, and underscores"
+                    "Service name can only contain Unicode letters, numbers, hyphens, "
+                    "and underscores"
                 )
         except ImportError:
             # Fallback to basic validation if regex module not available
@@ -276,7 +284,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
             if not re.match(r"^[\w_-]+$", normalized_name, re.UNICODE):
                 raise ValueError(
                     "Service name can only contain letters, numbers, hyphens, and underscores"
-                )
+                ) from None
 
     # Must start with letter or number (Unicode-aware)
     if normalized_name:
@@ -414,9 +422,9 @@ def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
                     next_codepoint = ord(next_char)
                     if 0xDC00 <= next_codepoint <= 0xDFFF:  # Low surrogate
                         # Valid surrogate pair - reconstruct the full character
-                        full_codepoint = (
-                            0x10000 + ((codepoint - 0xD800) << 10) + (next_codepoint - 0xDC00)
-                        )
+                        # full_codepoint = (
+                        #     0x10000 + ((codepoint - 0xD800) << 10) + (next_codepoint - 0xDC00)
+                        # )
                         # This is a valid extended Unicode character (emoji, etc.)
                         # Skip both surrogates since they form a valid pair
                         i += 2
@@ -548,9 +556,7 @@ def validate_file_content_safety(file_path: Path) -> bool:
         try:
             decoded_text = detect_and_handle_encoding(sample)
             # Additional check: ensure the decoded content is reasonable text
-            if len(decoded_text.strip()) == 0 and len(sample) > 0:
-                return False  # File appears to be binary (all non-printable)
-            return True
+            return not (len(decoded_text.strip()) == 0 and len(sample) > 0)
         except (ValueError, UnicodeDecodeError):
             return False
 

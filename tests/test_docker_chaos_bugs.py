@@ -142,10 +142,14 @@ class TestDockerChaosBugs:
                 line_size = 200  # Average log line size in bytes
                 num_lines = (scenario["size_mb"] * 1024 * 1024) // line_size
 
-                def generate_large_logs():
+                def generate_large_logs(num_lines=num_lines):
                     """Generator for large log data to avoid loading all into memory."""
                     for i in range(num_lines):
-                        yield f"2025-01-24T12:00:{i:02d}.000Z [INFO] Log line {i} - This is a sample log entry with enough content to simulate real logs\n".encode()
+                        log_entry = f"2025-01-24T12:00:{i:02d}.000Z [INFO] Log line {i} - "(
+                            "This is a sample log entry with enough content to "
+                            "simulate real logs\n"
+                        )
+                        yield log_entry.encode()
 
                 # Mock container.logs to return large data
                 mock_container.logs.return_value = b"".join(generate_large_logs())
@@ -168,7 +172,8 @@ class TestDockerChaosBugs:
 
                 except TimeoutError:
                     pytest.fail(
-                        f"Log processing timed out for {scenario['description']} - possible memory exhaustion"
+                        f"Log processing timed out for {scenario['description']} - "
+                        f"possible memory exhaustion"
                     )
 
                 except MemoryError:
@@ -207,7 +212,7 @@ class TestDockerChaosBugs:
                     mock_client.containers.get.side_effect = APIError("Request timeout")
                 else:
                     # Simulate slow response
-                    async def slow_response(*args, **kwargs):
+                    async def slow_response(*args, scenario=scenario, **kwargs):
                         await asyncio.sleep(scenario["delay"])
                         mock_container = MagicMock()
                         mock_container.logs.return_value = b"Slow log response"

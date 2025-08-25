@@ -123,15 +123,10 @@ server {
                 content = backup_file.read_text()
                 backup_contents.append(content)
 
-            # All backups should contain the content that was replaced, progressing through the updates
+            # All backups should contain the content that was replaced,
+            # progressing through the updates
             # The logic is each backup contains the previous file content before the current update
-            expected_ports = [
-                "8080",
-                "8081",
-                "8082",
-                "8083",
-                "8084",
-            ]  # What each backup should contain
+            # expected_ports removed as unused  # What each backup should contain
             for i, content in enumerate(backup_contents):
                 assert (
                     f"808{i}" in content
@@ -245,8 +240,8 @@ server {
 
         try:
             # Create first configuration
-            request1 = SwagConfigRequest(**base_config)
-            result1 = await swag_service.create_config(request1)
+            # request1 = SwagConfigRequest(**base_config)  # Unused variable
+            # result1 = await swag_service.create_config(request1)  # Unused variable
             assert config_file.exists()
 
             # Attempt to create duplicate configuration
