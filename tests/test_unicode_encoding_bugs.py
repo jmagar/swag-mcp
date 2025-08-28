@@ -76,9 +76,9 @@ class TestUnicodeEncodingBugs:
                         created_files.append(expected_file)
 
                         # File should exist (filesystem supports Unicode)
-                        assert (
-                            expected_file.exists()
-                        ), f"Unicode filename not created: {test_case['service_name']}"
+                        assert expected_file.exists(), (
+                            f"Unicode filename not created: {test_case['service_name']}"
+                        )
 
                         # File should contain the service name correctly
                         content = expected_file.read_text(encoding="utf-8")

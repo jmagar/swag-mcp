@@ -799,8 +799,7 @@ class SwagManagerService:
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
             raise ValueError(
-                f"Configuration file {validated_name} contains binary content "
-                "or is unsafe to read"
+                f"Configuration file {validated_name} contains binary content or is unsafe to read"
             )
 
         try:
@@ -1068,8 +1067,7 @@ class SwagManagerService:
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
             raise ValueError(
-                f"Configuration file {validated_name} contains binary content "
-                "or is unsafe to read"
+                f"Configuration file {validated_name} contains binary content or is unsafe to read"
             )
 
         # Read content for backup and response with error handling and Unicode normalization
@@ -1098,10 +1096,7 @@ class SwagManagerService:
             else:
                 raise OSError(
                     e.errno or errno.EIO,
-                    (
-                        f"Error reading configuration file for removal: {validated_name}: "
-                        f"{str(e)}"
-                    ),
+                    (f"Error reading configuration file for removal: {validated_name}: {str(e)}"),
                 ) from e
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(

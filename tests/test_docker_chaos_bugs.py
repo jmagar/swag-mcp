@@ -174,9 +174,9 @@ class TestDockerChaosBugs:
                     if not result.is_error:
                         log_data = result.data
                         # Should not return excessively large data to client
-                        assert (
-                            len(log_data) < 10 * 1024 * 1024
-                        ), f"Response too large for {scenario['description']}"
+                        assert len(log_data) < 10 * 1024 * 1024, (
+                            f"Response too large for {scenario['description']}"
+                        )
                         # Should contain actual log content
                         assert "Log line" in log_data
 
@@ -302,17 +302,17 @@ class TestDockerChaosBugs:
                     if not result.is_error:
                         log_data = result.data
                         # Should handle malformed data gracefully
-                        assert isinstance(
-                            log_data, str
-                        ), f"Non-string response for {scenario['description']}"
+                        assert isinstance(log_data, str), (
+                            f"Non-string response for {scenario['description']}"
+                        )
                         # Should not contain raw binary data
-                        assert (
-                            "\x00" not in log_data
-                        ), f"Null bytes in processed output for {scenario['description']}"
+                        assert "\x00" not in log_data, (
+                            f"Null bytes in processed output for {scenario['description']}"
+                        )
                         # Should have reasonable length (not extremely long)
-                        assert (
-                            len(log_data) < 1000000
-                        ), f"Excessively long output for {scenario['description']}"
+                        assert len(log_data) < 1000000, (
+                            f"Excessively long output for {scenario['description']}"
+                        )
                     else:
                         # If it fails, should be a handled error
                         error_msg = str(result.error).lower()
@@ -395,9 +395,9 @@ class TestDockerChaosBugs:
             exceptions = [r for r in results if not isinstance(r, str)]
 
             # Most requests should succeed
-            assert (
-                len(successful_results) >= 3
-            ), f"Too many failed requests: {error_results + [str(e) for e in exceptions]}"
+            assert len(successful_results) >= 3, (
+                f"Too many failed requests: {error_results + [str(e) for e in exceptions]}"
+            )
 
             # Check that successful results contain log data
             for result in successful_results:

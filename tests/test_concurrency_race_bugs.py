@@ -98,12 +98,12 @@ class TestConcurrencyRaceBugs:
 
             if error_msg:
                 # Check that sensitive information isn't exposed in validation errors
-                assert (
-                    "pydantic" not in error_msg
-                ), f"Internal pydantic details exposed for {similar_names[i]}: {error_msg}"
-                assert (
-                    "traceback" not in error_msg
-                ), f"Internal traceback exposed for {similar_names[i]}: {error_msg}"
+                assert "pydantic" not in error_msg, (
+                    f"Internal pydantic details exposed for {similar_names[i]}: {error_msg}"
+                )
+                assert "traceback" not in error_msg, (
+                    f"Internal traceback exposed for {similar_names[i]}: {error_msg}"
+                )
                 # For validation errors, ensure user-friendly messaging
                 if "validation error" in error_msg:
                     user_friendly_keywords = [

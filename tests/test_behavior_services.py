@@ -100,7 +100,7 @@ server {
         try:
             # Test behavior: rapid consecutive edits should create distinct backups
             for i in range(5):
-                new_content = original_content.replace("8080", f"808{i+1}")  # Start with 8081
+                new_content = original_content.replace("8080", f"808{i + 1}")  # Start with 8081
                 request = SwagEditRequest(
                     config_name="stress-test.conf",
                     new_content=new_content,
@@ -126,9 +126,9 @@ server {
             # Each backup at index i holds the file content as it existed before the i-th update
             # (backups progress by storing previous contents)
             for i, content in enumerate(backup_contents):
-                assert (
-                    f"808{i}" in content
-                ), f"Backup {i} should contain port 808{i}, but contains: {content[:100]}..."
+                assert f"808{i}" in content, (
+                    f"Backup {i} should contain port 808{i}, but contains: {content[:100]}..."
+                )
 
         finally:
             # Cleanup

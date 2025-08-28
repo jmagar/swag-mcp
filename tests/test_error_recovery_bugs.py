@@ -475,9 +475,9 @@ class TestErrorRecoveryBugs:
             # Check transaction state after failure
             # Original config should be unchanged (rollback behavior)
             current_content = config_file.read_text()
-            assert (
-                current_content == original_content
-            ), "Config was partially updated without rollback"
+            assert current_content == original_content, (
+                "Config was partially updated without rollback"
+            )
 
             # Backup should exist (operation got that far)
             assert backup_created, "Backup creation should have succeeded"
