@@ -148,3 +148,6 @@ Thumbs.db
 
 # AI review and fix documentation
 *-fixes.md
+
+# Tests directory
+tests/
