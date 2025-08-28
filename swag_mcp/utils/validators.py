@@ -274,7 +274,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         # Using Unicode property classes for proper international support
         try:
             # Try to use regex module for better Unicode support
-            import regex  # type: ignore[import-untyped]
+            import regex
 
             if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
                 raise ValueError(

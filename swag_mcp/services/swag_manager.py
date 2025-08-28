@@ -67,7 +67,9 @@ class SwagManagerService:
         self._active_transactions: dict[str, dict] = {}
         self._transaction_lock = asyncio.Lock()
 
+
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
+
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
         """Get or create a per-file lock for fine-grained concurrency control.
@@ -758,6 +760,73 @@ class SwagManagerService:
 
         return auth_method, enable_quic, config_type
 
+    def _resolve_config_filename(self, config_name: str, allow_create: bool = False) -> str:
+        """Resolve config name to actual filename by auto-detecting extension.
+
+        Args:
+            config_name: Either a full filename with extension or just a service name
+            allow_create: If True, return best filename even if file doesn't exist
+
+        Returns:
+            The resolved filename (existing or best match for creation)
+
+        Raises:
+            FileNotFoundError: If no matching configuration file is found and allow_create is False
+
+        """
+        # If already has extension, use as-is
+        if config_name.endswith(('.conf', '.sample')):
+            config_file = self.config_path / config_name
+            if config_file.exists() or allow_create:
+                return config_name
+            else:
+                raise FileNotFoundError(f"Configuration {config_name} not found")
+
+        # Try different extensions in order of preference
+        candidates = [
+            f"{config_name}.{config.default_config_type}.conf",  # e.g., plex.subdomain.conf
+            f"{config_name}.subdomain.conf",
+            f"{config_name}.subfolder.conf",
+            f"{config_name}.mcp-subdomain.conf",
+            f"{config_name}.mcp-subfolder.conf",
+            f"{config_name}.conf",  # fallback
+        ]
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_candidates = []
+        for candidate in candidates:
+            if candidate not in seen:
+                seen.add(candidate)
+                unique_candidates.append(candidate)
+
+        # Find first existing file
+        for candidate in unique_candidates:
+            config_file = self.config_path / candidate
+            if config_file.exists():
+                logger.info(f"Resolved '{config_name}' to '{candidate}'")
+                return candidate
+
+        # If allow_create is True, return the best candidate for creation
+        if allow_create and unique_candidates:
+            best_candidate = unique_candidates[0]  # Use default config type
+            logger.info(f"Resolved '{config_name}' to '{best_candidate}' (for creation)")
+            return best_candidate
+
+        # No file found, provide helpful error message
+        available_files = [f.name for f in self.config_path.glob("*.conf")]
+        available_files.extend([f.name for f in self.config_path.glob("*.sample")])
+        available_files.sort()
+
+        error_msg = (
+            f"No configuration file found for '{config_name}'. "
+            f"Tried: {', '.join(unique_candidates)}"
+        )
+        if available_files:
+            error_msg += f". Available files: {', '.join(available_files)}"
+
+        raise FileNotFoundError(error_msg)
+
     async def list_configs(self, config_type: str = "all") -> SwagListResult:
         """List configuration files based on type."""
         logger.info(f"Listing configurations of type: {config_type}")
@@ -789,12 +858,11 @@ class SwagManagerService:
         logger.info(f"Reading configuration: {config_name}")
         self._ensure_config_directory()
 
-        # Security validation: prevent path traversal attacks
-        validated_name = validate_config_filename(config_name)
+        # Resolve config name to actual filename and validate it
+        resolved_name = self._resolve_config_filename(config_name)
+        validated_name = validate_config_filename(resolved_name)
 
         config_file = self.config_path / validated_name
-        if not config_file.exists():
-            raise FileNotFoundError(f"Configuration {validated_name} not found")
 
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
@@ -906,8 +974,9 @@ class SwagManagerService:
         """Update configuration with optional backup."""
         logger.info(f"Updating configuration: {edit_request.config_name}")
 
-        # Security validation: prevent path traversal attacks
-        validated_name = validate_config_filename(edit_request.config_name)
+        # Resolve config name to actual filename and validate it (allow creation for edit)
+        resolved_name = self._resolve_config_filename(edit_request.config_name, allow_create=True)
+        validated_name = validate_config_filename(resolved_name)
 
         # Security validation: validate configuration content for dangerous patterns
         validated_content = self._validate_config_content(edit_request.new_content, validated_name)
@@ -1056,14 +1125,11 @@ class SwagManagerService:
         """Remove configuration with optional backup."""
         logger.info(f"Removing configuration: {remove_request.config_name}")
 
-        # Security validation: prevent path traversal attacks
-        validated_name = validate_config_filename(remove_request.config_name)
+        # Resolve config name to actual filename and validate it
+        resolved_name = self._resolve_config_filename(remove_request.config_name)
+        validated_name = validate_config_filename(resolved_name)
 
         config_file = self.config_path / validated_name
-
-        # Check if file exists
-        if not config_file.exists():
-            raise FileNotFoundError(f"Configuration {validated_name} not found")
 
         # Security validation: ensure file is safe to read as text
         if not validate_file_content_safety(config_file):
@@ -1160,57 +1226,66 @@ class SwagManagerService:
         )
 
     async def get_docker_logs(self, logs_request: SwagLogsRequest) -> str:
-        """Get SWAG docker container logs."""
-        logger.info(f"Getting SWAG docker logs: {logs_request.lines} lines")
-
-        import subprocess
-
+        """Get SWAG logs by reading log files directly from mounted volume."""
+        logger.info(f"Getting SWAG logs: {logs_request.lines} lines")
+        
+        # Define log file paths
+        log_base_path = Path("/mnt/appdata/swag/log")
+        nginx_log_path = log_base_path / "nginx"
+        error_log_path = nginx_log_path / "error.log"
+        access_log_path = nginx_log_path / "access.log"
+        
         try:
-            # Build docker logs command
-            cmd = ["docker", "logs", "--tail", str(logs_request.lines)]
-            if logs_request.follow:
-                cmd.append("--follow")
-
-            # Try common SWAG container names
-            container_names = ["swag", "letsencrypt", "nginx", "swag-nginx"]
-
-            for container_name in container_names:
-                try:
-                    result = subprocess.run(
-                        cmd + [container_name], capture_output=True, text=True, timeout=30
-                    )
-                    if result.returncode == 0:
-                        logger.info(f"Successfully retrieved logs from container: {container_name}")
-                        return result.stdout + result.stderr
-                    else:
-                        logger.debug(
-                            f"Container {container_name} failed with return code "
-                            f"{result.returncode}: {result.stderr}"
-                        )
-                except subprocess.TimeoutExpired:
-                    logger.warning(f"Timeout retrieving logs from container: {container_name}")
-                except Exception as e:
-                    logger.debug(f"Exception for container {container_name}: {e}")
-
-            # If no container found, list available containers
-            result = subprocess.run(
-                ["docker", "ps", "--format", "table {{.Names}}\t{{.Image}}"],
-                capture_output=True,
-                text=True,
-            )
-
-            available_containers = (
-                result.stdout if result.returncode == 0 else "Unable to list containers"
-            )
-
-            raise FileNotFoundError(
-                f"No SWAG container found. Tried: {', '.join(container_names)}\n"
-                f"Available containers:\n{available_containers}"
-            )
-
+            # Check if log directory exists
+            if not nginx_log_path.exists():
+                raise FileNotFoundError(
+                    f"SWAG log directory not found: {nginx_log_path}\n"
+                    "Please ensure SWAG is running and logs are properly mounted."
+                )
+            
+            # Read error logs (primary logs for troubleshooting)
+            logs_content = []
+            
+            if error_log_path.exists():
+                async with aiofiles.open(error_log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    lines = await f.readlines()
+                    # Get last N lines
+                    error_lines = lines[-logs_request.lines:] if len(lines) > logs_request.lines else lines
+                    if error_lines:
+                        logs_content.append("=== NGINX ERROR LOG ===")
+                        logs_content.extend(line.rstrip() for line in error_lines)
+                        logs_content.append("")
+            
+            # Also include recent access logs if requested lines is large or no error logs
+            if logs_request.lines >= 50 or not logs_content:
+                if access_log_path.exists():
+                    # For access logs, use fewer lines since they're verbose
+                    access_lines_to_show = min(logs_request.lines // 2, 25)
+                    async with aiofiles.open(access_log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = await f.readlines()
+                        access_lines = lines[-access_lines_to_show:] if len(lines) > access_lines_to_show else lines
+                        if access_lines:
+                            logs_content.append("=== NGINX ACCESS LOG (Recent) ===")
+                            logs_content.extend(line.rstrip() for line in access_lines)
+            
+            if not logs_content:
+                # Check what log files are available
+                available_logs = list(nginx_log_path.glob("*.log"))
+                available_logs.extend(nginx_log_path.glob("*.log.*"))
+                log_files = [f.name for f in available_logs]
+                
+                return f"No recent log entries found.\nAvailable log files: {', '.join(log_files) if log_files else 'None'}"
+            
+            result = "\n".join(logs_content)
+            logger.info(f"Successfully retrieved {len(logs_content)} lines of SWAG logs")
+            return result
+            
         except Exception as e:
-            logger.error(f"Failed to retrieve docker logs: {str(e)}")
-            raise
+            logger.error(f"Failed to read SWAG log files: {str(e)}")
+            raise FileNotFoundError(
+                f"Unable to read SWAG logs: {str(e)}\n"
+                f"Please check that SWAG is running and log files are accessible at: {nginx_log_path}"
+            )
 
     async def get_resource_configs(self) -> SwagResourceList:
         """Get list of active configuration files for resources."""
