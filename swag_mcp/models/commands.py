@@ -1,5 +1,4 @@
-"""
-This file previously contained discriminated union command models.
+"""Previously contained discriminated union command models.
 
 As of the refactor to follow the Docker-MCP pattern, these models have been
 replaced with a flat parameter structure using SwagAction enum and individual

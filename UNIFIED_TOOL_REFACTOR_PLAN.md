@@ -5,7 +5,7 @@
 This plan outlines the refactoring of 9 separate FastMCP tools into a single unified `swag` tool using Pydantic's discriminated union pattern. This approach will:
 
 - Reduce token usage and MCP protocol overhead
-- Provide better validation with clear error messages  
+- Provide better validation with clear error messages
 - Create a more CLI-like interface
 - Simplify maintenance and extensibility
 - Maintain full type safety and MyPy compliance
@@ -36,7 +36,7 @@ This plan outlines the refactoring of 9 separate FastMCP tools into a single uni
 ```
 SwagCommand (Discriminated Union)
 ├── ListCommand
-├── CreateCommand  
+├── CreateCommand
 ├── ViewCommand
 ├── EditCommand
 ├── ConfigCommand
@@ -63,7 +63,7 @@ from ..utils.validators import validate_domain_format
 
 class SwagCommandBase(BaseModel):
     """Base class for all SWAG commands with common functionality."""
-    
+
     class Config:
         extra = "forbid"  # Prevent additional fields
 
@@ -71,7 +71,7 @@ class SwagCommandBase(BaseModel):
 # Command Models
 class ListCommand(SwagCommandBase):
     """List SWAG configuration files."""
-    
+
     command: Literal["list"] = Field(
         default="list",
         description="List configuration files"
@@ -88,9 +88,9 @@ class ListCommand(SwagCommandBase):
 
 class CreateCommand(SwagCommandBase):
     """Create new SWAG reverse proxy configuration."""
-    
+
     command: Literal["create"] = Field(
-        default="create", 
+        default="create",
         description="Create new reverse proxy configuration"
     )
     service_name: Annotated[
@@ -174,7 +174,7 @@ class CreateCommand(SwagCommandBase):
 
 class ViewCommand(SwagCommandBase):
     """View contents of existing configuration file."""
-    
+
     command: Literal["view"] = Field(
         default="view",
         description="View configuration file contents"
@@ -191,7 +191,7 @@ class ViewCommand(SwagCommandBase):
 
 class EditCommand(SwagCommandBase):
     """Edit existing configuration file."""
-    
+
     command: Literal["edit"] = Field(
         default="edit",
         description="Edit existing configuration file"
@@ -223,7 +223,7 @@ class EditCommand(SwagCommandBase):
 
 class ConfigCommand(SwagCommandBase):
     """Configure default settings."""
-    
+
     command: Literal["config"] = Field(
         default="config",
         description="View current default configuration settings"
@@ -233,7 +233,7 @@ class ConfigCommand(SwagCommandBase):
 
 class RemoveCommand(SwagCommandBase):
     """Remove existing SWAG configuration file."""
-    
+
     command: Literal["remove"] = Field(
         default="remove",
         description="Remove configuration file"
@@ -257,7 +257,7 @@ class RemoveCommand(SwagCommandBase):
 
 class LogsCommand(SwagCommandBase):
     """Show SWAG docker container logs."""
-    
+
     command: Literal["logs"] = Field(
         default="logs",
         description="Show SWAG docker container logs"
@@ -282,7 +282,7 @@ class LogsCommand(SwagCommandBase):
 
 class CleanupCommand(SwagCommandBase):
     """Clean up old backup files."""
-    
+
     command: Literal["cleanup-backups"] = Field(
         default="cleanup-backups",
         description="Clean up old backup files"
@@ -298,7 +298,7 @@ class CleanupCommand(SwagCommandBase):
 
 class HealthCheckCommand(SwagCommandBase):
     """Perform health check on SWAG-managed service endpoint."""
-    
+
     command: Literal["health-check"] = Field(
         default="health-check",
         description="Perform health check on service endpoint"
@@ -434,16 +434,16 @@ def register_tools(mcp: FastMCP) -> None:
         ]
     ) -> str:
         """Unified SWAG reverse proxy configuration management tool.
-        
+
         This single tool handles all SWAG operations through a command-based interface.
         The 'command' field determines the operation, and additional fields vary by command.
-        
+
         Available Commands:
-        
+
         • list: List configuration files
           - config_type: "all" | "active" | "samples" (default: "all")
-        
-        • create: Create new reverse proxy configuration  
+
+        • create: Create new reverse proxy configuration
           - service_name: Service identifier for filename (required)
           - server_name: Domain name like "test.tootie.tv" (required)
           - upstream_app: Container name or IP (required)
@@ -452,61 +452,61 @@ def register_tools(mcp: FastMCP) -> None:
           - config_type: "subdomain" | "subfolder" | "mcp-subdomain" | "mcp-subfolder" (default: "subdomain")
           - auth_method: "none" | "ldap" | "authelia" | "authentik" | "tinyauth" (default: "none")
           - enable_quic: Enable QUIC support (default: false)
-        
+
         • view: View existing configuration content
           - config_name: Configuration file name with .conf or .sample extension (required)
-        
+
         • edit: Edit existing configuration
           - config_name: Configuration file name to edit (required)
           - new_content: New configuration content (required)
           - create_backup: Create backup before editing (default: true)
-        
+
         • config: View current default settings from environment variables
           - No additional parameters
-        
+
         • remove: Remove configuration file
           - config_name: Configuration file name with .conf extension (required)
           - create_backup: Create backup before removal (default: true)
-        
+
         • logs: View Docker container logs
           - lines: Number of lines to retrieve 1-1000 (default: 100)
           - follow: Follow log output (default: false)
-        
+
         • cleanup-backups: Clean up old backup files
           - retention_days: Days to retain backups (optional, uses config default)
-        
+
         • health-check: Check service endpoint health
           - domain: Full domain to check like "docker-mcp.tootie.tv" (required)
           - timeout: Request timeout 1-300 seconds (default: 30)
           - follow_redirects: Follow HTTP redirects (default: true)
-        
+
         Examples:
         - {"command": "list", "config_type": "active"}
         - {"command": "create", "service_name": "my-app", "server_name": "app.tootie.tv", "upstream_app": "my-app-container", "upstream_port": 3000}
         - {"command": "view", "config_name": "my-app.conf"}
         - {"command": "health-check", "domain": "app.tootie.tv"}
         """
-        
+
         # Dispatch based on command using pattern matching (Python 3.10+)
         match request.command:
             case "list":
                 await ctx.info(f"Listing SWAG configurations: {request.config_type}")
-                
+
                 if request.config_type not in ["all", "active", "samples"]:
                     raise ValueError("config_type must be 'all', 'active', or 'samples'")
-                
+
                 result = await swag_service.list_configs(request.config_type)
                 await ctx.info(f"Found {result.total_count} configurations")
                 return str(result.configs)
-                
+
             case "create":
                 # Prepare configuration defaults
                 auth_method, enable_quic, config_type = swag_service.prepare_config_defaults(
                     request.auth_method, request.enable_quic, request.config_type
                 )
-                
+
                 await ctx.info(f"Creating {config_type} configuration for {request.service_name}")
-                
+
                 # Convert command model to existing request model
                 config_request = SwagConfigRequest(
                     service_name=request.service_name,
@@ -518,36 +518,36 @@ def register_tools(mcp: FastMCP) -> None:
                     auth_method=auth_method,
                     enable_quic=enable_quic,
                 )
-                
+
                 # Check if template exists
                 if not await swag_service.validate_template_exists(config_type):
                     raise ValueError(f"Template for {config_type} configuration not found")
-                
+
                 # Create configuration
                 result = await swag_service.create_config(config_request)
                 await ctx.info(f"Successfully created {result.filename}")
-                
+
                 # Run health check and return formatted result
                 return await _run_post_create_health_check(ctx, request.server_name, result.filename)
-                
+
             case "view":
                 await ctx.info(f"Reading configuration: {request.config_name}")
-                
+
                 content = await swag_service.read_config(request.config_name)
                 await ctx.info(f"Successfully read {request.config_name} ({len(content)} characters)")
                 return content
-                
+
             case "edit":
                 await ctx.info(f"Editing configuration: {request.config_name}")
-                
+
                 edit_request = SwagEditRequest(
                     config_name=request.config_name,
                     new_content=request.new_content,
                     create_backup=request.create_backup
                 )
-                
+
                 result = await swag_service.update_config(edit_request)
-                
+
                 if result.backup_created:
                     message = f"Updated {request.config_name}, backup created: {result.backup_created}"
                     await ctx.info(message)
@@ -556,7 +556,7 @@ def register_tools(mcp: FastMCP) -> None:
                     message = f"Updated {request.config_name} (no backup created)"
                     await ctx.info(message)
                     return message
-                
+
             case "config":
                 await ctx.info("Retrieving current default configuration from environment variables")
                 current_defaults = {
@@ -570,17 +570,17 @@ def register_tools(mcp: FastMCP) -> None:
                 )
                 await ctx.info(message)
                 return message
-                
+
             case "remove":
                 await ctx.info(f"Removing configuration: {request.config_name}")
-                
+
                 remove_request = SwagRemoveRequest(
                     config_name=request.config_name,
                     create_backup=request.create_backup
                 )
-                
+
                 result = await swag_service.remove_config(remove_request)
-                
+
                 if result.backup_created:
                     message = f"Removed {request.config_name}, backup created: {result.backup_created}"
                     await ctx.info(message)
@@ -589,22 +589,22 @@ def register_tools(mcp: FastMCP) -> None:
                     message = f"Removed {request.config_name} (no backup created)"
                     await ctx.info(message)
                     return message
-                
+
             case "logs":
                 await ctx.info(f"Retrieving SWAG docker logs: {request.lines} lines")
-                
+
                 logs_request = SwagLogsRequest(lines=request.lines, follow=request.follow)
-                
+
                 logs_output = await swag_service.get_docker_logs(logs_request)
                 await ctx.info(f"Successfully retrieved {len(logs_output)} characters of log output")
-                
+
                 return logs_output
-                
+
             case "cleanup-backups":
                 await ctx.info("Running backup cleanup...")
-                
+
                 cleaned_count = await swag_service.cleanup_old_backups(request.retention_days)
-                
+
                 if cleaned_count > 0:
                     message = f"Cleaned up {cleaned_count} old backup files"
                     await ctx.info(message)
@@ -613,26 +613,26 @@ def register_tools(mcp: FastMCP) -> None:
                     message = "No old backup files to clean up"
                     await ctx.info(message)
                     return message
-                
+
             case "health-check":
                 await ctx.info(f"Starting health check for domain: {request.domain}")
-                
+
                 # Validate and create health check request
                 health_request = SwagHealthCheckRequest(
                     domain=request.domain,
                     timeout=request.timeout,
                     follow_redirects=request.follow_redirects
                 )
-                
+
                 # Perform health check
                 result = await swag_service.health_check(health_request)
-                
+
                 # Format the response using helper function
                 message, status = format_health_check_result(result)
                 await ctx.info(f"Health check {status} for {request.domain}")
-                
+
                 return message
-                
+
             case _:
                 # This should never happen due to Pydantic validation
                 raise ValueError(f"Unknown command: {request.command}")
@@ -654,43 +654,43 @@ from swag_mcp.tools.swag import register_tools
 
 class TestUnifiedSwagTool:
     """Test the unified SWAG tool."""
-    
+
     @pytest.fixture
     def mock_ctx(self):
         """Mock FastMCP context."""
         ctx = AsyncMock()
         return ctx
-    
-    @pytest.fixture  
+
+    @pytest.fixture
     def mock_mcp(self):
         """Mock FastMCP instance."""
         mcp = AsyncMock()
         return mcp
-    
+
     def test_list_command_validation(self):
         """Test ListCommand validation."""
         # Valid command
         cmd = ListCommand(config_type="active")
         assert cmd.command == "list"
         assert cmd.config_type == "active"
-        
+
         # Invalid config_type
         with pytest.raises(ValueError):
             ListCommand(config_type="invalid")
-    
+
     def test_create_command_validation(self):
         """Test CreateCommand validation."""
         # Valid command
         cmd = CreateCommand(
             service_name="test-app",
-            server_name="test.tootie.tv", 
+            server_name="test.tootie.tv",
             upstream_app="test-container",
             upstream_port=3000
         )
         assert cmd.command == "create"
         assert cmd.service_name == "test-app"
         assert cmd.upstream_port == 3000
-        
+
         # Invalid port
         with pytest.raises(ValueError):
             CreateCommand(
@@ -699,14 +699,14 @@ class TestUnifiedSwagTool:
                 upstream_app="test",
                 upstream_port=99999  # Invalid port
             )
-    
+
     def test_discriminated_union(self):
         """Test discriminated union works correctly."""
         # List command
         list_data = {"command": "list", "config_type": "all"}
         parsed = SwagCommand.model_validate(list_data)
         assert isinstance(parsed, ListCommand)
-        
+
         # Create command
         create_data = {
             "command": "create",
@@ -717,15 +717,15 @@ class TestUnifiedSwagTool:
         }
         parsed = SwagCommand.model_validate(create_data)
         assert isinstance(parsed, CreateCommand)
-    
+
     @pytest.mark.asyncio
     async def test_tool_registration(self, mock_mcp):
         """Test tool registration works."""
         register_tools(mock_mcp)
-        
+
         # Verify tool was registered
         mock_mcp.tool.assert_called_once()
-        
+
     @pytest.mark.asyncio
     @patch('swag_mcp.tools.swag.swag_service')
     async def test_list_command_execution(self, mock_service, mock_ctx):
@@ -735,21 +735,21 @@ class TestUnifiedSwagTool:
         mock_result.configs = ["test.conf"]
         mock_result.total_count = 1
         mock_service.list_configs.return_value = mock_result
-        
+
         # Import and call the registered function
         from swag_mcp.tools.swag import register_tools
         mcp = AsyncMock()
         register_tools(mcp)
-        
+
         # Get the registered function
         swag_tool = mcp.tool.call_args[0][0]
-        
+
         # Create test request
         request = ListCommand(config_type="all")
-        
+
         # Execute
         result = await swag_tool(mock_ctx, request)
-        
+
         # Verify
         assert "test.conf" in result
         mock_service.list_configs.assert_called_once_with("all")
@@ -782,7 +782,7 @@ All operations use the same tool name `swag` with a `command` field to specify t
   "command": "create",
   "service_name": "my-app",
   "server_name": "app.tootie.tv",
-  "upstream_app": "my-app-container", 
+  "upstream_app": "my-app-container",
   "upstream_port": 3000,
   "config_type": "subdomain",  // optional
   "auth_method": "none",       // optional
@@ -798,7 +798,7 @@ All operations use the same tool name `swag` with a `command` field to specify t
 }
 ```
 
-### Edit Configuration  
+### Edit Configuration
 ```json
 {
   "command": "edit",
@@ -811,7 +811,7 @@ All operations use the same tool name `swag` with a `command` field to specify t
 ### Health Check
 ```json
 {
-  "command": "health-check", 
+  "command": "health-check",
   "domain": "app.tootie.tv",
   "timeout": 30,           // optional
   "follow_redirects": true // optional
@@ -859,7 +859,7 @@ All operations use the same tool name `swag` with a `command` field to specify t
 ### Automatic Field Validation
 Pydantic automatically validates:
 - Required vs optional fields per command
-- Field types and constraints  
+- Field types and constraints
 - Enum values for Literal types
 - Pattern matching for strings
 - Range validation for numbers
@@ -890,7 +890,7 @@ This approach follows FastMCP best practices:
 The unified tool approach provides:
 - Better developer experience
 - Reduced complexity
-- Improved maintainability  
+- Improved maintainability
 - Enhanced validation
 - Lower resource usage
 

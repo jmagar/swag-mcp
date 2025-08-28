@@ -67,9 +67,7 @@ class SwagManagerService:
         self._active_transactions: dict[str, dict] = {}
         self._transaction_lock = asyncio.Lock()
 
-
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
-
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
         """Get or create a per-file lock for fine-grained concurrency control.
@@ -775,7 +773,7 @@ class SwagManagerService:
 
         """
         # If already has extension, use as-is
-        if config_name.endswith(('.conf', '.sample')):
+        if config_name.endswith((".conf", ".sample")):
             config_file = self.config_path / config_name
             if config_file.exists() or allow_create:
                 return config_name
@@ -1228,13 +1226,13 @@ class SwagManagerService:
     async def get_docker_logs(self, logs_request: SwagLogsRequest) -> str:
         """Get SWAG logs by reading log files directly from mounted volume."""
         logger.info(f"Getting SWAG logs: {logs_request.lines} lines")
-        
+
         # Define log file paths
         log_base_path = Path("/mnt/appdata/swag/log")
         nginx_log_path = log_base_path / "nginx"
         error_log_path = nginx_log_path / "error.log"
         access_log_path = nginx_log_path / "access.log"
-        
+
         try:
             # Check if log directory exists
             if not nginx_log_path.exists():
@@ -1242,50 +1240,56 @@ class SwagManagerService:
                     f"SWAG log directory not found: {nginx_log_path}\n"
                     "Please ensure SWAG is running and logs are properly mounted."
                 )
-            
+
             # Read error logs (primary logs for troubleshooting)
             logs_content = []
-            
+
             if error_log_path.exists():
-                async with aiofiles.open(error_log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                async with aiofiles.open(error_log_path, encoding="utf-8", errors="ignore") as f:
                     lines = await f.readlines()
                     # Get last N lines
-                    error_lines = lines[-logs_request.lines:] if len(lines) > logs_request.lines else lines
+                    error_lines = (
+                        lines[-logs_request.lines :] if len(lines) > logs_request.lines else lines
+                    )
                     if error_lines:
                         logs_content.append("=== NGINX ERROR LOG ===")
                         logs_content.extend(line.rstrip() for line in error_lines)
                         logs_content.append("")
-            
+
             # Also include recent access logs if requested lines is large or no error logs
-            if logs_request.lines >= 50 or not logs_content:
-                if access_log_path.exists():
-                    # For access logs, use fewer lines since they're verbose
-                    access_lines_to_show = min(logs_request.lines // 2, 25)
-                    async with aiofiles.open(access_log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        lines = await f.readlines()
-                        access_lines = lines[-access_lines_to_show:] if len(lines) > access_lines_to_show else lines
-                        if access_lines:
-                            logs_content.append("=== NGINX ACCESS LOG (Recent) ===")
-                            logs_content.extend(line.rstrip() for line in access_lines)
-            
+            if (logs_request.lines >= 50 or not logs_content) and access_log_path.exists():
+                # For access logs, use fewer lines since they're verbose
+                access_lines_to_show = min(logs_request.lines // 2, 25)
+                async with aiofiles.open(access_log_path, encoding="utf-8", errors="ignore") as f:
+                    lines = await f.readlines()
+                    access_lines = (
+                        lines[-access_lines_to_show:]
+                        if len(lines) > access_lines_to_show
+                        else lines
+                    )
+                    if access_lines:
+                        logs_content.append("=== NGINX ACCESS LOG (Recent) ===")
+                        logs_content.extend(line.rstrip() for line in access_lines)
+
             if not logs_content:
                 # Check what log files are available
                 available_logs = list(nginx_log_path.glob("*.log"))
                 available_logs.extend(nginx_log_path.glob("*.log.*"))
                 log_files = [f.name for f in available_logs]
-                
-                return f"No recent log entries found.\nAvailable log files: {', '.join(log_files) if log_files else 'None'}"
-            
+
+                available_files = ', '.join(log_files) if log_files else 'None'
+                return f"No recent log entries found.\nAvailable log files: {available_files}"
+
             result = "\n".join(logs_content)
             logger.info(f"Successfully retrieved {len(logs_content)} lines of SWAG logs")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to read SWAG log files: {str(e)}")
             raise FileNotFoundError(
                 f"Unable to read SWAG logs: {str(e)}\n"
                 f"Please check that SWAG is running and log files are accessible at: {nginx_log_path}"
-            )
+            ) from e
 
     async def get_resource_configs(self) -> SwagResourceList:
         """Get list of active configuration files for resources."""
