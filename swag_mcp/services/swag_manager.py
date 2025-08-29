@@ -24,6 +24,14 @@ from ..models.config import (
     SwagLogsRequest,
     SwagRemoveRequest,
     SwagResourceList,
+    SwagUpdateRequest,
+)
+from ..utils.error_handlers import handle_os_error
+from ..utils.formatters import (
+    build_config_filename,
+    build_template_filename,
+    get_possible_config_filenames,
+    get_possible_sample_filenames,
 )
 from ..utils.validators import (
     detect_and_handle_encoding,
@@ -594,48 +602,8 @@ class SwagManagerService:
                         os.fsync(f.fileno())
 
                 except OSError as e:
-                    # Handle specific disk-related errors
-                    # with user-friendly messages
-                    if e.errno == errno.ENOSPC:
-                        raise OSError(
-                            errno.ENOSPC,
-                            (
-                                f"Disk full during {operation_name}. "
-                                "Please free up space and try again."
-                            ),
-                        ) from e
-                    elif e.errno == errno.EDQUOT:
-                        raise OSError(
-                            errno.EDQUOT,
-                            (
-                                f"Disk quota exceeded during {operation_name}. "
-                                "Please free up space and try again."
-                            ),
-                        ) from e
-                    elif e.errno == errno.EACCES:
-                        raise OSError(
-                            errno.EACCES,
-                            f"Permission denied during {operation_name}. Check file permissions.",
-                        ) from e
-                    elif e.errno == errno.EROFS:
-                        raise OSError(
-                            errno.EROFS,
-                            f"Filesystem is read-only, cannot complete {operation_name}.",
-                        ) from e
-                    elif e.errno == errno.EIO:
-                        raise OSError(
-                            errno.EIO,
-                            (
-                                f"I/O error during {operation_name}. This may indicate "
-                                "disk corruption or hardware issues."
-                            ),
-                        ) from e
-                    else:
-                        # Generic I/O error
-                        raise OSError(
-                            e.errno or errno.EIO,
-                            f"File system error during {operation_name}: {str(e)}",
-                        ) from e
+                    # Use centralized error handling for OSError
+                    handle_os_error(e, operation_name)
                 except UnicodeEncodeError as e:
                     raise ValueError(
                         f"Content contains invalid characters for {operation_name}: {str(e)}"
@@ -675,19 +643,7 @@ class SwagManagerService:
                     temp_path.replace(file_path)
                     logger.debug(f"Successfully completed atomic {operation_name} to {file_path}")
                 except OSError as e:
-                    if e.errno == errno.ENOSPC:
-                        raise OSError(
-                            errno.ENOSPC, f"Disk full during final move for {operation_name}"
-                        ) from e
-                    elif e.errno == errno.EACCES:
-                        raise OSError(
-                            errno.EACCES,
-                            f"Permission denied during final move for {operation_name}",
-                        ) from e
-                    else:
-                        raise OSError(
-                            e.errno or errno.EIO, f"Failed to complete {operation_name}: {str(e)}"
-                        ) from e
+                    handle_os_error(e, f"final move for {operation_name}")
 
             except Exception:
                 # Clean up temporary file on any error
@@ -716,23 +672,6 @@ class SwagManagerService:
         if not self._directory_checked:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
-
-    def _get_template_name(self, config_type: str) -> str:
-        """Get template filename for the given configuration type.
-
-        Args:
-            config_type: The configuration type (subdomain, subfolder, mcp-subdomain, mcp-subfolder)
-
-        Returns:
-            Template filename with .j2 extension
-
-        """
-        if config_type == "mcp-subdomain":
-            return "mcp-subdomain.conf.j2"
-        elif config_type == "mcp-subfolder":
-            return "mcp-subfolder.conf.j2"
-        else:
-            return f"{config_type}.conf.j2"
 
     def prepare_config_defaults(
         self, auth_method: str, enable_quic: bool, config_type: str | None
@@ -781,14 +720,14 @@ class SwagManagerService:
                 raise FileNotFoundError(f"Configuration {config_name} not found")
 
         # Try different extensions in order of preference
-        candidates = [
-            f"{config_name}.{config.default_config_type}.conf",  # e.g., plex.subdomain.conf
-            f"{config_name}.subdomain.conf",
-            f"{config_name}.subfolder.conf",
-            f"{config_name}.mcp-subdomain.conf",
-            f"{config_name}.mcp-subfolder.conf",
-            f"{config_name}.conf",  # fallback
-        ]
+        candidates = get_possible_config_filenames(config_name, config.default_config_type)
+        candidates.extend(
+            [
+                build_config_filename(config_name, "mcp-subdomain"),
+                build_config_filename(config_name, "mcp-subfolder"),
+                f"{config_name}.conf",  # fallback
+            ]
+        )
 
         # Remove duplicates while preserving order
         seen = set()
@@ -878,23 +817,7 @@ class SwagManagerService:
             content = detect_and_handle_encoding(raw_content)
 
         except OSError as e:
-            if e.errno == errno.EACCES:
-                raise OSError(
-                    errno.EACCES, f"Permission denied reading configuration file: {validated_name}"
-                ) from e
-            elif e.errno == errno.EIO:
-                raise OSError(
-                    errno.EIO,
-                    (
-                        f"I/O error reading configuration file: {validated_name}. "
-                        "This may indicate disk corruption."
-                    ),
-                ) from e
-            else:
-                raise OSError(
-                    e.errno or errno.EIO,
-                    f"Error reading configuration file: {validated_name}: {str(e)}",
-                ) from e
+            handle_os_error(e, "reading configuration file", validated_name)
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(
                 f"Configuration file has invalid text encoding or Unicode characters: "
@@ -920,13 +843,13 @@ class SwagManagerService:
         validated_port = validate_upstream_port(request.upstream_port)
 
         # Determine template and filename
-        template_name = self._get_template_name(request.config_type)
+        template_name = build_template_filename(request.config_type)
         if request.config_type == "mcp-subdomain":
-            filename = f"{validated_service_name}.subdomain.conf"
+            filename = build_config_filename(validated_service_name, "subdomain")
         elif request.config_type == "mcp-subfolder":
-            filename = f"{validated_service_name}.subfolder.conf"
+            filename = build_config_filename(validated_service_name, "subfolder")
         else:
-            filename = f"{validated_service_name}.{request.config_type}.conf"
+            filename = build_config_filename(validated_service_name, request.config_type)
 
         # Perform configuration creation with proper locking to prevent race conditions
         config_file = self.config_path / filename
@@ -1000,6 +923,67 @@ class SwagManagerService:
             backup_created=backup_name,
         )
 
+    async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
+        """Update specific field in existing configuration using regex replacement."""
+        import re
+
+        logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
+
+        # Read existing config
+        content = await self.read_config(update_request.config_name)
+
+        # Create backup if requested
+        backup_name = None
+        if update_request.create_backup:
+            backup_name = await self._create_backup(update_request.config_name)
+
+        # Apply targeted replacements based on field type
+        if update_request.update_field == "port":
+            # Update both upstream_port locations
+            pattern = r"set \$upstream_port \d+;"
+            replacement = f"set $upstream_port {update_request.update_value};"
+            updated_content = re.sub(pattern, replacement, content)
+
+        elif update_request.update_field == "upstream":
+            # Update upstream_app
+            pattern = r"set \$upstream_app [^;]+;"
+            replacement = f"set $upstream_app {update_request.update_value};"
+            updated_content = re.sub(pattern, replacement, content)
+
+        elif update_request.update_field == "app":
+            # Update both app and port (format: "app:port")
+            if ":" not in update_request.update_value:
+                raise ValueError("app field requires format 'app:port'")
+            app, port = update_request.update_value.split(":", 1)
+
+            # Update app
+            pattern = r"set \$upstream_app [^;]+;"
+            replacement = f"set $upstream_app {app};"
+            updated_content = re.sub(pattern, replacement, content)
+
+            # Update port
+            pattern = r"set \$upstream_port \d+;"
+            replacement = f"set $upstream_port {port};"
+            updated_content = re.sub(pattern, replacement, updated_content)
+        else:
+            raise ValueError(f"Unsupported update field: {update_request.update_field}")
+
+        # Write updated content
+        config_file = self.config_path / update_request.config_name
+        await self._safe_write_file(
+            config_file, updated_content, f"field update for {update_request.config_name}"
+        )
+
+        logger.info(
+            f"Successfully updated {update_request.update_field} in {update_request.config_name}"
+        )
+
+        return SwagConfigResult(
+            filename=update_request.config_name,
+            content=updated_content,
+            backup_created=backup_name,
+        )
+
     async def _create_backup(self, config_name: str) -> str:
         """Create timestamped backup of configuration file with proper locking."""
         # Security validation: ensure config name is safe (should already be validated by caller)
@@ -1041,31 +1025,7 @@ class SwagManagerService:
                     content = detect_and_handle_encoding(raw_content)
 
                 except OSError as e:
-                    if e.errno == errno.EACCES:
-                        raise OSError(
-                            errno.EACCES,
-                            (
-                                f"Permission denied reading configuration file for backup: "
-                                f"{validated_name}"
-                            ),
-                        ) from e
-                    elif e.errno == errno.EIO:
-                        raise OSError(
-                            errno.EIO,
-                            (
-                                f"I/O error reading configuration file for backup: "
-                                f"{validated_name}. "
-                                "This may indicate disk corruption."
-                            ),
-                        ) from e
-                    else:
-                        raise OSError(
-                            e.errno or errno.EIO,
-                            (
-                                f"Error reading configuration file for backup: {validated_name}: "
-                                f"{str(e)}"
-                            ),
-                        ) from e
+                    handle_os_error(e, "reading configuration file for backup", validated_name)
                 except (ValueError, UnicodeDecodeError) as e:
                     raise ValueError(
                         f"Configuration file has invalid text encoding or Unicode characters "
@@ -1090,7 +1050,7 @@ class SwagManagerService:
 
     async def validate_template_exists(self, config_type: str) -> bool:
         """Validate that the required template exists."""
-        template_name = self._get_template_name(config_type)
+        template_name = build_template_filename(config_type)
         try:
             self.template_env.get_template(template_name)
             return True
@@ -1108,7 +1068,7 @@ class SwagManagerService:
 
         results = {}
         for config_type in ALL_CONFIG_TYPES:
-            template_name = self._get_template_name(config_type)
+            template_name = build_template_filename(config_type)
             try:
                 self.template_env.get_template(template_name)
                 results[template_name] = True
@@ -1192,25 +1152,7 @@ class SwagManagerService:
         try:
             config_file.unlink()
         except OSError as e:
-            if e.errno == errno.EACCES:
-                raise OSError(
-                    errno.EACCES, f"Permission denied removing configuration file: {validated_name}"
-                ) from e
-            elif e.errno == errno.EBUSY:
-                raise OSError(
-                    errno.EBUSY,
-                    f"Configuration file is in use and cannot be removed: {validated_name}",
-                ) from e
-            elif e.errno == errno.EROFS:
-                raise OSError(
-                    errno.EROFS,
-                    f"Filesystem is read-only, cannot remove configuration file: {validated_name}",
-                ) from e
-            else:
-                raise OSError(
-                    e.errno or errno.EIO,
-                    f"Error removing configuration file: {validated_name}: {str(e)}",
-                ) from e
+            handle_os_error(e, "removing configuration file", validated_name)
         except Exception as e:
             raise OSError(
                 errno.EIO,
@@ -1223,72 +1165,54 @@ class SwagManagerService:
             filename=validated_name, content=content, backup_created=backup_name
         )
 
-    async def get_docker_logs(self, logs_request: SwagLogsRequest) -> str:
+    async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
         """Get SWAG logs by reading log files directly from mounted volume."""
-        logger.info(f"Getting SWAG logs: {logs_request.lines} lines")
+        logger.info(f"Getting SWAG logs: {logs_request.log_type}, {logs_request.lines} lines")
 
-        # Define log file paths
-        log_base_path = Path("/mnt/appdata/swag/log")
-        nginx_log_path = log_base_path / "nginx"
-        error_log_path = nginx_log_path / "error.log"
-        access_log_path = nginx_log_path / "access.log"
+        # Map log types to file paths (using /swag mount point)
+        log_paths = {
+            "nginx-access": Path("/swag/log/nginx/access.log"),
+            "nginx-error": Path("/swag/log/nginx/error.log"),
+            "fail2ban": Path("/swag/log/fail2ban/fail2ban.log"),
+            "letsencrypt": Path("/swag/log/letsencrypt/letsencrypt.log"),
+            "renewal": Path("/swag/log/letsencrypt/renewal.log"),
+        }
+
+        log_file_path = log_paths.get(logs_request.log_type)
+
+        if not log_file_path:
+            raise ValueError(f"Invalid log type: {logs_request.log_type}")
 
         try:
-            # Check if log directory exists
-            if not nginx_log_path.exists():
-                raise FileNotFoundError(
-                    f"SWAG log directory not found: {nginx_log_path}\n"
-                    "Please ensure SWAG is running and logs are properly mounted."
+            if not log_file_path.exists():
+                # Return helpful message if file doesn't exist
+                return (
+                    f"Log file not found: {log_file_path}\n"
+                    "The log file may not exist yet or SWAG may not be running."
                 )
 
-            # Read error logs (primary logs for troubleshooting)
-            logs_content = []
+            # Read last N lines from the file efficiently
+            async with aiofiles.open(log_file_path, encoding="utf-8", errors="ignore") as f:
+                lines = await f.readlines()
+                # Get last N lines
+                result_lines = (
+                    lines[-logs_request.lines :] if len(lines) > logs_request.lines else lines
+                )
 
-            if error_log_path.exists():
-                async with aiofiles.open(error_log_path, encoding="utf-8", errors="ignore") as f:
-                    lines = await f.readlines()
-                    # Get last N lines
-                    error_lines = (
-                        lines[-logs_request.lines :] if len(lines) > logs_request.lines else lines
-                    )
-                    if error_lines:
-                        logs_content.append("=== NGINX ERROR LOG ===")
-                        logs_content.extend(line.rstrip() for line in error_lines)
-                        logs_content.append("")
+            if not result_lines:
+                return f"No log entries found in {logs_request.log_type} log."
 
-            # Also include recent access logs if requested lines is large or no error logs
-            if (logs_request.lines >= 50 or not logs_content) and access_log_path.exists():
-                # For access logs, use fewer lines since they're verbose
-                access_lines_to_show = min(logs_request.lines // 2, 25)
-                async with aiofiles.open(access_log_path, encoding="utf-8", errors="ignore") as f:
-                    lines = await f.readlines()
-                    access_lines = (
-                        lines[-access_lines_to_show:]
-                        if len(lines) > access_lines_to_show
-                        else lines
-                    )
-                    if access_lines:
-                        logs_content.append("=== NGINX ACCESS LOG (Recent) ===")
-                        logs_content.extend(line.rstrip() for line in access_lines)
-
-            if not logs_content:
-                # Check what log files are available
-                available_logs = list(nginx_log_path.glob("*.log"))
-                available_logs.extend(nginx_log_path.glob("*.log.*"))
-                log_files = [f.name for f in available_logs]
-
-                available_files = ', '.join(log_files) if log_files else 'None'
-                return f"No recent log entries found.\nAvailable log files: {available_files}"
-
-            result = "\n".join(logs_content)
-            logger.info(f"Successfully retrieved {len(logs_content)} lines of SWAG logs")
+            result = "".join(result_lines)
+            logger.info(
+                f"Successfully retrieved {len(result_lines)} lines from {logs_request.log_type}"
+            )
             return result
 
         except Exception as e:
-            logger.error(f"Failed to read SWAG log files: {str(e)}")
+            logger.error(f"Failed to read SWAG log file: {str(e)}")
             raise FileNotFoundError(
-                f"Unable to read SWAG logs: {str(e)}\n"
-                f"Please check that SWAG is running and log files are accessible at: {nginx_log_path}"
+                f"Unable to read SWAG {logs_request.log_type} logs: {str(e)}\n"
+                f"Please check that SWAG is running and log files are accessible"
             ) from e
 
     async def get_resource_configs(self) -> SwagResourceList:
@@ -1328,10 +1252,7 @@ class SwagManagerService:
         logger.info(f"Getting sample configurations for service: {service_name}")
 
         # Look for both subdomain and subfolder samples for the service
-        patterns = [
-            f"{service_name}.subdomain.conf.sample",
-            f"{service_name}.subfolder.conf.sample",
-        ]
+        patterns = get_possible_sample_filenames(service_name)
 
         found_configs = []
         for pattern in patterns:

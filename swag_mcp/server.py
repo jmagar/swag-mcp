@@ -32,6 +32,7 @@ from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.tools.swag import register_tools
+from swag_mcp.utils.formatters import build_template_filename
 
 # Configure dual logging (console + files)
 setup_logging()
@@ -159,10 +160,10 @@ def setup_templates() -> None:
 
     # Check if required templates exist
     required_templates = [
-        f"{CONFIG_TYPE_SUBDOMAIN}.conf.j2",
-        f"{CONFIG_TYPE_SUBFOLDER}.conf.j2",
-        f"mcp-{CONFIG_TYPE_SUBDOMAIN}.conf.j2",
-        f"mcp-{CONFIG_TYPE_SUBFOLDER}.conf.j2",
+        build_template_filename(CONFIG_TYPE_SUBDOMAIN),
+        build_template_filename(CONFIG_TYPE_SUBFOLDER),
+        build_template_filename(f"mcp-{CONFIG_TYPE_SUBDOMAIN}"),
+        build_template_filename(f"mcp-{CONFIG_TYPE_SUBFOLDER}"),
     ]
 
     for template_name in required_templates:

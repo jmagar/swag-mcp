@@ -13,9 +13,9 @@ services:
 
     # Volume mounts
     volumes:
-      # Main proxy configs directory (read-write access)
-      - ${SWAG_MCP_PROXY_CONFS_PATH}:/proxy-confs
-      # Persistent storage for logs
+      # Single mount for all SWAG access (proxy-confs and logs)
+      - /mnt/appdata/swag:/swag
+      # Persistent storage for MCP server logs
       - ${SWAG_MCP_LOG_DIRECTORY}:/app/.swag-mcp/logs
 
     # Network configuration

@@ -4,6 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from ..core.constants import (
+    VALID_CONFIG_NAME_PATTERN,
+    VALID_CONFIG_ONLY_PATTERN,
+    VALID_NAME_PATTERN,
+    VALID_UPSTREAM_PATTERN,
+)
 from ..utils.validators import validate_domain_format
 
 
@@ -13,7 +19,7 @@ class SwagConfigRequest(BaseModel):
     service_name: str = Field(
         ...,
         # Allow letters, numbers, hyphens, and underscores
-        pattern=r"^[\w-]+$",
+        pattern=VALID_NAME_PATTERN,
         max_length=50,
         description="Service identifier used for filename",
     )
@@ -22,7 +28,7 @@ class SwagConfigRequest(BaseModel):
 
     upstream_app: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_.-]+$",
+        pattern=VALID_UPSTREAM_PATTERN,
         max_length=100,
         description="Container name or IP address",
     )
@@ -87,7 +93,7 @@ class SwagEditRequest(BaseModel):
 
     config_name: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_.-]+\.(conf|sample)$",
+        pattern=VALID_CONFIG_NAME_PATTERN,
         description="Name of configuration file to edit",
     )
 
@@ -105,7 +111,7 @@ class SwagRemoveRequest(BaseModel):
 
     config_name: str = Field(
         ...,
-        pattern=r"^[a-zA-Z0-9_.-]+\.conf$",
+        pattern=VALID_CONFIG_ONLY_PATTERN,
         description="Name of configuration file to remove (must be .conf, not .sample)",
     )
 
@@ -115,9 +121,13 @@ class SwagRemoveRequest(BaseModel):
 
 
 class SwagLogsRequest(BaseModel):
-    """Request model for SWAG docker logs."""
+    """Request model for SWAG logs."""
 
-    lines: int = Field(default=100, ge=1, le=1000, description="Number of log lines to retrieve")
+    log_type: Literal["nginx-access", "nginx-error", "fail2ban", "letsencrypt", "renewal"] = Field(
+        default="nginx-error", description="Type of log file to read"
+    )
+
+    lines: int = Field(default=50, ge=1, le=1000, description="Number of log lines to retrieve")
 
     follow: bool = Field(default=False, description="Follow log output (stream mode)")
 
@@ -148,6 +158,28 @@ class SwagHealthCheckRequest(BaseModel):
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
         return validate_domain_format(v)
+
+
+class SwagUpdateRequest(BaseModel):
+    """Request model for updating specific SWAG configuration parameters."""
+
+    config_name: str = Field(
+        ...,
+        pattern=VALID_CONFIG_ONLY_PATTERN,
+        description="Name of configuration file to update",
+    )
+
+    update_field: Literal["port", "upstream", "app"] = Field(
+        ..., description="Field to update: 'port' | 'upstream' | 'app'"
+    )
+
+    update_value: str = Field(
+        ..., description="New value for the field (port number, app name, or app:port)"
+    )
+
+    create_backup: bool = Field(
+        default=True, description="Whether to create a backup before updating"
+    )
 
 
 class SwagHealthCheckResult(BaseModel):

@@ -37,7 +37,7 @@ class SwagConfig(BaseSettings):
 
     # Core paths
     proxy_confs_path: Path = Field(
-        default=Path("/proxy-confs"),
+        default=Path("/swag/nginx/proxy-confs"),
         description="Path to SWAG proxy configurations directory",
     )
 
