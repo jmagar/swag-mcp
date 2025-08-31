@@ -8,7 +8,6 @@ from pydantic import Field
 
 from ..core.config import config
 from ..core.constants import (
-    VALID_NAME_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
 from ..models.config import (
@@ -19,7 +18,7 @@ from ..models.config import (
     SwagRemoveRequest,
     SwagUpdateRequest,
 )
-from ..models.enums import SwagAction
+from ..models.enums import BackupSubAction, SwagAction
 from ..services.swag_manager import SwagManagerService
 from ..utils.formatters import format_health_check_result
 from ..utils.tool_decorators import handle_tool_errors
@@ -140,13 +139,12 @@ def register_tools(mcp: FastMCP) -> None:
             ),
         ] = "all",
         # Create parameters
-        service_name: Annotated[
+        config_name: Annotated[
             str,
             Field(
                 default="",
-                description="Service identifier used for filename",
-                max_length=50,
-                pattern=VALID_NAME_PATTERN.replace("+", "*"),  # Make optional for tool parameters
+                description="Configuration filename (e.g., 'jellyfin.subdomain.conf')",
+                max_length=255,
             ),
         ] = "",
         server_name: Annotated[
@@ -171,16 +169,10 @@ def register_tools(mcp: FastMCP) -> None:
             str,
             Field(default="http", description="Protocol for upstream connection: 'http' | 'https'"),
         ] = "http",
-        config_type_create: Annotated[
-            str,
-            Field(
-                default="subdomain",
-                description=(
-                    "Type of configuration to generate: 'subdomain' | 'subfolder' | "
-                    "'mcp-subdomain' | 'mcp-subfolder'"
-                ),
-            ),
-        ] = "subdomain",
+        mcp_enabled: Annotated[
+            bool,
+            Field(default=False, description="Enable MCP/SSE support for AI services"),
+        ] = False,
         auth_method: Annotated[
             str,
             Field(
@@ -193,16 +185,6 @@ def register_tools(mcp: FastMCP) -> None:
         enable_quic: Annotated[
             bool, Field(default=False, description="Enable QUIC support")
         ] = False,
-        # View/Edit/Remove parameters
-        config_name: Annotated[
-            str,
-            Field(
-                default="",
-                description="Configuration file name (with or without extension)",
-                max_length=255,
-                pattern=VALID_UPSTREAM_PATTERN.replace("+", "*"),  # Optional
-            ),
-        ] = "",
         # Edit parameters
         new_content: Annotated[
             str, Field(default="", description="New content for the configuration file")
@@ -224,13 +206,20 @@ def register_tools(mcp: FastMCP) -> None:
         lines: Annotated[
             int, Field(default=50, ge=1, le=1000, description="Number of log lines to retrieve")
         ] = 50,
-        # Cleanup parameters
+        # Backup parameters
+        backup_action: Annotated[
+            str,
+            Field(
+                default="",
+                description="Backup action: 'cleanup' or 'list'",
+            ),
+        ] = "",
         retention_days: Annotated[
             int,
             Field(
                 default=0,
                 ge=0,
-                description="Days to retain backup files (uses config default if not specified)",
+                description="Days to retain backup files (only for cleanup action)",
             ),
         ] = 0,
         # Health check parameters
@@ -275,8 +264,8 @@ def register_tools(mcp: FastMCP) -> None:
           - Optional: config_type (default: "all")
 
         • create: Create new reverse proxy configuration
-          - Required: action, service_name, server_name, upstream_app, upstream_port
-          - Optional: upstream_proto, config_type_create, auth_method, enable_quic
+          - Required: action, config_name, server_name, upstream_app, upstream_port
+          - Optional: upstream_proto, mcp_enabled, auth_method, enable_quic
 
         • view: View configuration file contents
           - Required: action, config_name
@@ -297,25 +286,26 @@ def register_tools(mcp: FastMCP) -> None:
           - Required: action, config_name
           - Optional: create_backup
 
-        • logs: Show SWAG docker container logs
+        • logs: Show SWAG logs
           - Required: action
           - Optional: lines
 
-        • cleanup_backups: Clean up old backup files
-          - Required: action
-          - Optional: retention_days
+        • backups: Manage backup files
+          - Required: action, backup_action
+          - Optional: retention_days (only for cleanup action)
+          - backup_action options: 'cleanup' | 'list'
 
         • health_check: Perform health check on service endpoint
           - Required: action, domain
           - Optional: timeout, follow_redirects
 
         Examples:
-          swag(action="create", service_name="jellyfin", server_name="media.example.com",
-               upstream_app="jellyfin", upstream_port=8096)
-          swag(action="list", config_type="active")
-          swag(action="view", config_name="plex")
-          swag(action="update", config_name="crawler.subdomain.conf", update_field="port",
-               update_value="8011")
+          "Create jellyfin.subdomain.conf for media.example.com using jellyfin:8096"
+          "List all active proxy configurations"
+          "Show the plex.subdomain.conf configuration"
+          "Update port for crawler.subdomain.conf to 8011"
+          "Clean up backup files older than 7 days"
+          "List all backup files"
 
         """
         # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
@@ -340,7 +330,7 @@ def register_tools(mcp: FastMCP) -> None:
                 # Validate required parameters
                 if error := validate_required_params(
                     {
-                        "service_name": (service_name, "service_name"),
+                        "config_name": (config_name, "config_name"),
                         "server_name": (server_name, "server_name"),
                         "upstream_app": (upstream_app, "upstream_app"),
                         "upstream_port": (
@@ -356,32 +346,22 @@ def register_tools(mcp: FastMCP) -> None:
                 (
                     auth_method_final,
                     enable_quic_final,
-                    config_type_final,
-                ) = swag_service.prepare_config_defaults(
-                    auth_method, enable_quic, config_type_create
-                )
+                    _,  # config_type not used anymore
+                ) = swag_service.prepare_config_defaults(auth_method, enable_quic, None)
 
-                await log_action_start(
-                    ctx, f"Creating {config_type_final} configuration", service_name
-                )
+                await log_action_start(ctx, "Creating configuration", config_name)
 
-                # Convert parameters to existing request model
+                # Convert parameters to new request model
                 config_request = SwagConfigRequest(
-                    service_name=service_name,
+                    config_name=config_name,
                     server_name=server_name,
                     upstream_app=upstream_app,
                     upstream_port=upstream_port,
                     upstream_proto=upstream_proto,  # type: ignore[arg-type]
-                    config_type=config_type_final,  # type: ignore[arg-type]
+                    mcp_enabled=mcp_enabled,
                     auth_method=auth_method_final,  # type: ignore[arg-type]
                     enable_quic=enable_quic_final,
                 )
-
-                # Check if template exists
-                if not await swag_service.validate_template_exists(config_type_final):
-                    return error_response(
-                        f"Template for {config_type_final} configuration not found"
-                    )
 
                 # Create configuration
                 create_result = await swag_service.create_config(config_request)
@@ -509,28 +489,62 @@ def register_tools(mcp: FastMCP) -> None:
                     character_count=len(logs_output),
                 )
 
-            elif action == SwagAction.CLEANUP_BACKUPS:
-                retention_msg = (
-                    f"{retention_days} days retention"
-                    if retention_days > 0
-                    else "default retention"
-                )
-                await log_action_start(ctx, "Running backup cleanup", retention_msg)
+            elif action == SwagAction.BACKUPS:
+                if error := validate_required_params(
+                    {
+                        "backup_action": (backup_action, "backup_action"),
+                    },
+                    "backups",
+                ):
+                    return error
 
-                retention_days_param = retention_days if retention_days > 0 else None
-                cleaned_count = await swag_service.cleanup_old_backups(retention_days_param)
+                # Validate backup_action
+                if backup_action not in ["cleanup", "list"]:
+                    return error_response(
+                        "Invalid backup_action. Must be 'cleanup' or 'list'",
+                        "validation_error",
+                    )
 
-                if cleaned_count > 0:
-                    message = f"Cleaned up {cleaned_count} old backup files"
-                else:
-                    message = "No old backup files to clean up"
+                # Dispatch to appropriate sub-action
+                if backup_action == BackupSubAction.CLEANUP:
+                    retention_msg = (
+                        f"{retention_days} days retention"
+                        if retention_days > 0
+                        else "default retention"
+                    )
+                    await log_action_start(ctx, "Running backup cleanup", retention_msg)
 
-                await log_action_success(ctx, message)
-                return success_response(
-                    message,
-                    cleaned_count=cleaned_count,
-                    retention_days=retention_days_param,
-                )
+                    retention_days_param = retention_days if retention_days > 0 else None
+                    cleaned_count = await swag_service.cleanup_old_backups(retention_days_param)
+
+                    if cleaned_count > 0:
+                        message = f"Cleaned up {cleaned_count} old backup files"
+                    else:
+                        message = "No old backup files to clean up"
+
+                    await log_action_success(ctx, message)
+                    return success_response(
+                        message,
+                        cleaned_count=cleaned_count,
+                        retention_days=retention_days_param,
+                    )
+
+                elif backup_action == BackupSubAction.LIST:
+                    await log_action_start(ctx, "Listing backup files", "all backup files")
+
+                    backup_files = await swag_service.list_backups()
+
+                    if not backup_files:
+                        message = "No backup files found"
+                    else:
+                        message = f"Found {len(backup_files)} backup files"
+
+                    await log_action_success(ctx, message)
+                    return success_response(
+                        message,
+                        backup_files=backup_files,
+                        total_count=len(backup_files),
+                    )
 
             elif action == SwagAction.HEALTH_CHECK:
                 if error := validate_required_params(
@@ -618,3 +632,4 @@ def register_tools(mcp: FastMCP) -> None:
                 f"Tool execution failed: {str(e)}",
                 action=action.value,
             )
+

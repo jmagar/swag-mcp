@@ -834,22 +834,34 @@ class SwagManagerService:
 
     async def create_config(self, request: SwagConfigRequest) -> SwagConfigResult:
         """Create new configuration from template."""
-        logger.info(f"Creating {request.config_type} configuration for {request.service_name}")
+        # Extract service_name and base_type from config_name
+        config_name = request.config_name  # e.g., "jellyfin.subdomain.conf"
+        parts = config_name.rsplit(".", 2)  # ['jellyfin', 'subdomain', 'conf']
+        if len(parts) != 3 or parts[2] != "conf":
+            raise ValueError(
+                f"Invalid config_name format. Must be 'service.type.conf' (got: {config_name})"
+            )
+
+        service_name = parts[0]
+        base_type = parts[1]  # 'subdomain' or 'subfolder'
+
+        if base_type not in ["subdomain", "subfolder"]:
+            raise ValueError(f"Invalid base type '{base_type}'. Must be 'subdomain' or 'subfolder'")
+
+        # Determine template based on base_type and mcp_enabled
+        template_type = f"mcp-{base_type}" if request.mcp_enabled else base_type
+
+        logger.info(f"Creating {template_type} configuration for {service_name} ({config_name})")
         self._ensure_config_directory()
 
         # Security validation: validate all input parameters
-        validated_service_name = validate_service_name(request.service_name)
+        validated_service_name = validate_service_name(service_name)
         validated_server_name = validate_domain_format(request.server_name)
         validated_port = validate_upstream_port(request.upstream_port)
 
         # Determine template and filename
-        template_name = build_template_filename(request.config_type)
-        if request.config_type == "mcp-subdomain":
-            filename = build_config_filename(validated_service_name, "subdomain")
-        elif request.config_type == "mcp-subfolder":
-            filename = build_config_filename(validated_service_name, "subfolder")
-        else:
-            filename = build_config_filename(validated_service_name, request.config_type)
+        template_name = build_template_filename(template_type)
+        filename = config_name  # Use the provided config_name directly
 
         # Perform configuration creation with proper locking to prevent race conditions
         config_file = self.config_path / filename
@@ -900,7 +912,9 @@ class SwagManagerService:
         validated_name = validate_config_filename(resolved_name)
 
         # Security validation: validate configuration content for dangerous patterns
-        validated_content = self._validate_config_content(edit_request.new_content, validated_name)
+        validated_content = self._validate_config_content(
+            edit_request.new_content or "", validated_name
+        )
 
         config_file = self.config_path / validated_name
         backup_name = None
@@ -1263,6 +1277,39 @@ class SwagManagerService:
         logger.info(f"Found {len(found_configs)} sample configurations for {service_name}")
 
         return SwagResourceList(configs=sorted(found_configs), total_count=len(found_configs))
+
+    async def list_backups(self) -> list[dict[str, Any]]:
+        """List all backup files with metadata."""
+        from ..core.constants import BACKUP_MARKER
+
+        logger.info("Listing all backup files")
+        backup_files = []
+        backup_pattern = "*" + BACKUP_MARKER + "*"
+
+        try:
+            for backup_path in self.config_path.glob(backup_pattern):
+                if backup_path.is_file():
+                    stat = backup_path.stat()
+
+                    # Extract original config name from backup filename
+                    original_config = backup_path.name.split(BACKUP_MARKER)[0]
+                    if not original_config.endswith(".conf"):
+                        original_config += ".conf"
+
+                    backup_files.append(
+                        {
+                            "name": backup_path.name,
+                            "size_bytes": stat.st_size,
+                            "modified_time": stat.st_mtime,
+                            "original_config": original_config,
+                        }
+                    )
+        except OSError as e:
+            logger.warning(f"Error scanning backup files: {e}")
+            return []
+
+        # Sort by modification time, newest first
+        return sorted(backup_files, key=lambda x: x["modified_time"], reverse=True)
 
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""

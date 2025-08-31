@@ -14,5 +14,12 @@ class SwagAction(str, Enum):
     CONFIG = "config"
     REMOVE = "remove"
     LOGS = "logs"
-    CLEANUP_BACKUPS = "cleanup_backups"
+    BACKUPS = "backups"
     HEALTH_CHECK = "health_check"
+
+
+class BackupSubAction(str, Enum):
+    """Sub-actions for backup management."""
+
+    CLEANUP = "cleanup"
+    LIST = "list"

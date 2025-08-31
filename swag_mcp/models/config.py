@@ -5,9 +5,9 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from ..core.constants import (
+    VALID_CONFIG_NAME_FORMAT,
     VALID_CONFIG_NAME_PATTERN,
     VALID_CONFIG_ONLY_PATTERN,
-    VALID_NAME_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
 from ..utils.validators import validate_domain_format
@@ -16,12 +16,10 @@ from ..utils.validators import validate_domain_format
 class SwagConfigRequest(BaseModel):
     """Request model for creating SWAG configurations."""
 
-    service_name: str = Field(
+    config_name: str = Field(
         ...,
-        # Allow letters, numbers, hyphens, and underscores
-        pattern=VALID_NAME_PATTERN,
-        max_length=50,
-        description="Service identifier used for filename",
+        pattern=VALID_CONFIG_NAME_FORMAT,
+        description="Configuration filename (e.g., 'jellyfin.subdomain.conf')",
     )
 
     server_name: str = Field(..., max_length=253, description="Domain name for the service")
@@ -39,12 +37,10 @@ class SwagConfigRequest(BaseModel):
         default="http", description="Protocol for upstream connection"
     )
 
-    config_type: Literal["subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"] = Field(
-        default="subdomain", description="Type of configuration to generate"
-    )
+    mcp_enabled: bool = Field(default=False, description="Enable MCP/SSE support for AI services")
 
     auth_method: Literal["none", "ldap", "authelia", "authentik", "tinyauth"] = Field(
-        default="none", description="Authentication method to use"
+        default="authelia", description="Authentication method to use"
     )
 
     enable_quic: bool = Field(default=False, description="Enable QUIC support")
@@ -55,13 +51,13 @@ class SwagConfigRequest(BaseModel):
         """Validate server name format."""
         return validate_domain_format(v)
 
-    @field_validator("service_name")
+    @field_validator("config_name")
     @classmethod
-    def validate_service_name(cls, v: str) -> str:
-        """Validate service name."""
-        if not v or v.startswith("-") or v.endswith("-"):
-            raise ValueError("Service name cannot start or end with hyphen")
-        return v.lower()
+    def validate_config_name(cls, v: str) -> str:
+        """Validate config name format."""
+        if not v or ".." in v or "/" in v or "\\" in v:
+            raise ValueError("Config name contains invalid characters")
+        return v
 
 
 class SwagConfigResult(BaseModel):
@@ -97,9 +93,35 @@ class SwagEditRequest(BaseModel):
         description="Name of configuration file to edit",
     )
 
-    new_content: str = Field(
-        ..., min_length=1, description="New content for the configuration file"
+    new_content: str | None = Field(
+        default=None, description="New content for the configuration file"
     )
+
+    # Add all create fields as optional for enhanced editing
+    server_name: str | None = Field(
+        default=None, max_length=253, description="Domain name for the service"
+    )
+
+    upstream_app: str | None = Field(
+        default=None,
+        pattern=VALID_UPSTREAM_PATTERN,
+        max_length=100,
+        description="Container name or IP address",
+    )
+
+    upstream_port: int | None = Field(
+        default=None, ge=1, le=65535, description="Port number the service runs on"
+    )
+
+    upstream_proto: Literal["http", "https"] | None = Field(
+        default=None, description="Protocol for upstream connection"
+    )
+
+    auth_method: Literal["none", "ldap", "authelia", "authentik", "tinyauth"] | None = Field(
+        default=None, description="Authentication method to use"
+    )
+
+    enable_quic: bool | None = Field(default=None, description="Enable QUIC support")
 
     create_backup: bool = Field(
         default=True, description="Whether to create a backup before editing"
@@ -179,6 +201,18 @@ class SwagUpdateRequest(BaseModel):
 
     create_backup: bool = Field(
         default=True, description="Whether to create a backup before updating"
+    )
+
+
+class SwagBackupRequest(BaseModel):
+    """Request model for backup management operations."""
+
+    backup_action: Literal["cleanup", "list"] = Field(
+        ..., description="Backup action: 'cleanup' or 'list'"
+    )
+
+    retention_days: int | None = Field(
+        default=None, description="Days to retain backups (only for cleanup action)"
     )
 
 

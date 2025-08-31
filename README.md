@@ -175,35 +175,35 @@ SWAG MCP is controlled through natural language commands. Simply tell Claude (or
 ### Creating a Basic Service
 
 **Natural Language:**
-- *"Create a SWAG reverse proxy for Jellyfin at jellyfin.example.com running on port 8096"*
-- *"Set up proxy for jellyfin using jellyfin.example.com on port 8096"*
+- *`claude -p "Create a SWAG reverse proxy for Jellyfin at jellyfin.example.com running on port 8096"`*
+- *`claude -p "Set up proxy for jellyfin using jellyfin.example.com on port 8096"`*
 
 **Shorthand:**
 ```
-swag create jellyfin jellyfin.example.com jellyfin 8096
+claude -p "swag create jellyfin jellyfin.example.com jellyfin 8096"
 ```
 
 ### Creating a Streamable-HTTP MCP service
 
 **Natural Language:**
-- *"Create a streaming MCP proxy for claude-mcp at ai.example.com on port 8080"*
-- *"Set up MCP subdomain proxy for claude-mcp-server at ai.example.com:8080 with streaming support"*
+- *`claude -p "Create a streaming MCP proxy for claude-mcp at ai.example.com on port 8080"`*
+- *`claude -p "Set up MCP subdomain proxy for claude-mcp-server at ai.example.com:8080 with streaming support"`*
 
 **Shorthand:**
 ```
-swag create claude-mcp ai.example.com claude-mcp-server 8080 mcp-subdomain
+claude -p "swag create claude-mcp ai.example.com claude-mcp-server 8080 mcp-subdomain"
 ```
 
 ### Health Check Verification
 
 **Natural Language:**
-- *"Check if jellyfin.example.com is accessible"*
-- *"Test the health of jellyfin.example.com"*
-- *"Is jellyfin.example.com working?"*
+- *`claude -p "Check if jellyfin.example.com is accessible"`*
+- *`claude -p "Test the health of jellyfin.example.com"`*
+- *`claude -p "Is jellyfin.example.com working?"`*
 
 **Shorthand:**
 ```
-swag health check jellyfin.example.com
+claude -p "swag health check jellyfin.example.com"
 ```
 
 ---
@@ -215,27 +215,27 @@ Once installed, try these common commands with your AI assistant:
 ### Most Common Tasks
 
 **Add a new service:**
-- *"Create a reverse proxy for Plex at plex.mydomain.com on port 32400"*
-- *"Add Sonarr proxy using sonarr.mydomain.com port 8989"*
+- *`claude -p "Create a reverse proxy for Plex at plex.mydomain.com on port 32400"`*
+- *`claude -p "Add Sonarr proxy using sonarr.mydomain.com port 8989"`*
 
 **Check what's configured:**
-- *"List all my proxy configurations"*
-- *"Show me only the active proxies"*
-- *"What SWAG configs do I have?"*
+- *`claude -p "List all my proxy configurations"`*
+- *`claude -p "Show me only the active proxies"`*
+- *`claude -p "What SWAG configs do I have?"`*
 
 **Health monitoring:**
-- *"Is plex.mydomain.com working?"*
-- *"Check if all my services are accessible"*
+- *`claude -p "Is plex.mydomain.com working?"`*
+- *`claude -p "Check if all my services are accessible"`*
 
 **Make changes:**
-- *"Update plex config to use port 32401"*
-- *"Change sonarr upstream to new-sonarr container"*
-- *"Remove the old test.subdomain.conf"*
+- *`claude -p "Update plex config to use port 32401"`*
+- *`claude -p "Change sonarr upstream to new-sonarr container"`*
+- *`claude -p "Remove the old test.subdomain.conf"`*
 
 **View logs and troubleshoot:**
-- *"Show me the last 50 nginx error log lines"*
-- *"Get fail2ban logs"*
-- *"What's in the SWAG access logs?"*
+- *`claude -p "Show me the last 50 nginx error log lines"`*
+- *`claude -p "Get fail2ban logs"`*
+- *`claude -p "What's in the SWAG access logs?"`*
 
 ---
 
@@ -246,10 +246,10 @@ The SWAG MCP server provides a single, powerful **`swag`** tool that performs di
 ### How to Use the Tool
 
 Simply describe what you want in natural language:
-- *"Create a reverse proxy for [service] at [domain] on port [port]"*
-- *"Check if [domain] is working"*
-- *"List all proxy configurations"*
-- *"Update [config] to use port [port]"*
+- *`claude -p "Create a reverse proxy for [service] at [domain] on port [port]"`*
+- *`claude -p "Check if [domain] is working"`*
+- *`claude -p "List all proxy configurations"`*
+- *`claude -p "Update [config] to use port [port]"`*
 
 The AI assistant will translate your request into the appropriate tool parameters.
 
@@ -275,10 +275,10 @@ The AI assistant will translate your request into the appropriate tool parameter
 Creates a new reverse proxy configuration with automatic health check verification.
 
 **Natural Language Examples:**
-- *"Create a reverse proxy for myapp at app.example.com running on myapp:8080"*
-- *"Set up subdomain proxy for myapp at app.example.com with authelia authentication"*
-- *"Add HTTPS proxy for secure-app at secure.example.com on port 8443"*
-- *"Create MCP streaming proxy for ai-service at ai.example.com:8080"*
+- *`claude -p "Create a reverse proxy for myapp at app.example.com running on myapp:8080"`*
+- *`claude -p "Set up subdomain proxy for myapp at app.example.com with authelia authentication"`*
+- *`claude -p "Add HTTPS proxy for secure-app at secure.example.com on port 8443"`*
+- *`claude -p "Create MCP streaming proxy for ai-service at ai.example.com:8080"`*
 
 **Key Options:**
 - **Config Types**: subdomain, subfolder, mcp-subdomain, mcp-subfolder
@@ -296,36 +296,36 @@ Intelligently tests service availability through multiple endpoints.
 4. Returns success for any valid HTTP response
 
 **Natural Language Examples:**
-- *"Check if app.example.com is accessible"*
-- *"Test app.example.com with 30 second timeout"*
-- *"Is my service at secure.example.com working?"*
+- *`claude -p "Check if app.example.com is accessible"`*
+- *`claude -p "Test app.example.com with 30 second timeout"`*
+- *`claude -p "Is my service at secure.example.com working?"`*
 
 #### `update` Action
 Update specific fields in existing configurations without full rewrites.
 
 **Natural Language Examples:**
-- *"Update port for app.subdomain.conf to 8081"*
-- *"Change upstream app for app.subdomain.conf to newapp"*
-- *"Update app.subdomain.conf to use newapp:8081"*
-- *"Modify plex config to use port 32401"*
+- *`claude -p "Update port for app.subdomain.conf to 8081"`*
+- *`claude -p "Change upstream app for app.subdomain.conf to newapp"`*
+- *`claude -p "Update app.subdomain.conf to use newapp:8081"`*
+- *`claude -p "Modify plex config to use port 32401"`*
 
 #### `list` Action
 List and filter configuration files.
 
 **Natural Language Examples:**
-- *"List all SWAG configurations"*
-- *"Show only active proxy configurations"*
-- *"What sample configuration files are available?"*
-- *"Display all my proxy configs"*
+- *`claude -p "List all SWAG configurations"`*
+- *`claude -p "Show only active proxy configurations"`*
+- *`claude -p "What sample configuration files are available?"`*
+- *`claude -p "Display all my proxy configs"`*
 
 #### `logs` Action
 View SWAG container logs for debugging.
 
 **Natural Language Examples:**
-- *"Show last 100 lines of nginx error logs"*
-- *"Get fail2ban logs"*
-- *"Display nginx access log entries"*
-- *"Show me the Let's Encrypt renewal logs"*
+- *`claude -p "Show last 100 lines of nginx error logs"`*
+- *`claude -p "Get fail2ban logs"`*
+- *`claude -p "Display nginx access log entries"`*
+- *`claude -p "Show me the Let's Encrypt renewal logs"`*
 
 </details>
 
@@ -363,10 +363,10 @@ Multiple separate tools with programmatic calls:
 
 ### New Approach (v2.x)
 Single tool with natural language interaction:
-- *"Create proxy for app at app.com using port 8080"*
-- *"Check if app.com is working"*
-- *"List all active configurations"*
-- *"Remove app.subdomain.conf"*
+- *`claude -p "Create proxy for app at app.com using port 8080"`*
+- *`claude -p "Check if app.com is working"`*
+- *`claude -p "List all active configurations"`*
+- *`claude -p "Remove app.subdomain.conf"`*
 
 ### Key Changes
 - **Natural Language**: No more function calls - just describe what you want
@@ -524,7 +524,7 @@ ${SWAG_MCP_LOG_DIRECTORY}/swag-mcp.log
 docker compose logs -f swag-mcp
 
 # View logs using natural language
-"Show last 100 lines of nginx error logs"
+claude -p "Show last 100 lines of nginx error logs"
 ```
 
 ### Health Monitoring
@@ -534,7 +534,7 @@ docker compose logs -f swag-mcp
 curl http://localhost:${SWAG_MCP_PORT}/health
 
 # Check specific service using natural language
-"Check if app.example.com is accessible"
+claude -p "Check if app.example.com is accessible"
 
 # Container health status
 docker compose ps swag-mcp
