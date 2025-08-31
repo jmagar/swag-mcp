@@ -632,4 +632,3 @@ def register_tools(mcp: FastMCP) -> None:
                 f"Tool execution failed: {str(e)}",
                 action=action.value,
             )
-
