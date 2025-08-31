@@ -7,6 +7,15 @@ CONF_EXTENSION = ".conf"
 SAMPLE_EXTENSION = ".sample"
 BACKUP_MARKER = ".backup."
 
+# Validation regex patterns
+VALID_NAME_PATTERN = r"^[\w-]+$"  # Service names, alphanumeric + hyphens/underscores
+VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.-]+$"  # Container names/IP addresses
+VALID_CONFIG_NAME_PATTERN = r"^[a-zA-Z0-9_.-]+\.(conf|sample)$"  # Config filenames
+VALID_CONFIG_ONLY_PATTERN = r"^[a-zA-Z0-9_.-]+\.conf$"  # Only .conf files
+VALID_CONFIG_NAME_FORMAT = (
+    r"^[a-zA-Z0-9_-]+\.(subdomain|subfolder)\.conf$"  # Full config filename format
+)
+
 # Configuration types
 CONFIG_TYPE_SUBDOMAIN = "subdomain"
 CONFIG_TYPE_SUBFOLDER = "subfolder"
