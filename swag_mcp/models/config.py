@@ -191,12 +191,13 @@ class SwagUpdateRequest(BaseModel):
         description="Name of configuration file to update",
     )
 
-    update_field: Literal["port", "upstream", "app"] = Field(
-        ..., description="Field to update: 'port' | 'upstream' | 'app'"
+    update_field: Literal["port", "upstream", "app", "add_mcp"] = Field(
+        ..., description="Field to update: 'port' | 'upstream' | 'app' | 'add_mcp'"
     )
 
     update_value: str = Field(
-        ..., description="New value for the field (port number, app name, or app:port)"
+        ...,
+        description="New value for field (port number, app name, app:port, or MCP path)",
     )
 
     create_backup: bool = Field(

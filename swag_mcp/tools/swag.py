@@ -242,14 +242,14 @@ def register_tools(mcp: FastMCP) -> None:
             str,
             Field(
                 default="",
-                description="Field to update: 'port' | 'upstream' | 'app'",
+                description="Field to update: 'port' | 'upstream' | 'app' | 'add_mcp'",
             ),
         ] = "",
         update_value: Annotated[
             str,
             Field(
                 default="",
-                description="New value for the field (port number, app name, or app:port)",
+                description="New value for field (port number, app name, app:port, or MCP path)",
             ),
         ] = "",
     ) -> dict[str, Any]:
@@ -277,7 +277,7 @@ def register_tools(mcp: FastMCP) -> None:
         • update: Update specific field in existing configuration
           - Required: action, config_name, update_field, update_value
           - Optional: create_backup
-          - update_field options: 'port' | 'upstream' | 'app'
+          - update_field options: 'port' | 'upstream' | 'app' | 'add_mcp'
 
         • config: View current default settings
           - Required: action
@@ -304,6 +304,8 @@ def register_tools(mcp: FastMCP) -> None:
           "List all active proxy configurations"
           "Show the plex.subdomain.conf configuration"
           "Update port for crawler.subdomain.conf to 8011"
+          "Add MCP endpoint to jellyfin.subdomain.conf"
+          "Add MCP location at /ai-service to plex.subdomain.conf"
           "Clean up backup files older than 7 days"
           "List all backup files"
 
@@ -625,6 +627,9 @@ def register_tools(mcp: FastMCP) -> None:
                     backup_created=update_result.backup_created,
                     health_check=health_check_result,
                 )
+
+            else:
+                return error_response(f"Unsupported action: {action.value}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")

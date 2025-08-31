@@ -978,6 +978,21 @@ class SwagManagerService:
             pattern = r"set \$upstream_port \d+;"
             replacement = f"set $upstream_port {port};"
             updated_content = re.sub(pattern, replacement, updated_content)
+
+        elif update_request.update_field == "add_mcp":
+            # Add MCP location block - delegate to the dedicated method
+            mcp_path = update_request.update_value if update_request.update_value else "/mcp"
+
+            # Call the add_mcp_location method
+            result = await self.add_mcp_location(
+                config_name=update_request.config_name,
+                mcp_path=mcp_path,
+                create_backup=update_request.create_backup,
+            )
+
+            # Return early since add_mcp_location handles everything
+            return result
+
         else:
             raise ValueError(f"Unsupported update field: {update_request.update_field}")
 
@@ -1533,3 +1548,157 @@ class SwagManagerService:
             success=False,
             error=error_msg,
         )
+
+    async def add_mcp_location(
+        self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
+    ) -> SwagConfigResult:
+        """Add MCP location block to existing SWAG configuration."""
+        logger.info(f"Adding MCP location block to {config_name} at path {mcp_path}")
+
+        # Validate MCP path format
+        if not mcp_path.startswith("/"):
+            raise ValueError("MCP path must start with '/'")
+
+        # Read existing config
+        try:
+            content = await self.read_config(config_name)
+        except FileNotFoundError as e:
+            raise ValueError(f"Configuration file {config_name} not found") from e
+
+        # Check if MCP location already exists
+        if f"location {mcp_path}" in content:
+            raise ValueError(f"MCP location {mcp_path} already exists in configuration")
+
+        # Create backup if requested
+        backup_name = None
+        if create_backup:
+            backup_name = await self._create_backup(config_name)
+
+        try:
+            # Extract current upstream values from config
+            upstream_app = self._extract_upstream_value(content, "upstream_app")
+            upstream_port = self._extract_upstream_value(content, "upstream_port")
+            upstream_proto = self._extract_upstream_value(content, "upstream_proto")
+            auth_method = self._extract_auth_method(content)
+
+            # Render MCP location block
+            mcp_block = await self._render_mcp_location_block(
+                mcp_path=mcp_path,
+                upstream_app=upstream_app,
+                upstream_port=upstream_port,
+                upstream_proto=upstream_proto,
+                auth_method=auth_method,
+            )
+
+            # Insert MCP location block before the last closing brace
+            updated_content = self._insert_location_block(content, mcp_block)
+
+            # Write updated content
+            config_file = self.config_path / config_name
+            await self._safe_write_file(
+                config_file, updated_content, f"MCP location addition for {config_name}"
+            )
+
+            logger.info(f"Successfully added MCP location block to {config_name}")
+            return SwagConfigResult(
+                filename=config_name, content=updated_content, backup_created=backup_name
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to add MCP location to {config_name}: {str(e)}")
+            # If we created a backup and failed, we should restore it
+            if backup_name:
+                try:
+                    backup_file = self.config_path / backup_name
+                    config_file = self.config_path / config_name
+                    if backup_file.exists():
+                        backup_file.rename(config_file)
+                        logger.info(f"Restored {config_name} from backup due to error")
+                except Exception as restore_error:
+                    logger.error(f"Failed to restore backup: {str(restore_error)}")
+
+            raise ValueError(f"Failed to add MCP location: {str(e)}") from e
+
+    def _extract_upstream_value(self, content: str, variable_name: str) -> str:
+        """Extract upstream variable value from nginx configuration content."""
+        import re
+
+        # Pattern to match: set $upstream_app value; or set $upstream_port value;
+        pattern = rf"set \${variable_name}\s+([^;]+);"
+        match = re.search(pattern, content)
+
+        if not match:
+            raise ValueError(f"Could not find {variable_name} in configuration")
+
+        return str(match.group(1)).strip()
+
+    def _extract_auth_method(self, content: str) -> str:
+        """Extract authentication method from nginx configuration content."""
+        import re
+
+        # Look for auth method includes like: include /config/nginx/authelia-server.conf;
+        pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
+        matches = re.findall(pattern, content)
+
+        if not matches:
+            return "none"
+
+        # Return the first auth method found
+        auth_method = matches[0]
+
+        # Validate it's a known auth method
+        valid_auth_methods = ["authelia", "authentik", "ldap", "tinyauth"]
+        if auth_method not in valid_auth_methods:
+            return "none"
+
+        return str(auth_method)
+
+    async def _render_mcp_location_block(
+        self,
+        mcp_path: str,
+        upstream_app: str,
+        upstream_port: str,
+        upstream_proto: str,
+        auth_method: str,
+    ) -> str:
+        """Render MCP location block template with provided variables."""
+        try:
+            # Get the template
+            template = self.template_env.get_template("mcp_location_block.j2")
+
+            # Render with variables
+            rendered = template.render(
+                mcp_path=mcp_path,
+                upstream_app=upstream_app,
+                upstream_port=upstream_port,
+                upstream_proto=upstream_proto,
+                auth_method=auth_method,
+            )
+
+            return rendered
+
+        except Exception as e:
+            raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
+
+    def _insert_location_block(self, content: str, location_block: str) -> str:
+        """Insert location block before the last closing brace of the server block."""
+        # Find the last closing brace (end of server block)
+        # We need to be careful to insert before the server's closing brace, not any nested blocks
+        lines = content.splitlines()
+        insert_index = -1
+
+        # Find the last line with just a closing brace (the server block end)
+        for i in range(len(lines) - 1, -1, -1):
+            line = lines[i].strip()
+            if line == "}":
+                insert_index = i
+                break
+
+        if insert_index == -1:
+            raise ValueError("Could not find server block closing brace")
+
+        # Insert the location block before the closing brace
+        lines.insert(insert_index, "")  # Add empty line for spacing
+        lines.insert(insert_index + 1, location_block)
+
+        return "\n".join(lines)

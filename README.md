@@ -230,6 +230,7 @@ Once installed, try these common commands with your AI assistant:
 **Make changes:**
 - *"Update plex config to use port 32401"*
 - *"Change sonarr upstream to new-sonarr container"*
+- *"Add MCP endpoint to jellyfin.subdomain.conf"*
 - *"Remove the old test.subdomain.conf"*
 
 **View logs and troubleshoot:**
@@ -250,6 +251,7 @@ Simply describe what you want in natural language:
 - *"Check if [domain] is working"*
 - *"List all proxy configurations"*
 - *"Update [config] to use port [port]"*
+- *"Add MCP endpoint to [config]"*
 
 The AI assistant will translate your request into the appropriate tool parameters.
 
@@ -308,6 +310,8 @@ Update specific fields in existing configurations without full rewrites.
 - *"Change upstream app for app.subdomain.conf to newapp"*
 - *"Update app.subdomain.conf to use newapp:8081"*
 - *"Modify plex config to use port 32401"*
+- *"Add MCP endpoint to jellyfin.subdomain.conf"*
+- *"Add MCP location at /ai-service to plex.subdomain.conf"*
 
 #### `list` Action
 List and filter configuration files.
