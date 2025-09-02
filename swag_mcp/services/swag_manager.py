@@ -37,6 +37,7 @@ from ..utils.validators import (
     validate_config_filename,
     validate_domain_format,
     validate_file_content_safety,
+    validate_mcp_path,
     validate_service_name,
     validate_upstream_port,
 )
@@ -843,8 +844,6 @@ class SwagManagerService:
 
     async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
         """Update specific field in existing configuration using regex replacement."""
-        import re
-
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
@@ -888,10 +887,18 @@ class SwagManagerService:
             # Add MCP location block - delegate to the dedicated method
             mcp_path = update_request.update_value if update_request.update_value else "/mcp"
 
-            # Call the add_mcp_location method
+            # Validate the computed MCP path
+            try:
+                validated_mcp_path = validate_mcp_path(mcp_path)
+            except ValueError as e:
+                error_msg = f"Invalid MCP path: {str(e)}"
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
+
+            # Call the add_mcp_location method with validated path
             result = await self.add_mcp_location(
                 config_name=update_request.config_name,
-                mcp_path=mcp_path,
+                mcp_path=validated_mcp_path,
                 create_backup=update_request.create_backup,
             )
 
@@ -1227,8 +1234,6 @@ class SwagManagerService:
 
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""
-        import re
-
         if retention_days is None:
             retention_days = config.backup_retention_days
 
@@ -1479,8 +1484,11 @@ class SwagManagerService:
         except FileNotFoundError as e:
             raise ValueError(f"Configuration file {config_name} not found") from e
 
-        # Check if MCP location already exists
-        if f"location {mcp_path}" in content:
+        # Check if MCP location already exists (match '=', '^~', or plain)
+        import re
+
+        dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
+        if dup_pat.search(content):
             raise ValueError(f"MCP location {mcp_path} already exists in configuration")
 
         # Create backup if requested
@@ -1489,54 +1497,48 @@ class SwagManagerService:
             backup_name = await self._create_backup(config_name)
 
         try:
-            # Extract current upstream values from config
-            upstream_app = self._extract_upstream_value(content, "upstream_app")
-            upstream_port = self._extract_upstream_value(content, "upstream_port")
-            upstream_proto = self._extract_upstream_value(content, "upstream_proto")
-            auth_method = self._extract_auth_method(content)
+            # Begin atomic transaction
+            async with self.begin_transaction(f"add_mcp:{config_name}") as txn:
+                # Extract current upstream values from config
+                upstream_app = self._extract_upstream_value(content, "upstream_app")
+                upstream_port = self._extract_upstream_value(content, "upstream_port")
+                upstream_proto = self._extract_upstream_value(content, "upstream_proto")
+                auth_method = self._extract_auth_method(content)
 
-            # Render MCP location block
-            mcp_block = await self._render_mcp_location_block(
-                mcp_path=mcp_path,
-                upstream_app=upstream_app,
-                upstream_port=upstream_port,
-                upstream_proto=upstream_proto,
-                auth_method=auth_method,
-            )
+                # Render MCP location block
+                mcp_block = await self._render_mcp_location_block(
+                    mcp_path=mcp_path,
+                    upstream_app=upstream_app,
+                    upstream_port=upstream_port,
+                    upstream_proto=upstream_proto,
+                    auth_method=auth_method,
+                )
 
-            # Insert MCP location block before the last closing brace
-            updated_content = self._insert_location_block(content, mcp_block)
+                # Insert MCP location block before the last closing brace
+                updated_content = self._insert_location_block(content, mcp_block)
 
-            # Write updated content
-            config_file = self.config_path / config_name
-            await self._safe_write_file(
-                config_file, updated_content, f"MCP location addition for {config_name}"
-            )
+                # Write updated content (track for rollback)
+                config_file = self.config_path / config_name
+                await txn.track_file_modification(config_file)
+                await self._safe_write_file(
+                    config_file, updated_content, f"MCP location addition for {config_name}"
+                )
 
-            logger.info(f"Successfully added MCP location block to {config_name}")
-            return SwagConfigResult(
-                filename=config_name, content=updated_content, backup_created=backup_name
-            )
+                # Validate nginx syntax before committing (abort on failure)
+                await self._validate_nginx_syntax(config_file)
+
+                logger.info(f"Successfully added MCP location block to {config_name}")
+                await txn.commit()
+                return SwagConfigResult(
+                    filename=config_name, content=updated_content, backup_created=backup_name
+                )
 
         except Exception as e:
             logger.error(f"Failed to add MCP location to {config_name}: {str(e)}")
-            # If we created a backup and failed, we should restore it
-            if backup_name:
-                try:
-                    backup_file = self.config_path / backup_name
-                    config_file = self.config_path / config_name
-                    if backup_file.exists():
-                        backup_file.rename(config_file)
-                        logger.info(f"Restored {config_name} from backup due to error")
-                except Exception as restore_error:
-                    logger.error(f"Failed to restore backup: {str(restore_error)}")
-
             raise ValueError(f"Failed to add MCP location: {str(e)}") from e
 
     def _extract_upstream_value(self, content: str, variable_name: str) -> str:
         """Extract upstream variable value from nginx configuration content."""
-        import re
-
         # Pattern to match: set $upstream_app value; or set $upstream_port value;
         pattern = rf"set \${variable_name}\s+([^;]+);"
         match = re.search(pattern, content)
@@ -1602,7 +1604,7 @@ class SwagManagerService:
         server_start = -1
         # Find the start of the server block
         for i, line in enumerate(lines):
-            if re.match(r'^\s*server\s*\{', line):
+            if re.match(r"^\s*server\s*\{", line):
                 server_start = i
                 break
         if server_start == -1:
@@ -1612,8 +1614,8 @@ class SwagManagerService:
         insert_index = -1
         for i in range(server_start, len(lines)):
             # Count braces in the line
-            brace_count += lines[i].count('{')
-            brace_count -= lines[i].count('}')
+            brace_count += lines[i].count("{")
+            brace_count -= lines[i].count("}")
             # When brace_count returns to zero, we've found the server block's closing brace
             if brace_count == 0:
                 insert_index = i
@@ -1624,3 +1626,26 @@ class SwagManagerService:
         lines.insert(insert_index, "")  # Add empty line for spacing
         lines.insert(insert_index + 1, location_block)
         return "\n".join(lines)
+
+    async def _validate_nginx_syntax(self, changed_file: Path) -> None:
+        """Validate nginx syntax of the configuration file.
+
+        Args:
+            changed_file: Path to the configuration file to validate
+
+        Raises:
+            ValueError: If nginx syntax validation fails
+
+        """
+        # Best-effort syntax check; customize nginx.conf path if needed
+        import asyncio
+
+        proc = await asyncio.create_subprocess_exec(
+            "nginx",
+            "-t",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
+        if proc.returncode != 0:
+            raise ValueError(f"Nginx syntax validation failed: {err.decode().strip()}")

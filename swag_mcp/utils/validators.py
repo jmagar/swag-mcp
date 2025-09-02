@@ -615,3 +615,70 @@ def validate_upstream_port(port: int) -> int:
         pass
 
     return port
+
+
+def validate_mcp_path(mcp_path: str) -> str:
+    """Validate MCP path format for security and correctness.
+
+    Args:
+        mcp_path: MCP path to validate
+
+    Returns:
+        Validated MCP path
+
+    Raises:
+        ValueError: If MCP path is invalid
+
+    """
+    if not mcp_path:
+        raise ValueError("MCP path cannot be empty")
+
+    # Length validation
+    if len(mcp_path) > 255:
+        raise ValueError("MCP path is too long (maximum 255 characters)")
+
+    # Must start with '/'
+    if not mcp_path.startswith("/"):
+        raise ValueError("MCP path must start with '/'")
+
+    # Check for path traversal attempts
+    if ".." in mcp_path:
+        raise ValueError("Path traversal not allowed in MCP paths")
+
+    # Check for null bytes and other dangerous characters
+    dangerous_chars = ["\0", "\n", "\r", "\t"]
+    for char in dangerous_chars:
+        if char in mcp_path:
+            raise ValueError(f"Invalid character in MCP path: {repr(char)}")
+
+    # Allow only safe characters: letters, digits, '/', '-', '_', '.'
+    if not re.match(r"^[a-zA-Z0-9/_.-]+$", mcp_path):
+        raise ValueError(
+            "MCP path can only contain letters, digits, '/', '-', '_', and '.' characters"
+        )
+
+    # Prevent double slashes (except at the start which is handled above)
+    if "//" in mcp_path:
+        raise ValueError("MCP path cannot contain consecutive slashes")
+
+    # Cannot end with '/' unless it's the root path
+    if mcp_path != "/" and mcp_path.endswith("/"):
+        raise ValueError("MCP path cannot end with '/' (except root path)")
+
+    # Additional security checks
+    # Check for suspicious patterns that might be used for injection
+    suspicious_patterns = [
+        r"[<>:\"|?*]",  # Characters that could cause issues in configs
+        r"[\x00-\x1f\x7f]",  # Control characters
+        r"\|",  # Pipe character
+        r";",  # Semicolon (command separator)
+        r"&",  # Ampersand (command operator)
+        r"\$",  # Dollar sign (variable expansion)
+        r"`",  # Backtick (command substitution)
+    ]
+
+    for pattern in suspicious_patterns:
+        if re.search(pattern, mcp_path):
+            raise ValueError("MCP path contains invalid or potentially dangerous characters")
+
+    return mcp_path
