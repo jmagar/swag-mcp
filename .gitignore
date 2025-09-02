@@ -97,7 +97,8 @@ celerybeat.pid
 
 # Environments
 .env
-.env.backup
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -148,6 +149,3 @@ Thumbs.db
 
 # AI review and fix documentation
 *-fixes.md
-
-# Tests directory
-tests/

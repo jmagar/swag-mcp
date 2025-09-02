@@ -48,6 +48,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+cache_dir = ".cache/pytest"
 markers = [
     "slow: marks tests as slow (potentially network-dependent)",
 ]
@@ -122,6 +123,22 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["aiohttp"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+data_file = ".cache/coverage/.coverage"
+source = ["swag_mcp"]
+
+[tool.coverage.html]
+directory = ".cache/coverage/htmlcov"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]

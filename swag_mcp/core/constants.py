@@ -43,6 +43,7 @@ MIME_TYPE_APPLICATION_JSON = "application/json"
 
 # Authentication methods
 AUTH_METHOD_NONE = "none"
+AUTH_METHOD_BASIC = "basic"
 AUTH_METHOD_AUTHELIA = "authelia"
 AUTH_METHOD_LDAP = "ldap"
 AUTH_METHOD_AUTHENTIK = "authentik"
