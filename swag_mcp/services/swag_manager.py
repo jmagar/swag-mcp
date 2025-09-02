@@ -1460,8 +1460,18 @@ class SwagManagerService:
         logger.info(f"Adding MCP location block to {config_name} at path {mcp_path}")
 
         # Validate MCP path format
+        # Validate MCP path format
         if not mcp_path.startswith("/"):
             raise ValueError("MCP path must start with '/'")
+        
+        # Additional validation for security
+        import re
+        if ".." in mcp_path or "//" in mcp_path:
+            raise ValueError("MCP path contains invalid patterns")
+        if not re.match(r'^/[a-zA-Z0-9._~/-]*$', mcp_path):
+            raise ValueError("MCP path contains invalid characters")
+        if len(mcp_path) > 255:
+            raise ValueError("MCP path is too long (max 255 characters)")
 
         # Read existing config
         try:
