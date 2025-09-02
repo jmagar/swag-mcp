@@ -258,7 +258,7 @@ The AI assistant will translate your request into the appropriate tool parameter
 
 | Action | Description | Key Parameters |
 |--------|-------------|----------------|
-| **`list`** | List all configurations | `config_type` (all/active/samples) |
+| **`list`** | List all configurations | `list_filter` (all/active/samples) |
 | **`create`** | Generate new proxy configuration | `service_name`, `server_name`, `upstream_app`, `upstream_port` |
 | **`view`** | Read configuration content | `config_name` |
 | **`edit`** | Modify configuration safely | `config_name`, `new_content`, `create_backup` |

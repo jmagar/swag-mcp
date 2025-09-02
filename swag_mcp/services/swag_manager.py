@@ -672,21 +672,21 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    async def list_configs(self, config_type: str = "all") -> SwagListResult:
+    async def list_configs(self, list_filter: str = "all") -> SwagListResult:
         """List configuration files based on type."""
-        logger.info(f"Listing configurations of type: {config_type}")
+        logger.info(f"Listing configurations of type: {list_filter}")
         self._ensure_config_directory()
 
         configs = []
 
-        if config_type in ["all", "active"]:
+        if list_filter in ["all", "active"]:
             # List active configurations (.conf files, not .sample)
             active_configs = [
                 f.name for f in self.config_path.glob("*.conf") if not f.name.endswith(".sample")
             ]
             configs.extend(active_configs)
 
-        if config_type in ["all", "samples"]:
+        if list_filter in ["all", "samples"]:
             # List sample configurations (.sample files)
             sample_configs = [f.name for f in self.config_path.glob("*.sample")]
             configs.extend(sample_configs)
@@ -696,7 +696,7 @@ class SwagManagerService:
 
         logger.info(f"Found {len(configs)} configurations")
 
-        return SwagListResult(configs=configs, total_count=len(configs), config_type=config_type)
+        return SwagListResult(configs=configs, total_count=len(configs), list_filter=list_filter)
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content."""
@@ -1477,8 +1477,6 @@ class SwagManagerService:
             raise ValueError(f"Configuration file {config_name} not found") from e
 
         # Check if MCP location already exists (match '=', '^~', or plain)
-        import re
-
         dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
         if dup_pat.search(content):
             raise ValueError(f"MCP location {mcp_path} already exists in configuration")
@@ -1619,22 +1617,25 @@ class SwagManagerService:
         lines.insert(insert_index + 1, location_block)
         return "\n".join(lines)
 
-    async def _validate_nginx_syntax(self, changed_file: Path) -> None:
+    async def _validate_nginx_syntax(self, changed_file: Path, nginx_path: str = None) -> None:
         """Validate nginx syntax of the configuration file.
 
         Args:
             changed_file: Path to the configuration file to validate
+            nginx_path: Path to nginx executable (optional, defaults to 'nginx' in PATH)
 
         Raises:
             ValueError: If nginx syntax validation fails
 
         """
-        # Best-effort syntax check; customize nginx.conf path if needed
-        import asyncio
+        # Use provided nginx path or default to 'nginx' in PATH
+        nginx_executable = nginx_path or getattr(config, "nginx_path", "nginx")
 
         proc = await asyncio.create_subprocess_exec(
-            "nginx",
+            nginx_executable,
             "-t",
+            "-c",
+            str(changed_file),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

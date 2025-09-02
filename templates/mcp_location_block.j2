@@ -1,5 +1,5 @@
     # MCP Server endpoint for streamable-http transport
-    location {{ mcp_path | default('/mcp') }} {
+    location ^~ {{ mcp_path | default('/mcp') }} {
 {% if auth_method != "none" %}
         # enable for {{ auth_method }} (requires {{ auth_method }}-server.conf in the server block)
         include /config/nginx/{{ auth_method }}-location.conf;
@@ -18,12 +18,17 @@
         proxy_max_temp_file_size 0;
         chunked_transfer_encoding on;
 
+        # Disable upstream compression for SSE streams
+        proxy_set_header Accept-Encoding "";
+
         # Connection management for SSE/streaming
         proxy_set_header Connection "";
-        proxy_set_header X-Accel-Buffering "no";
-        proxy_set_header Cache-Control "no-cache, no-store, must-revalidate";
-        proxy_set_header Pragma "no-cache";
-        proxy_set_header Expires "0";
+
+        # Response headers for streaming/caching control
+        add_header X-Accel-Buffering "no" always;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         # Standard reverse proxy headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

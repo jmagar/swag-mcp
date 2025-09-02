@@ -96,7 +96,7 @@ def validate_config_filename(filename: str) -> str:
     is performed.
 
     Args:
-        filename: Full configuration filename to validate (e.g., "service.subdomain.conf")
+        filename: Full configuration filename to validate (e.g., "jellyfin.subdomain.conf")
 
     Returns:
         Validated filename if safe
@@ -104,43 +104,69 @@ def validate_config_filename(filename: str) -> str:
     Raises:
         ValueError: If filename contains dangerous patterns or is not a complete filename
 
+    Note:
+        Must be a full filename including extension, e.g., 'service.conf' or a sample file
+        'service.conf.sample' — do not pass service names or partial paths
+
     """
     if not filename:
         raise ValueError("Configuration filename cannot be empty")
 
-    # Basic length check
-    if len(filename) > 255:
+    # Normalize Unicode and trim whitespace to prevent bypass attempts
+    try:
+        normalized_filename = unicodedata.normalize("NFC", filename.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Configuration filename contains invalid Unicode: {str(e)}") from e
+
+    # Basic length check (on normalized filename)
+    if len(normalized_filename) > 255:
         raise ValueError("Configuration filename too long")
 
-    # Check for path traversal attempts
-    if ".." in filename:
-        raise ValueError("Path traversal not allowed in configuration names")
+    # Check for path separators (reject any path components)
+    if "/" in normalized_filename or "\\" in normalized_filename:
+        raise ValueError("Path separators not allowed in configuration filenames")
 
-    # Check for absolute paths
-    if filename.startswith(("/", "\\")):
-        raise ValueError("Absolute paths not allowed in configuration names")
+    # Check for path traversal segments
+    if ".." in normalized_filename:
+        raise ValueError("Path traversal segments not allowed in configuration names")
+
+    # Check for hidden files (files starting with dot)
+    if normalized_filename.startswith("."):
+        raise ValueError("Hidden files (starting with '.') not allowed")
 
     # Check for null bytes and other dangerous characters
     dangerous_chars = ["\0", "\n", "\r", "\t"]
     for char in dangerous_chars:
-        if char in filename:
+        if char in normalized_filename:
             raise ValueError(f"Invalid character in configuration name: {repr(char)}")
 
-    # Require full filename format - must end with .conf or .sample extension
-    if not filename.endswith(".conf") and not filename.endswith(".sample"):
+    # Use normalized filename for all subsequent validation
+    filename = normalized_filename
+
+    # Require full filename format - must end with .conf or .conf.sample extension
+    if not filename.endswith(".conf") and not filename.endswith(".conf.sample"):
         raise ValueError(
-            "Configuration filename must be a complete filename ending with .conf or .sample "
-            "(e.g., 'service.subdomain.conf')"
+            "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
+            "'service.conf.sample' — do not pass service names or partial paths"
         )
 
     # Additional validation: ensure it follows proper naming convention
-    # Expected format: service.type.conf or service.type.sample
+    # Expected format: service.type.conf or service.type.conf.sample
     parts = filename.split(".")
-    if len(parts) < 3:
-        raise ValueError(
-            "Configuration filename must follow format 'service.type.conf' or "
-            f"'service.type.sample' (got: '{filename}')"
-        )
+    if filename.endswith(".conf.sample"):
+        # For sample files: service.type.conf.sample (minimum 4 parts)
+        if len(parts) < 4:
+            raise ValueError(
+                "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
+                f"'service.conf.sample' — do not pass service names or partial paths (got: '{filename}')"
+            )
+    else:
+        # For regular files: service.type.conf (minimum 3 parts)
+        if len(parts) < 3:
+            raise ValueError(
+                "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
+                f"'service.conf.sample' — do not pass service names or partial paths (got: '{filename}')"
+            )
 
     # Check for suspicious patterns
     suspicious_patterns = [

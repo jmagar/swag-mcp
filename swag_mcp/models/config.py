@@ -1,9 +1,9 @@
 """Pydantic models for SWAG configuration management."""
 
 import re
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..core.constants import (
     VALID_CONFIG_NAME_FORMAT,
@@ -11,7 +11,21 @@ from ..core.constants import (
     VALID_CONFIG_ONLY_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
-from ..utils.validators import validate_domain_format
+from ..utils.validators import validate_domain_format, validate_mcp_path
+
+# Compiled regex patterns for efficient validation
+_UPSTREAM_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def _validate_port_number(port_str: str) -> None:
+    """Validate port number string and raise ValueError if invalid."""
+    try:
+        port = int(port_str)
+    except ValueError:
+        raise ValueError("Port must be a valid number")
+
+    if not (1 <= port <= 65535):
+        raise ValueError("Port number must be between 1 and 65535")
 
 
 class SwagConfigRequest(BaseModel):
@@ -82,7 +96,7 @@ class SwagListResult(BaseModel):
 
     total_count: int = Field(..., description="Total number of configurations found")
 
-    config_type: str = Field(..., description="Type of configurations listed")
+    list_filter: str = Field(..., description="Type of configurations listed")
 
 
 class SwagEditRequest(BaseModel):
@@ -198,6 +212,7 @@ class SwagUpdateRequest(BaseModel):
 
     update_value: str = Field(
         ...,
+        min_length=1,
         description="New value for field (port number, app name, app:port, or MCP path)",
     )
 
@@ -205,94 +220,60 @@ class SwagUpdateRequest(BaseModel):
         default=True, description="Whether to create a backup before updating"
     )
 
-    @field_validator("update_value")
-    @classmethod
-    def validate_update_value_based_on_field(cls, v: str, info: Any) -> str:
+    @model_validator(mode="after")
+    def validate_update_value_based_on_field(self) -> "SwagUpdateRequest":
         """Validate update_value based on the update_field type."""
-        # Get the update_field from the model data
-        if hasattr(info, "data") and "update_field" in info.data:
-            update_field = info.data["update_field"]
+        update_field = self.update_field
+        update_value = self.update_value.strip()  # Strip whitespace consistently
 
-            if update_field == "add_mcp":
-                # Validate MCP path format
-                if not isinstance(v, str):
-                    raise ValueError("MCP path must be a string")
+        if update_field == "add_mcp":
+            # Use centralized MCP path validation
+            try:
+                validate_mcp_path(update_value)
+            except ValueError:
+                # Re-raise the error from the centralized validator
+                raise
 
-                if not v:
-                    raise ValueError("MCP path cannot be empty")
+        elif update_field == "port":
+            # Use improved port validation without brittle exception inspection
+            _validate_port_number(update_value)
 
-                if not v.startswith("/"):
-                    raise ValueError("MCP path must start with '/' (e.g., '/mcp', '/ai-service')")
+        elif update_field == "app":
+            # Validate app:port format with whitespace stripping and shared validation
+            if ":" not in update_value:
+                raise ValueError("app field requires format 'app:port' (e.g., 'myapp:8080')")
 
-                # Check for valid URL path characters (alphanumeric, dash, underscore, slash)
-                if not re.match(r"^/[a-zA-Z0-9_/-]*$", v):
-                    raise ValueError(
-                        "MCP path contains invalid characters. "
-                        "Only alphanumeric characters, dashes, underscores, and slashes are allowed"
-                    )
+            parts = update_value.split(":", 1)
+            if len(parts) != 2:
+                raise ValueError("app field requires format 'app:port'")
 
-                # Prevent path traversal attempts
-                if ".." in v or "//" in v:
-                    raise ValueError("MCP path cannot contain '..' or '//' sequences")
+            app_name, port_str = parts[0].strip(), parts[1].strip()
 
-                # Reasonable length limit
-                if len(v) > 100:
-                    raise ValueError("MCP path too long (maximum 100 characters)")
+            # Validate app name
+            if not app_name:
+                raise ValueError("App name cannot be empty")
 
-            elif update_field == "port":
-                # Validate port number
-                try:
-                    port = int(v)
-                    if not (1 <= port <= 65535):
-                        raise ValueError("Port number must be between 1 and 65535")
-                except ValueError as e:
-                    if "invalid literal" in str(e):
-                        raise ValueError("Port must be a valid number") from e
-                    raise
+            if not _UPSTREAM_PATTERN.match(app_name):
+                raise ValueError(
+                    "App name contains invalid characters. "
+                    "Only alphanumeric characters, dots, dashes, and underscores are allowed"
+                )
 
-            elif update_field == "app":
-                # Validate app:port format
-                if ":" not in v:
-                    raise ValueError("app field requires format 'app:port' (e.g., 'myapp:8080')")
+            # Reuse port validation
+            _validate_port_number(port_str)
 
-                parts = v.split(":", 1)
-                if len(parts) != 2:
-                    raise ValueError("app field requires format 'app:port'")
+        elif update_field == "upstream":
+            # Validate upstream app name with whitespace handling and shared pattern
+            if not update_value:
+                raise ValueError("Upstream app name cannot be empty")
 
-                app_name, port_str = parts
+            if not _UPSTREAM_PATTERN.match(update_value):
+                raise ValueError(
+                    "Upstream app name contains invalid characters. "
+                    "Only alphanumeric characters, dots, dashes, and underscores are allowed"
+                )
 
-                # Validate app name
-                if not app_name:
-                    raise ValueError("App name cannot be empty")
-
-                if not re.match(r"^[a-zA-Z0-9_.-]+$", app_name):
-                    raise ValueError(
-                        "App name contains invalid characters. "
-                        "Only alphanumeric characters, dots, dashes, and underscores are allowed"
-                    )
-
-                # Validate port
-                try:
-                    port = int(port_str)
-                    if not (1 <= port <= 65535):
-                        raise ValueError("Port number must be between 1 and 65535")
-                except ValueError as e:
-                    if "invalid literal" in str(e):
-                        raise ValueError("Port must be a valid number") from e
-                    raise
-
-            elif update_field == "upstream":
-                # Validate upstream app name
-                if not v:
-                    raise ValueError("Upstream app name cannot be empty")
-
-                if not re.match(r"^[a-zA-Z0-9_.-]+$", v):
-                    raise ValueError(
-                        "Upstream app name contains invalid characters. "
-                        "Only alphanumeric characters, dots, dashes, and underscores are allowed"
-                    )
-
-        return v
+        return self
 
 
 class SwagBackupRequest(BaseModel):

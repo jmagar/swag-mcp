@@ -16,25 +16,23 @@ def format_duration(milliseconds: float) -> str:
         milliseconds: Duration in milliseconds
 
     Returns:
-        Formatted duration string (e.g., "1.5s", "125ms", "2m 30s")
+        Formatted duration string (e.g., "1.5s", "500.0ms", "1m 0.0s")
 
     Examples:
-        format_duration(500) -> "500ms"
+        format_duration(500) -> "500.0ms"
         format_duration(1500) -> "1.5s"
-        format_duration(90000) -> "1m 30s"
+        format_duration(90000) -> "1m 30.0s"
 
     """
     if milliseconds < 1000:
-        return f"{milliseconds:.0f}ms"
+        return f"{milliseconds:.1f}ms"
     elif milliseconds < 60000:
-        return f"{milliseconds/1000:.1f}s"
+        seconds = milliseconds / 1000
+        return f"{seconds:.1f}s"
     else:
         minutes = int(milliseconds // 60000)
         seconds = (milliseconds % 60000) / 1000
-        if seconds == 0:
-            return f"{minutes}m"
-        else:
-            return f"{minutes}m {seconds:.1f}s"
+        return f"{minutes}m {seconds:.1f}s"
 
 
 def format_health_check_result(result: Any) -> tuple[str, str]:
