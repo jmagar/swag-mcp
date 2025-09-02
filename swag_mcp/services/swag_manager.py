@@ -28,9 +28,7 @@ from ..models.config import (
 )
 from ..utils.error_handlers import handle_os_error
 from ..utils.formatters import (
-    build_config_filename,
     build_template_filename,
-    get_possible_config_filenames,
     get_possible_sample_filenames,
 )
 from ..utils.validators import (
@@ -673,97 +671,6 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    def prepare_config_defaults(
-        self, auth_method: str, enable_quic: bool, config_type: str | None
-    ) -> tuple[str, bool, str]:
-        """Prepare configuration defaults from parameters and config.
-
-        Args:
-            auth_method: Authentication method parameter
-            enable_quic: QUIC enable parameter
-            config_type: Configuration type parameter
-
-        Returns:
-            Tuple of (auth_method, enable_quic, config_type) with defaults applied
-
-        """
-        # Use defaults from environment configuration if not specified
-        if auth_method == "none":
-            auth_method = "authelia"  # Default to Authelia for security
-        if not enable_quic:
-            enable_quic = config.default_quic_enabled
-        if config_type is None:
-            config_type = config.default_config_type
-
-        return auth_method, enable_quic, config_type
-
-    def _resolve_config_filename(self, config_name: str, allow_create: bool = False) -> str:
-        """Resolve config name to actual filename by auto-detecting extension.
-
-        Args:
-            config_name: Either a full filename with extension or just a service name
-            allow_create: If True, return best filename even if file doesn't exist
-
-        Returns:
-            The resolved filename (existing or best match for creation)
-
-        Raises:
-            FileNotFoundError: If no matching configuration file is found and allow_create is False
-
-        """
-        # If already has extension, use as-is
-        if config_name.endswith((".conf", ".sample")):
-            config_file = self.config_path / config_name
-            if config_file.exists() or allow_create:
-                return config_name
-            else:
-                raise FileNotFoundError(f"Configuration {config_name} not found")
-
-        # Try different extensions in order of preference
-        candidates = get_possible_config_filenames(config_name, config.default_config_type)
-        candidates.extend(
-            [
-                build_config_filename(config_name, "mcp-subdomain"),
-                build_config_filename(config_name, "mcp-subfolder"),
-                f"{config_name}.conf",  # fallback
-            ]
-        )
-
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_candidates = []
-        for candidate in candidates:
-            if candidate not in seen:
-                seen.add(candidate)
-                unique_candidates.append(candidate)
-
-        # Find first existing file
-        for candidate in unique_candidates:
-            config_file = self.config_path / candidate
-            if config_file.exists():
-                logger.info(f"Resolved '{config_name}' to '{candidate}'")
-                return candidate
-
-        # If allow_create is True, return the best candidate for creation
-        if allow_create and unique_candidates:
-            best_candidate = unique_candidates[0]  # Use default config type
-            logger.info(f"Resolved '{config_name}' to '{best_candidate}' (for creation)")
-            return best_candidate
-
-        # No file found, provide helpful error message
-        available_files = [f.name for f in self.config_path.glob("*.conf")]
-        available_files.extend([f.name for f in self.config_path.glob("*.sample")])
-        available_files.sort()
-
-        error_msg = (
-            f"No configuration file found for '{config_name}'. "
-            f"Tried: {', '.join(unique_candidates)}"
-        )
-        if available_files:
-            error_msg += f". Available files: {', '.join(available_files)}"
-
-        raise FileNotFoundError(error_msg)
-
     async def list_configs(self, config_type: str = "all") -> SwagListResult:
         """List configuration files based on type."""
         logger.info(f"Listing configurations of type: {config_type}")
@@ -795,9 +702,8 @@ class SwagManagerService:
         logger.info(f"Reading configuration: {config_name}")
         self._ensure_config_directory()
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(config_name)
 
         config_file = self.config_path / validated_name
 
@@ -906,9 +812,8 @@ class SwagManagerService:
         """Update configuration with optional backup."""
         logger.info(f"Updating configuration: {edit_request.config_name}")
 
-        # Resolve config name to actual filename and validate it (allow creation for edit)
-        resolved_name = self._resolve_config_filename(edit_request.config_name, allow_create=True)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(edit_request.config_name)
 
         # Security validation: validate configuration content for dangerous patterns
         validated_content = self._validate_config_content(
@@ -1111,9 +1016,8 @@ class SwagManagerService:
         """Remove configuration with optional backup."""
         logger.info(f"Removing configuration: {remove_request.config_name}")
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(remove_request.config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(remove_request.config_name)
 
         config_file = self.config_path / validated_name
 

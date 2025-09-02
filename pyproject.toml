@@ -48,6 +48,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (potentially network-dependent)",
+]
 
 [tool.ruff]
 cache-dir = ".cache/ruff"

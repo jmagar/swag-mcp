@@ -3,7 +3,6 @@
 from typing import Any
 
 from ..core.constants import (
-    CONF_EXTENSION,
     CONFIG_TYPE_SUBDOMAIN,
     CONFIG_TYPE_SUBFOLDER,
     SAMPLE_EXTENSION,
@@ -57,27 +56,6 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
     return message, status
 
 
-def build_config_filename(
-    service_name: str, config_type: str, extension: str = CONF_EXTENSION
-) -> str:
-    """Build a configuration filename from service name and config type.
-
-    Args:
-        service_name: Name of the service
-        config_type: Type of configuration (subdomain, subfolder, etc.)
-        extension: File extension (default: .conf)
-
-    Returns:
-        Formatted configuration filename
-
-    Examples:
-        build_config_filename("plex", "subdomain") -> "plex.subdomain.conf"
-        build_config_filename("jellyfin", "subfolder", ".sample") -> "jellyfin.subfolder.sample"
-
-    """
-    return f"{service_name}.{config_type}{extension}"
-
-
 def build_template_filename(config_type: str) -> str:
     """Build a template filename from config type.
 
@@ -95,28 +73,6 @@ def build_template_filename(config_type: str) -> str:
     return f"{config_type}.conf.j2"
 
 
-def get_possible_config_filenames(service_name: str, default_config_type: str) -> list[str]:
-    """Get all possible configuration filenames for a service.
-
-    Args:
-        service_name: Name of the service
-        default_config_type: Default config type to try first
-
-    Returns:
-        List of possible filenames in order of preference
-
-    """
-    filenames = [build_config_filename(service_name, default_config_type)]
-
-    # Add other config types only if they're not already included
-    for config_type in [CONFIG_TYPE_SUBDOMAIN, CONFIG_TYPE_SUBFOLDER]:
-        filename = build_config_filename(service_name, config_type)
-        if filename not in filenames:
-            filenames.append(filename)
-
-    return filenames
-
-
 def get_possible_sample_filenames(service_name: str) -> list[str]:
     """Get all possible sample configuration filenames for a service.
 
@@ -128,6 +84,6 @@ def get_possible_sample_filenames(service_name: str) -> list[str]:
 
     """
     return [
-        build_config_filename(service_name, CONFIG_TYPE_SUBDOMAIN, SAMPLE_EXTENSION),
-        build_config_filename(service_name, CONFIG_TYPE_SUBFOLDER, SAMPLE_EXTENSION),
+        f"{service_name}.{CONFIG_TYPE_SUBDOMAIN}{SAMPLE_EXTENSION}",
+        f"{service_name}.{CONFIG_TYPE_SUBFOLDER}{SAMPLE_EXTENSION}",
     ]

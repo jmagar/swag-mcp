@@ -92,14 +92,17 @@ def validate_empty_string(value: Any, default: str) -> str:
 def validate_config_filename(filename: str) -> str:
     """Validate configuration filename for security.
 
+    This function requires a FULL filename including extension - no service name resolution
+    is performed.
+
     Args:
-        filename: Configuration filename to validate
+        filename: Full configuration filename to validate (e.g., "service.subdomain.conf")
 
     Returns:
         Validated filename if safe
 
     Raises:
-        ValueError: If filename contains dangerous patterns
+        ValueError: If filename contains dangerous patterns or is not a complete filename
 
     """
     if not filename:
@@ -123,9 +126,21 @@ def validate_config_filename(filename: str) -> str:
         if char in filename:
             raise ValueError(f"Invalid character in configuration name: {repr(char)}")
 
-    # Ensure it's a valid config file name
-    if not filename.endswith(".conf") and not filename.endswith(".conf.sample"):
-        raise ValueError("Configuration filename must end with .conf or .conf.sample")
+    # Require full filename format - must end with .conf or .sample extension
+    if not filename.endswith(".conf") and not filename.endswith(".sample"):
+        raise ValueError(
+            "Configuration filename must be a complete filename ending with .conf or .sample "
+            "(e.g., 'service.subdomain.conf')"
+        )
+
+    # Additional validation: ensure it follows proper naming convention
+    # Expected format: service.type.conf or service.type.sample
+    parts = filename.split(".")
+    if len(parts) < 3:
+        raise ValueError(
+            "Configuration filename must follow format 'service.type.conf' or "
+            f"'service.type.sample' (got: '{filename}')"
+        )
 
     # Check for suspicious patterns
     suspicious_patterns = [

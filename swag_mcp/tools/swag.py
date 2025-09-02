@@ -6,7 +6,6 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context, FastMCP
 from pydantic import Field
 
-from ..core.config import config
 from ..core.constants import (
     VALID_UPSTREAM_PATTERN,
 )
@@ -29,7 +28,7 @@ from ..utils.tool_helpers import (
     log_action_start,
     log_action_success,
     success_response,
-    validate_config_type,
+    validate_list_filter,
     validate_required_params,
 )
 
@@ -131,11 +130,11 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context,
         action: Annotated[SwagAction, Field(description="Action to perform")],
         # List parameters
-        config_type: Annotated[
+        list_filter: Annotated[
             str,
             Field(
                 default="all",
-                description="Type of configurations to list: 'all' | 'active' | 'samples'",
+                description="Filter for listing configurations: 'all' | 'active' | 'samples'",
             ),
         ] = "all",
         # Create parameters
@@ -261,7 +260,7 @@ def register_tools(mcp: FastMCP) -> None:
         Actions:
         • list: List configuration files
           - Required: action
-          - Optional: config_type (default: "all")
+          - Optional: list_filter (default: "all")
 
         • create: Create new reverse proxy configuration
           - Required: action, config_name, server_name, upstream_app, upstream_port
@@ -313,19 +312,19 @@ def register_tools(mcp: FastMCP) -> None:
         # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
         try:
             if action == SwagAction.LIST:
-                await log_action_start(ctx, "Listing SWAG configurations", config_type)
+                await log_action_start(ctx, "Listing SWAG configurations", list_filter)
 
-                if error := validate_config_type(config_type):
+                if error := validate_list_filter(list_filter):
                     return error
 
-                result = await swag_service.list_configs(config_type)
+                result = await swag_service.list_configs(list_filter)
                 await log_action_success(ctx, f"Found {result.total_count} configurations")
 
                 return success_response(
-                    f"Listed {result.total_count} {config_type} configurations",
+                    f"Listed {result.total_count} {list_filter} configurations",
                     total_count=result.total_count,
                     configs=result.configs,
-                    config_type=config_type,
+                    list_filter=list_filter,
                 )
 
             elif action == SwagAction.CREATE:
@@ -344,12 +343,9 @@ def register_tools(mcp: FastMCP) -> None:
                 ):
                     return error
 
-                # Prepare configuration defaults
-                (
-                    auth_method_final,
-                    enable_quic_final,
-                    _,  # config_type not used anymore
-                ) = swag_service.prepare_config_defaults(auth_method, enable_quic, None)
+                # Use parameters directly (no need for defaults preparation)
+                auth_method_final = auth_method if auth_method != "none" else "authelia"
+                enable_quic_final = enable_quic
 
                 await log_action_start(ctx, "Creating configuration", config_name)
 
@@ -429,24 +425,6 @@ def register_tools(mcp: FastMCP) -> None:
                     config_name=config_name,
                     operation="Updated",
                     backup_created=edit_result.backup_created,
-                )
-
-            elif action == SwagAction.CONFIG:
-                await log_action_start(
-                    ctx, "Retrieving current default configuration", "environment variables"
-                )
-
-                current_defaults = {
-                    "default_auth_method": config.default_auth_method,
-                    "default_quic_enabled": config.default_quic_enabled,
-                    "default_config_type": config.default_config_type,
-                }
-
-                await log_action_success(ctx, "Retrieved current defaults")
-                return success_response(
-                    "Current defaults retrieved. To change these values, "
-                    "update your .env file and restart the server.",
-                    defaults=current_defaults,
                 )
 
             elif action == SwagAction.REMOVE:
@@ -629,6 +607,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
 
             else:
+                # This should never be reached since all SwagAction enum values are handled above
                 return error_response(f"Unsupported action: {action.value}")
 
         except Exception as e:

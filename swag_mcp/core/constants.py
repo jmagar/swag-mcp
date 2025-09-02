@@ -50,7 +50,6 @@ AUTH_METHOD_TINYAUTH = "tinyauth"
 
 # Default values
 DEFAULT_AUTH_METHOD = "authelia"
-DEFAULT_CONFIG_TYPE = "subdomain"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_LOG_LEVEL = "INFO"
 
