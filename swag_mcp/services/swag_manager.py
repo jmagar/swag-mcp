@@ -1552,6 +1552,10 @@ class SwagManagerService:
         pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
         matches = re.findall(pattern, content)
 
+        # Also check for basic auth
+        if "auth_basic" in content and "auth_basic_user_file" in content:
+            return "basic"
+
         if not matches:
             return "none"
 
@@ -1559,7 +1563,7 @@ class SwagManagerService:
         auth_method = matches[0]
 
         # Validate it's a known auth method
-        valid_auth_methods = ["authelia", "authentik", "ldap", "tinyauth"]
+        valid_auth_methods = ["authelia", "authentik", "ldap", "tinyauth", "basic"]
         if auth_method not in valid_auth_methods:
             return "none"
 
