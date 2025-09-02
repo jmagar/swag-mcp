@@ -1,7 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal, assert_never
+from typing import Annotated, Any, Literal, assert_never, cast
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
@@ -614,7 +614,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                 update_request = SwagUpdateRequest(
                     config_name=config_name,
-                    update_field=update_field,  # type: ignore[arg-type]
+                    update_field=cast(Literal["port", "upstream", "app", "add_mcp"], update_field),
                     update_value=update_value,
                     create_backup=create_backup,
                 )

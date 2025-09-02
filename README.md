@@ -230,7 +230,7 @@ Once installed, try these common commands with your AI assistant:
 **Make changes:**
 - *"Update plex config to use port 32401"*
 - *"Change sonarr upstream to new-sonarr container"*
-- *"Add MCP endpoint to jellyfin.subdomain.conf"*
+- *"Add an MCP endpoint to jellyfin.subdomain.conf"*
 - *"Remove the old test.subdomain.conf"*
 
 **View logs and troubleshoot:**
