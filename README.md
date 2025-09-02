@@ -311,7 +311,7 @@ Update specific fields in existing configurations without full rewrites.
 - *"Modify plex config to use port 32401"*
 - *"Add an MCP endpoint to jellyfin.subdomain.conf"*
 - *"Add an MCP location at /ai-service to plex.subdomain.conf"*
-#### `list` Action
+
 #### `list` Action
 List and filter configuration files.
 
