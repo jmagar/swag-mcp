@@ -251,8 +251,7 @@ Simply describe what you want in natural language:
 - *"Check if [domain] is working"*
 - *"List all proxy configurations"*
 - *"Update [config] to use port [port]"*
-- *"Add MCP endpoint to [config]"*
-
+- *"Add an MCP endpoint to [config]"*
 The AI assistant will translate your request into the appropriate tool parameters.
 
 ### Available Actions
