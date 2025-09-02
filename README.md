@@ -313,6 +313,7 @@ Update specific fields in existing configurations without full rewrites.
 - *"Add MCP location at /ai-service to plex.subdomain.conf"*
 
 #### `list` Action
+#### `list` Action
 List and filter configuration files.
 
 **Natural Language Examples:**
