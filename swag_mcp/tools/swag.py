@@ -1,33 +1,11 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, assert_never
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
 
-from ..core.constants import (
-    VALID_UPSTREAM_PATTERN,
-)
-from ..models.config import (
-    SwagConfigRequest,
-    SwagEditRequest,
-    SwagHealthCheckRequest,
-    SwagLogsRequest,
-    SwagRemoveRequest,
-    SwagUpdateRequest,
-)
-from ..models.enums import BackupSubAction, SwagAction
-from ..services.swag_manager import SwagManagerService
-from ..utils.formatters import format_health_check_result
-from ..utils.tool_decorators import handle_tool_errors
-from ..utils.tool_helpers import (
-    build_config_response,
-    error_response,
-    format_backup_message,
-    log_action_start,
-    log_action_success,
-    success_response,
 from swag_mcp.core.constants import (
     VALID_UPSTREAM_PATTERN,
 )
@@ -54,16 +32,42 @@ from swag_mcp.utils.tool_helpers import (
     validate_required_params,
 )
 
+from ..core.constants import (
+    VALID_UPSTREAM_PATTERN,
+)
+from ..models.config import (
+    SwagConfigRequest,
+    SwagEditRequest,
+    SwagHealthCheckRequest,
+    SwagLogsRequest,
+    SwagRemoveRequest,
+    SwagUpdateRequest,
+)
+from ..models.enums import BackupSubAction, SwagAction
+from ..services.swag_manager import SwagManagerService
+from ..utils.formatters import format_config_list, format_health_check_result
+from ..utils.tool_decorators import handle_tool_errors
+from ..utils.tool_helpers import (
+    build_config_response,
+    error_response,
+    format_backup_message,
+    log_action_start,
+    log_action_success,
+    success_response,
+)
+
 logger = logging.getLogger(__name__)
 
-# Initialize the SWAG manager service
-swag_service = SwagManagerService()
+# Service will be instantiated per-invocation for stateless operation
 
 
-async def _extract_server_name_from_config(config_name: str) -> str | None:
+async def _extract_server_name_from_config(
+    swag_service: SwagManagerService, config_name: str
+) -> str | None:
     """Extract server_name from nginx config file.
 
     Args:
+        swag_service: Service instance for configuration operations
         config_name: Configuration file name
 
     Returns:
@@ -83,10 +87,13 @@ async def _extract_server_name_from_config(config_name: str) -> str | None:
     return None
 
 
-async def _run_health_check(ctx: Context, server_name: str) -> str:
+async def _run_health_check(
+    swag_service: SwagManagerService, ctx: Context, server_name: str
+) -> str:
     """Run health check for a domain and return formatted status.
 
     Args:
+        swag_service: Service instance for health check operations
         ctx: FastMCP context for logging
         server_name: Domain name to check
 
@@ -123,23 +130,25 @@ async def _run_health_check(ctx: Context, server_name: str) -> str:
         return health_status
 
 
-async def _run_post_create_health_check(ctx: Context, server_name: str, filename: str) -> str:
+async def _run_post_create_health_check(
+    swag_service: SwagManagerService, ctx: Context, server_name: str, filename: str
+) -> str:
     """Run health check after config creation and format results."""
-    health_status = await _run_health_check(ctx, server_name)
+    health_status = await _run_health_check(swag_service, ctx, server_name)
     return f"Created configuration: {filename}\n{health_status}"
 
 
 async def _run_post_update_health_check(
-    ctx: Context, config_name: str, field: str, new_value: str
+    swag_service: SwagManagerService, ctx: Context, config_name: str, field: str, new_value: str
 ) -> str:
     """Run health check after config update and format results."""
     # Extract server name from config
-    server_name = await _extract_server_name_from_config(config_name)
+    server_name = await _extract_server_name_from_config(swag_service, config_name)
     if not server_name:
         # Can't determine server name, skip health check
         return f"Updated {field} in {config_name} to {new_value}"
 
-    health_status = await _run_health_check(ctx, server_name)
+    health_status = await _run_health_check(swag_service, ctx, server_name)
     return f"Updated {field} in {config_name} to {new_value}\n{health_status}"
 
 
@@ -153,7 +162,7 @@ def register_tools(mcp: FastMCP) -> None:
         action: Annotated[SwagAction, Field(description="Action to perform")],
         # List parameters
         list_filter: Annotated[
-            str,
+            Literal["all", "active", "samples"],
             Field(
                 default="all",
                 description="Filter for listing configurations: 'all' | 'active' | 'samples'",
@@ -300,9 +309,6 @@ def register_tools(mcp: FastMCP) -> None:
           - Optional: create_backup
           - update_field options: 'port' | 'upstream' | 'app' | 'add_mcp'
 
-        • config: View current default settings
-          - Required: action
-
         • remove: Remove configuration file
           - Required: action, config_name
           - Optional: create_backup
@@ -331,6 +337,9 @@ def register_tools(mcp: FastMCP) -> None:
           "List all backup files"
 
         """
+        # Create service instance per-invocation for stateless operation
+        swag_service = SwagManagerService()
+
         # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
         try:
             if action == SwagAction.LIST:
@@ -340,10 +349,13 @@ def register_tools(mcp: FastMCP) -> None:
                     return error
 
                 result = await swag_service.list_configs(list_filter)
-                await log_action_success(ctx, f"Found {result.total_count} configurations")
+
+                # Use standardized formatter for consistency
+                formatted_message = format_config_list(list_filter, result.total_count)
+                await log_action_success(ctx, formatted_message)
 
                 return success_response(
-                    f"Listed {result.total_count} {list_filter} configurations",
+                    formatted_message,
                     total_count=result.total_count,
                     configs=result.configs,
                     list_filter=list_filter,
@@ -389,7 +401,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Run health check and return formatted result
                 health_check_result = await _run_post_create_health_check(
-                    ctx, server_name, create_result.filename
+                    swag_service, ctx, server_name, create_result.filename
                 )
 
                 return success_response(
@@ -611,7 +623,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Run health check and return formatted result
                 health_check_result = await _run_post_update_health_check(
-                    ctx, config_name, update_field, update_value
+                    swag_service, ctx, config_name, update_field, update_value
                 )
 
                 base_message = format_backup_message(
@@ -630,7 +642,7 @@ def register_tools(mcp: FastMCP) -> None:
 
             else:
                 # This should never be reached since all SwagAction enum values are handled above
-                return error_response(f"Unsupported action: {action.value}")
+                assert_never(action)
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
