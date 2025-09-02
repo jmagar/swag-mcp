@@ -309,9 +309,8 @@ Update specific fields in existing configurations without full rewrites.
 - *"Change upstream app for app.subdomain.conf to newapp"*
 - *"Update app.subdomain.conf to use newapp:8081"*
 - *"Modify plex config to use port 32401"*
-- *"Add MCP endpoint to jellyfin.subdomain.conf"*
-- *"Add MCP location at /ai-service to plex.subdomain.conf"*
-
+- *"Add an MCP endpoint to jellyfin.subdomain.conf"*
+- *"Add an MCP location at /ai-service to plex.subdomain.conf"*
 #### `list` Action
 #### `list` Action
 List and filter configuration files.
