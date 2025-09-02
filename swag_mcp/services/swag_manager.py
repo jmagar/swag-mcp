@@ -1585,24 +1585,30 @@ class SwagManagerService:
             raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
 
     def _insert_location_block(self, content: str, location_block: str) -> str:
-        """Insert location block before the last closing brace of the server block."""
-        # Find the last closing brace (end of server block)
-        # We need to be careful to insert before the server's closing brace, not any nested blocks
+        """Insert location block before the closing brace of the outermost server block."""
         lines = content.splitlines()
+        server_start = -1
+        # Find the start of the server block
+        for i, line in enumerate(lines):
+            if re.match(r'^\s*server\s*\{', line):
+                server_start = i
+                break
+        if server_start == -1:
+            raise ValueError("Could not find start of server block")
+        # Track brace nesting from the server block start
+        brace_count = 0
         insert_index = -1
-
-        # Find the last line with just a closing brace (the server block end)
-        for i in range(len(lines) - 1, -1, -1):
-            line = lines[i].strip()
-            if line == "}":
+        for i in range(server_start, len(lines)):
+            # Count braces in the line
+            brace_count += lines[i].count('{')
+            brace_count -= lines[i].count('}')
+            # When brace_count returns to zero, we've found the server block's closing brace
+            if brace_count == 0:
                 insert_index = i
                 break
-
         if insert_index == -1:
             raise ValueError("Could not find server block closing brace")
-
         # Insert the location block before the closing brace
         lines.insert(insert_index, "")  # Add empty line for spacing
         lines.insert(insert_index + 1, location_block)
-
         return "\n".join(lines)
