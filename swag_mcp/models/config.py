@@ -1,6 +1,7 @@
 """Pydantic models for SWAG configuration management."""
 
-from typing import Literal
+import re
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -203,6 +204,95 @@ class SwagUpdateRequest(BaseModel):
     create_backup: bool = Field(
         default=True, description="Whether to create a backup before updating"
     )
+
+    @field_validator("update_value")
+    @classmethod
+    def validate_update_value_based_on_field(cls, v: str, info: Any) -> str:
+        """Validate update_value based on the update_field type."""
+        # Get the update_field from the model data
+        if hasattr(info, "data") and "update_field" in info.data:
+            update_field = info.data["update_field"]
+
+            if update_field == "add_mcp":
+                # Validate MCP path format
+                if not isinstance(v, str):
+                    raise ValueError("MCP path must be a string")
+
+                if not v:
+                    raise ValueError("MCP path cannot be empty")
+
+                if not v.startswith("/"):
+                    raise ValueError("MCP path must start with '/' (e.g., '/mcp', '/ai-service')")
+
+                # Check for valid URL path characters (alphanumeric, dash, underscore, slash)
+                if not re.match(r"^/[a-zA-Z0-9_/-]*$", v):
+                    raise ValueError(
+                        "MCP path contains invalid characters. "
+                        "Only alphanumeric characters, dashes, underscores, and slashes are allowed"
+                    )
+
+                # Prevent path traversal attempts
+                if ".." in v or "//" in v:
+                    raise ValueError("MCP path cannot contain '..' or '//' sequences")
+
+                # Reasonable length limit
+                if len(v) > 100:
+                    raise ValueError("MCP path too long (maximum 100 characters)")
+
+            elif update_field == "port":
+                # Validate port number
+                try:
+                    port = int(v)
+                    if not (1 <= port <= 65535):
+                        raise ValueError("Port number must be between 1 and 65535")
+                except ValueError as e:
+                    if "invalid literal" in str(e):
+                        raise ValueError("Port must be a valid number") from e
+                    raise
+
+            elif update_field == "app":
+                # Validate app:port format
+                if ":" not in v:
+                    raise ValueError("app field requires format 'app:port' (e.g., 'myapp:8080')")
+
+                parts = v.split(":", 1)
+                if len(parts) != 2:
+                    raise ValueError("app field requires format 'app:port'")
+
+                app_name, port_str = parts
+
+                # Validate app name
+                if not app_name:
+                    raise ValueError("App name cannot be empty")
+
+                if not re.match(r"^[a-zA-Z0-9_.-]+$", app_name):
+                    raise ValueError(
+                        "App name contains invalid characters. "
+                        "Only alphanumeric characters, dots, dashes, and underscores are allowed"
+                    )
+
+                # Validate port
+                try:
+                    port = int(port_str)
+                    if not (1 <= port <= 65535):
+                        raise ValueError("Port number must be between 1 and 65535")
+                except ValueError as e:
+                    if "invalid literal" in str(e):
+                        raise ValueError("Port must be a valid number") from e
+                    raise
+
+            elif update_field == "upstream":
+                # Validate upstream app name
+                if not v:
+                    raise ValueError("Upstream app name cannot be empty")
+
+                if not re.match(r"^[a-zA-Z0-9_.-]+$", v):
+                    raise ValueError(
+                        "Upstream app name contains invalid characters. "
+                        "Only alphanumeric characters, dots, dashes, and underscores are allowed"
+                    )
+
+        return v
 
 
 class SwagBackupRequest(BaseModel):
