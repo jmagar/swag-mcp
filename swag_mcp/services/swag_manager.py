@@ -1538,8 +1538,6 @@ class SwagManagerService:
 
     def _extract_auth_method(self, content: str) -> str:
         """Extract authentication method from nginx configuration content."""
-        import re
-
         # Look for auth method includes like: include /config/nginx/authelia-server.conf;
         pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
         matches = re.findall(pattern, content)
