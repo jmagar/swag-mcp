@@ -24,21 +24,25 @@ def validate_domain_format(domain: str) -> str:
     """
     if not domain:
         raise ValueError("Domain name cannot be empty")
-
+        
+    # Normalize and strip a trailing dot (FQDN form)
+    domain = domain.strip().rstrip(".")
+    if len(domain) == 0:
+        raise ValueError("Domain name cannot be empty")
+    if len(domain) > 253:
+        raise ValueError("Domain name is too long (maximum 253 characters)")
+        
     # Normalize Unicode to NFC form and trim whitespace
     try:
         normalized_domain = unicodedata.normalize("NFC", domain.strip())
     except (TypeError, ValueError) as e:
         raise ValueError(f"Domain name contains invalid Unicode: {str(e)}") from e
 
-    if len(normalized_domain) > 253:
-        raise ValueError("Domain name is too long (maximum 253 characters)")
-
     if ".." in normalized_domain:
         raise ValueError("Domain name cannot contain consecutive dots")
 
-    if normalized_domain.startswith(".") or normalized_domain.endswith("."):
-        raise ValueError("Domain name cannot start or end with a dot")
+    if normalized_domain.startswith("."):
+        raise ValueError("Domain name cannot start with a dot")
 
     # Split domain into parts for more specific validation
     parts = normalized_domain.split(".")
@@ -46,35 +50,17 @@ def validate_domain_format(domain: str) -> str:
     if len(parts) < 2:
         raise ValueError("Domain name must contain at least one dot (e.g., example.com)")
 
-    # Validate each part of the domain
-    for i, part in enumerate(parts):
+    label_re = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+    for part in parts:
         if not part:
             raise ValueError("Domain name cannot have empty parts")
-
         if len(part) > 63:
             raise ValueError(f"Domain part '{part}' is too long (maximum 63 characters)")
-
-        if part.startswith("-") or part.endswith("-"):
-            raise ValueError(f"Domain part '{part}' cannot start or end with hyphen")
-
-        # For the top-level domain (last part), be more strict
-        if i == len(parts) - 1:
-            # TLD should only contain letters (and possibly numbers for newer TLDs)
-            if not re.match(r"^[a-zA-Z0-9]+$", part):
-                raise ValueError(f"Top-level domain '{part}' contains invalid characters")
-        else:
-            # For subdomains and domain names, allow underscores (common in practice)
-            # even though they're not strictly RFC compliant
-            if not re.match(r"^[a-zA-Z0-9_-]+$", part):
-                raise ValueError(
-                    f"Domain part '{part}' contains invalid characters. Only letters, "
-                    f"numbers, hyphens, and underscores are allowed"
-                )
-
-        # Ensure it doesn't start with a number (for domain names, not subdomains)
-        if i == len(parts) - 2 and part[0].isdigit():  # Second to last part is the main domain
-            # This is actually fine for many domains, so just continue
-            pass
+        if not label_re.match(part):
+            raise ValueError(
+                f"Domain part '{part}' contains invalid characters. "
+                "Labels must match ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$"
+            )
 
     return normalized_domain.lower()
 
@@ -328,7 +314,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         # Using Unicode property classes for proper international support
         try:
             # Try to use regex module for better Unicode support
-            import regex  # type: ignore[import-untyped]
+            import regex
 
             if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
                 raise ValueError(

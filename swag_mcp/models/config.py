@@ -12,13 +12,14 @@ from swag_mcp.core.constants import (
     VALID_CONFIG_ONLY_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
+from swag_mcp.models.enums import SwagAction
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
 # Type alias for authentication methods (synced with AUTH_METHODS in constants.py)
 AuthMethodType = Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"]
 
-# Compiled regex patterns for efficient validation
-_UPSTREAM_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+# Compiled regex patterns for efficient validation (source of truth in constants)
+_UPSTREAM_PATTERN = re.compile(VALID_UPSTREAM_PATTERN)
 
 
 def _validate_port_number(port_str: str) -> None:
@@ -32,7 +33,13 @@ def _validate_port_number(port_str: str) -> None:
         raise ValueError("Port number must be between 1 and 65535")
 
 
-class SwagConfigRequest(BaseModel):
+class SwagBaseRequest(BaseModel):
+    """Base request model with common action field."""
+    
+    action: SwagAction = Field(description="The action to perform")
+
+
+class SwagConfigRequest(SwagBaseRequest):
     """Request model for creating SWAG configurations."""
 
     config_name: str = Field(
@@ -64,18 +71,24 @@ class SwagConfigRequest(BaseModel):
 
     enable_quic: bool = Field(default=False, description="Enable QUIC support")
 
-    @field_validator("server_name")
+    @field_validator("server_name", mode="before")
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
+        import unicodedata as _ud
+        v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
-    @field_validator("config_name")
+    @field_validator("config_name", mode="before")
     @classmethod
     def validate_config_name(cls, v: str) -> str:
         """Validate config name format."""
+        import unicodedata as _ud
+        v = _ud.normalize("NFKC", v).strip()
         if not v or ".." in v or "/" in v or "\\" in v:
             raise ValueError("Config name contains invalid characters")
+        if v.startswith("-") or v.endswith("-"):
+            raise ValueError("Config name cannot start or end with '-'")
         return v
 
     @field_validator("auth_method")
@@ -112,7 +125,7 @@ class SwagListResult(BaseModel):
     list_filter: str = Field(..., description="Type of configurations listed")
 
 
-class SwagEditRequest(BaseModel):
+class SwagEditRequest(SwagBaseRequest):
     """Request model for editing SWAG configurations."""
 
     config_name: str = Field(
@@ -155,8 +168,17 @@ class SwagEditRequest(BaseModel):
         default=True, description="Whether to create a backup before editing"
     )
 
+    @field_validator("server_name", mode="before")
+    @classmethod
+    def validate_edit_server_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        import unicodedata as _ud
+        v = _ud.normalize("NFKC", v).strip().lower()
+        return validate_domain_format(v)
 
-class SwagRemoveRequest(BaseModel):
+
+class SwagRemoveRequest(SwagBaseRequest):
     """Request model for removing SWAG configurations."""
 
     config_name: str = Field(
@@ -170,7 +192,7 @@ class SwagRemoveRequest(BaseModel):
     )
 
 
-class SwagLogsRequest(BaseModel):
+class SwagLogsRequest(SwagBaseRequest):
     """Request model for SWAG logs."""
 
     log_type: Literal["nginx-access", "nginx-error", "fail2ban", "letsencrypt", "renewal"] = Field(
@@ -190,7 +212,7 @@ class SwagResourceList(BaseModel):
     total_count: int = Field(..., description="Total number of configurations")
 
 
-class SwagHealthCheckRequest(BaseModel):
+class SwagHealthCheckRequest(SwagBaseRequest):
     """Request model for health check operations."""
 
     domain: str = Field(
@@ -203,19 +225,22 @@ class SwagHealthCheckRequest(BaseModel):
 
     follow_redirects: bool = Field(default=True, description="Whether to follow HTTP redirects")
 
-    @field_validator("domain")
+    @field_validator("domain", mode="before")
     @classmethod
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
+        import unicodedata as _ud
+        v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
 
-class SwagUpdateRequest(BaseModel):
+class SwagUpdateRequest(SwagBaseRequest):
     """Request model for updating specific SWAG configuration parameters."""
 
     config_name: str = Field(
         ...,
         pattern=VALID_CONFIG_ONLY_PATTERN,
+        max_length=255,
         description="Name of configuration file to update",
     )
 
@@ -243,11 +268,11 @@ class SwagUpdateRequest(BaseModel):
         self.update_value = update_value
 
         if update_field == "add_mcp":
-            # Use centralized MCP path validation
+            # Use centralized MCP path validation and persist normalized value
             try:
-                validate_mcp_path(update_value)
+                normalized = validate_mcp_path(update_value)
+                self.update_value = normalized
             except ValueError:
-                # Re-raise the error from the centralized validator
                 raise
 
         elif update_field == "port":
@@ -292,7 +317,7 @@ class SwagUpdateRequest(BaseModel):
         return self
 
 
-class SwagBackupRequest(BaseModel):
+class SwagBackupRequest(SwagBaseRequest):
     """Request model for backup management operations."""
 
     backup_action: Literal["cleanup", "list"] = Field(
@@ -302,6 +327,12 @@ class SwagBackupRequest(BaseModel):
     retention_days: int | None = Field(
         default=None, description="Days to retain backups (only for cleanup action)"
     )
+
+    @model_validator(mode="after")
+    def _validate_cleanup_requires_retention(self) -> "SwagBackupRequest":
+        if self.backup_action == "cleanup" and (self.retention_days is None or self.retention_days < 0):
+            raise ValueError("retention_days must be provided and >= 0 for cleanup action")
+        return self
 
 
 class SwagHealthCheckResult(BaseModel):

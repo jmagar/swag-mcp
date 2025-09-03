@@ -1,7 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, cast, assert_never
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
@@ -184,7 +184,7 @@ def register_tools(mcp: FastMCP) -> None:
             Field(
                 default="authelia",
                 description=(
-                    "Authentication method: 'none' | 'ldap' | 'authelia' | 'authentik' | 'tinyauth'"
+                    "Authentication method: 'none' | 'basic' | 'ldap' | 'authelia' | 'authentik' | 'tinyauth'"
                 ),
             ),
         ] = "authelia",
@@ -353,8 +353,8 @@ def register_tools(mcp: FastMCP) -> None:
                 ):
                     return error
 
-                # Use parameters directly (no need for defaults preparation)
-                auth_method_final = auth_method if auth_method != "none" else "authelia"
+                # Use parameters directly
+                auth_method_final = auth_method
                 enable_quic_final = enable_quic
 
                 await log_action_start(ctx, "Creating configuration", config_name)
@@ -619,8 +619,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
 
             else:
-                # This should never be reached since all SwagAction enum values are handled above
-                raise ValueError(f"Unsupported action: {action}")
+                assert_never(action)
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")

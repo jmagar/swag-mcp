@@ -30,13 +30,8 @@ CONFIG_TYPES = (
     CONFIG_TYPE_MCP_SUBFOLDER,
 )
 
-# All available configuration types (legacy list - prefer CONFIG_TYPES tuple)
-ALL_CONFIG_TYPES = [
-    CONFIG_TYPE_SUBDOMAIN,
-    CONFIG_TYPE_SUBFOLDER,
-    CONFIG_TYPE_MCP_SUBDOMAIN,
-    CONFIG_TYPE_MCP_SUBFOLDER,
-]
+# Backwards-compat alias (if referenced elsewhere)
+ALL_CONFIG_TYPES = list(CONFIG_TYPES)
 
 # URI schemes and paths
 SWAG_URI_BASE = "swag://"

@@ -131,7 +131,7 @@ SWAG_MCP_DEFAULT_AUTH_METHOD=authelia    # Never expose services without auth!
 
 # Server Settings
 SWAG_MCP_HOST=0.0.0.0  # For Docker/external access
-# Note: Port is always 8000 internally in Docker container
+# Note: Container uses port 8000 internally (default), host port mapping configurable via SWAG_MCP_PORT
 ```
 
 <details>
@@ -261,7 +261,7 @@ The AI assistant will translate your request into the appropriate tool parameter
 | **`create`** | Generate new proxy configuration | `service_name`, `server_name`, `upstream_app`, `upstream_port` |
 | **`view`** | Read configuration content | `config_name` |
 | **`edit`** | Modify configuration safely | `config_name`, `new_content`, `create_backup` |
-| **`update`** | Update specific config fields | `config_name`, `update_field`, `update_value` |
+| **`update`** | Update specific config fields | `config_name`, `update_field` (port/upstream/app/add_mcp), `update_value` |
 | **`remove`** | Delete configuration | `config_name`, `create_backup` |
 | **`health_check`** | Verify service accessibility | `domain`, `timeout`, `follow_redirects` |
 | **`logs`** | View SWAG container logs | `log_type`, `lines` |
@@ -280,6 +280,7 @@ Creates a new reverse proxy configuration with automatic health check verificati
 - *"Create MCP streaming proxy for ai-service at ai.example.com:8080"*
 
 **Key Options:**
+
 
 - **Config Type**: Automatically inferred from filename (service.subdomain.conf or service.subfolder.conf)
 - **MCP Support**: Add `mcp_enabled=true` for streaming/SSE features
@@ -305,6 +306,7 @@ Intelligently tests service availability through multiple endpoints.
 Update specific fields in existing configurations without full rewrites.
 
 **Supported Update Fields:**
+
 - **`port`** - Update upstream port (e.g., "8080", "32400")
 - **`upstream`** - Update upstream app name/IP (e.g., "myapp", "192.168.1.100")
 - **`app`** - Update both app name and port (e.g., "myapp:8080")

@@ -13,8 +13,15 @@ location ^~ /{{ service_name }}/ {
     include /config/nginx/{{ auth_method }}-location.conf;
 {% endif %}
 
+    # Security headers
+    include /config/nginx/security-headers.conf;
+    
     include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
+    
+    # Set X-Forwarded-Prefix for subfolder routing
+    proxy_set_header X-Forwarded-Prefix /{{ service_name }};
+    
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
     set $upstream_proto "{{ upstream_proto }}";

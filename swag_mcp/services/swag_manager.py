@@ -891,9 +891,10 @@ class SwagManagerService:
             try:
                 validated_mcp_path = validate_mcp_path(mcp_path)
             except ValueError as e:
+                from swag_mcp.services.errors import ValidationError
                 error_msg = f"Invalid MCP path: {str(e)}"
                 logger.error(error_msg)
-                raise ValueError(error_msg) from e
+                raise ValidationError(error_msg) from e
 
             # Call the add_mcp_location method with validated path
             result = await self.add_mcp_location(
@@ -1468,13 +1469,19 @@ class SwagManagerService:
         try:
             mcp_path = validate_mcp_path(mcp_path)
         except ValueError as e:
-            raise ValueError(f"Invalid MCP path: {str(e)}") from e
+            from swag_mcp.services.errors import ValidationError
+            raise ValidationError(f"Invalid MCP path: {str(e)}") from e
 
         # Read existing config
         try:
             content = await self.read_config(config_name)
-        except FileNotFoundError as e:
-            raise ValueError(f"Configuration file {config_name} not found") from e
+        except OSError as e:
+            import errno
+            if e.errno == errno.ENOENT:
+                raise FileNotFoundError(f"Configuration file {config_name} not found") from e
+            else:
+                # Re-raise the original exception for other errno values
+                raise
 
         # Check if MCP location already exists (match '=', '^~', or plain)
         dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
