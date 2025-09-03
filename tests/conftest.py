@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from fastmcp import Client, FastMCP
+from pytest import MonkeyPatch
 from swag_mcp.server import create_mcp_server
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,9 @@ def setup_test_environment():
                 os.environ.get("TMP"),
                 "/tmp",
             ]
-            base_temp = next((d for d in temp_dirs if d and Path(d).exists()), "/tmp")
+            base_temp = next(
+                (d for d in temp_dirs if d and Path(d).exists() and os.access(d, os.W_OK)), "/tmp"
+            )
             proxy_confs_path = str(Path(base_temp) / "swag-test" / "proxy-confs")
         else:
             # Local development environment - try multiple common paths
@@ -45,9 +48,7 @@ def setup_test_environment():
                 str(Path.home() / ".swag-mcp-test" / "proxy-confs"),
             ]
             # Use first existing path or fallback to home directory
-            proxy_confs_path = next(
-                (p for p in local_paths if Path(p).parent.exists()), local_paths[-1]
-            )
+            proxy_confs_path = next((p for p in local_paths if Path(p).exists()), local_paths[-1])
 
         # Ensure the chosen path exists
         proxy_path = Path(proxy_confs_path)
@@ -126,9 +127,8 @@ server {
         if not config_file.exists():
             try:
                 config_file.write_text(content)
-            except Exception as e:
-                logger = logging.getLogger(__name__)
-                logger.exception(f"Failed to create sample config file {filename}: {e}")
+            except Exception:
+                logger.exception("Failed to create sample config file %s", filename, exc_info=True)
 
 
 @pytest.fixture(scope="session")
@@ -143,10 +143,9 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 
 
 @pytest.fixture
-async def mcp_server(monkeypatch) -> AsyncGenerator[FastMCP, None]:
+async def mcp_server(monkeypatch: MonkeyPatch) -> AsyncGenerator[FastMCP, None]:
     """Create a FastMCP server instance for testing."""
     # Patch multiple places that use the config
-    from pathlib import Path
 
     from swag_mcp.core import config as config_module
     from swag_mcp.core.config import SwagConfig
@@ -157,9 +156,9 @@ async def mcp_server(monkeypatch) -> AsyncGenerator[FastMCP, None]:
 
     # Create test configuration
     test_config = SwagConfig(
-        proxy_confs_path=proxy_confs_path,
-        log_directory="/tmp/.swag-mcp-test/logs",
-        template_path="templates",
+        proxy_confs_path=Path(proxy_confs_path),
+        log_directory=Path("/tmp/.swag-mcp-test/logs"),
+        template_path=Path("templates"),
     )
 
     # Patch the global config object in multiple modules
@@ -227,7 +226,7 @@ async def test_config_cleanup():
     """Fixture to track and cleanup test configurations."""
     created_configs = []
 
-    def add_config(config_name: str):
+    def add_config(config_name: str) -> None:
         """Add a config to the cleanup list."""
         created_configs.append(config_name)
 
@@ -247,18 +246,18 @@ async def test_config_cleanup():
         if config_file.exists():
             try:
                 config_file.unlink()  # Remove the file
-                logger.info(f"Cleaned up test config: {config_name}")
+                logger.info("Cleaned up test config: %s", config_name)
             except Exception as e:
-                logger.error(f"Failed to cleanup test config {config_name}: {e}", exc_info=True)
+                logger.error("Failed to cleanup test config %s: %s", config_name, e, exc_info=True)
 
         # Also cleanup any backup files
         backup_pattern = f"{config_name}.backup.*"
         for backup_file in proxy_confs_path.glob(backup_pattern):
             try:
                 backup_file.unlink()
-                logger.info(f"Cleaned up backup file: {backup_file.name}")
+                logger.info("Cleaned up backup file: %s", backup_file.name)
             except Exception as e:
-                logger.error(f"Failed to cleanup backup {backup_file.name}: {e}", exc_info=True)
+                logger.error("Failed to cleanup backup %s: %s", backup_file.name, e, exc_info=True)
 
 
 class TestHelpers:

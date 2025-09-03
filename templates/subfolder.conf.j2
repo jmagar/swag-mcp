@@ -15,8 +15,8 @@ location ^~ /{{ service_name }}/ {
 
     include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
-    set $upstream_app {{ upstream_app }};
-    set $upstream_port {{ upstream_port }};
-    set $upstream_proto {{ upstream_proto }};
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
     proxy_pass $upstream_proto://$upstream_app:$upstream_port;
 }

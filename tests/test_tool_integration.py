@@ -1,10 +1,12 @@
 """Comprehensive integration tests for SWAG MCP tool with real tool calls."""
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from mcp.types import TextContent
 from swag_mcp.models.enums import SwagAction
 
 
@@ -13,39 +15,42 @@ class TestSwagToolIntegration:
 
     # LIST Action Tests
 
-    async def test_list_all_configurations(self, mcp_client: Client):
+    async def test_list_all_configurations(self, mcp_client: Client) -> None:
         """Test listing all configurations."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LIST, "list_filter": "all"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
 
         # Should be a successful response
         assert "configurations" in response or "Found" in response
 
-    async def test_list_active_configurations(self, mcp_client: Client):
+    async def test_list_active_configurations(self, mcp_client: Client) -> None:
         """Test listing active configurations only."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LIST, "list_filter": "active"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "active" in response or "Found" in response
 
-    async def test_list_sample_configurations(self, mcp_client: Client):
+    async def test_list_sample_configurations(self, mcp_client: Client) -> None:
         """Test listing sample configurations."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LIST, "list_filter": "samples"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "sample" in response or "Found" in response
 
-    async def test_list_invalid_filter(self, mcp_client: Client):
+    async def test_list_invalid_filter(self, mcp_client: Client) -> None:
         """Test listing with invalid filter."""
         # Should raise ToolError for invalid filter
         with pytest.raises(ToolError) as exc_info:
@@ -65,8 +70,8 @@ class TestSwagToolIntegration:
         test_config_name: str,
         test_domain: str,
         test_upstream: dict[str, Any],
-        test_config_cleanup,
-    ):
+        test_config_cleanup: Callable[[str], None],
+    ) -> None:
         """Test creating a basic subdomain configuration."""
         config_name = f"{test_config_name}.subdomain.conf"
         test_config_cleanup(config_name)
@@ -83,6 +88,7 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "Created" in response or "created" in response
 
@@ -92,8 +98,8 @@ class TestSwagToolIntegration:
         test_config_name: str,
         test_domain: str,
         test_upstream: dict[str, Any],
-        test_config_cleanup,
-    ):
+        test_config_cleanup: Callable[[str], None],
+    ) -> None:
         """Test creating an MCP-enabled subdomain configuration."""
         config_name = f"{test_config_name}-mcp.subdomain.conf"
         test_config_cleanup(config_name)
@@ -111,10 +117,11 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "Created" in response or "created" in response
 
-    async def test_create_missing_required_params(self, mcp_client: Client):
+    async def test_create_missing_required_params(self, mcp_client: Client) -> None:
         """Test creating config with missing required parameters."""
         result = await mcp_client.call_tool(
             "swag",
@@ -126,10 +133,11 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
-    async def test_create_invalid_port(self, mcp_client: Client, test_config_name: str):
+    async def test_create_invalid_port(self, mcp_client: Client, test_config_name: str) -> None:
         """Test creating config with invalid port number."""
         from fastmcp.exceptions import ToolError
 
@@ -153,25 +161,27 @@ class TestSwagToolIntegration:
 
     # VIEW Action Tests
 
-    async def test_view_sample_configuration(self, mcp_client: Client):
+    async def test_view_sample_configuration(self, mcp_client: Client) -> None:
         """Test viewing a sample configuration (read-only, safe)."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.VIEW, "config_name": "_template.subdomain.conf.sample"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
 
         # Should contain nginx configuration content
         assert any(keyword in response for keyword in ["server", "location", "proxy_pass"])
 
-    async def test_view_nonexistent_config(self, mcp_client: Client):
+    async def test_view_nonexistent_config(self, mcp_client: Client) -> None:
         """Test viewing a non-existent configuration."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.VIEW, "config_name": "nonexistent.subdomain.conf"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert (
             "not found" in response.lower()
@@ -180,7 +190,7 @@ class TestSwagToolIntegration:
             or "binary content or is unsafe" in response.lower()
         )
 
-    async def test_view_missing_config_name(self, mcp_client: Client):
+    async def test_view_missing_config_name(self, mcp_client: Client) -> None:
         """Test viewing without providing config name."""
         result = await mcp_client.call_tool(
             "swag",
@@ -191,14 +201,15 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
     # EDIT Action Tests
 
     async def test_edit_create_and_remove_config(
-        self, mcp_client: Client, test_config_name: str, test_config_cleanup
-    ):
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
         """Test full edit workflow: create, edit, remove."""
         config_name = f"{test_config_name}-edit.subdomain.conf"
         test_config_cleanup(config_name)
@@ -223,6 +234,7 @@ class TestSwagToolIntegration:
         assert view_result.is_error is False
 
         # Extract the content and modify it slightly
+        assert isinstance(view_result.content[0], TextContent)
         original_content = view_result.content[0].text
         # Add a comment to the content
         modified_content = f"# Modified by test\\n{original_content}"
@@ -239,10 +251,11 @@ class TestSwagToolIntegration:
         )
 
         assert edit_result.is_error is False
+        assert isinstance(edit_result.content[0], TextContent)
         response = edit_result.content[0].text
         assert "Updated" in response or "edited" in response or "backup" in response.lower()
 
-    async def test_edit_missing_parameters(self, mcp_client: Client):
+    async def test_edit_missing_parameters(self, mcp_client: Client) -> None:
         """Test editing with missing parameters."""
         result = await mcp_client.call_tool(
             "swag",
@@ -254,14 +267,15 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
     # UPDATE Action Tests
 
     async def test_update_port_field(
-        self, mcp_client: Client, test_config_name: str, test_config_cleanup
-    ):
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
         """Test updating the port field of a configuration."""
         config_name = f"{test_config_name}-update.subdomain.conf"
         test_config_cleanup(config_name)
@@ -292,12 +306,13 @@ class TestSwagToolIntegration:
         )
 
         assert update_result.is_error is False
+        assert isinstance(update_result.content[0], TextContent)
         response = update_result.content[0].text
         assert "Updated" in response and "port" in response
 
     async def test_update_upstream_field(
-        self, mcp_client: Client, test_config_name: str, test_config_cleanup
-    ):
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
         """Test updating the upstream field of a configuration."""
         config_name = f"{test_config_name}-update-upstream.subdomain.conf"
         test_config_cleanup(config_name)
@@ -328,10 +343,11 @@ class TestSwagToolIntegration:
         )
 
         assert update_result.is_error is False
+        assert isinstance(update_result.content[0], TextContent)
         response = update_result.content[0].text
         assert "Updated" in response and ("upstream" in response or "new-app" in response)
 
-    async def test_update_invalid_field(self, mcp_client: Client, test_config_name: str):
+    async def test_update_invalid_field(self, mcp_client: Client, test_config_name: str) -> None:
         """Test updating with an invalid field name."""
         result = await mcp_client.call_tool(
             "swag",
@@ -344,10 +360,11 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "validation" in response.lower() or "invalid" in response.lower()
 
-    async def test_update_missing_parameters(self, mcp_client: Client):
+    async def test_update_missing_parameters(self, mcp_client: Client) -> None:
         """Test updating with missing parameters."""
         result = await mcp_client.call_tool(
             "swag",
@@ -359,14 +376,15 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
     # REMOVE Action Tests
 
     async def test_remove_configuration(
-        self, mcp_client: Client, test_config_name: str, test_config_cleanup
-    ):
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
         """Test removing a configuration with backup."""
         config_name = f"{test_config_name}-remove.subdomain.conf"
         # Don't add to cleanup since we're testing removal
@@ -390,10 +408,11 @@ class TestSwagToolIntegration:
         )
 
         assert remove_result.is_error is False
+        assert isinstance(remove_result.content[0], TextContent)
         response = remove_result.content[0].text
         assert "Removed" in response or "removed" in response
 
-    async def test_remove_nonexistent_config(self, mcp_client: Client):
+    async def test_remove_nonexistent_config(self, mcp_client: Client) -> None:
         """Test removing a non-existent configuration."""
         result = await mcp_client.call_tool(
             "swag",
@@ -405,6 +424,7 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert (
             "not found" in response.lower()
@@ -413,7 +433,7 @@ class TestSwagToolIntegration:
             or "binary content or is unsafe" in response.lower()
         )
 
-    async def test_remove_missing_config_name(self, mcp_client: Client):
+    async def test_remove_missing_config_name(self, mcp_client: Client) -> None:
         """Test removing without providing config name."""
         result = await mcp_client.call_tool(
             "swag",
@@ -424,18 +444,20 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
     # LOGS Action Tests
 
-    async def test_get_nginx_error_logs(self, mcp_client: Client):
+    async def test_get_nginx_error_logs(self, mcp_client: Client) -> None:
         """Test retrieving nginx error logs."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LOGS, "log_type": "nginx-error", "lines": 10}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         # Should contain log information or indicate no logs
         assert (
@@ -444,13 +466,14 @@ class TestSwagToolIntegration:
             or "no logs" in response.lower()
         )
 
-    async def test_get_nginx_access_logs(self, mcp_client: Client):
+    async def test_get_nginx_access_logs(self, mcp_client: Client) -> None:
         """Test retrieving nginx access logs."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LOGS, "log_type": "nginx-access", "lines": 10}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert (
             "log" in response.lower()
@@ -458,7 +481,7 @@ class TestSwagToolIntegration:
             or "no logs" in response.lower()
         )
 
-    async def test_get_logs_different_line_counts(self, mcp_client: Client):
+    async def test_get_logs_different_line_counts(self, mcp_client: Client) -> None:
         """Test retrieving logs with different line counts."""
         # Test with minimum lines
         result_min = await mcp_client.call_tool(
@@ -472,7 +495,7 @@ class TestSwagToolIntegration:
         )
         assert result_more.is_error is False
 
-    async def test_get_logs_invalid_type(self, mcp_client: Client):
+    async def test_get_logs_invalid_type(self, mcp_client: Client) -> None:
         """Test retrieving logs with invalid log type."""
         from fastmcp.exceptions import ToolError
 
@@ -491,49 +514,53 @@ class TestSwagToolIntegration:
 
     # BACKUPS Action Tests
 
-    async def test_list_backup_files(self, mcp_client: Client):
+    async def test_list_backup_files(self, mcp_client: Client) -> None:
         """Test listing backup files."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.BACKUPS, "backup_action": "list"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "backup" in response.lower() and (
             "found" in response.lower() or "no" in response.lower()
         )
 
-    async def test_cleanup_backups_default_retention(self, mcp_client: Client):
+    async def test_cleanup_backups_default_retention(self, mcp_client: Client) -> None:
         """Test cleaning up backups with default retention."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.BACKUPS, "backup_action": "cleanup"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "cleanup" in response.lower() or "cleaned" in response.lower()
 
-    async def test_cleanup_backups_custom_retention(self, mcp_client: Client):
+    async def test_cleanup_backups_custom_retention(self, mcp_client: Client) -> None:
         """Test cleaning up backups with custom retention."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.BACKUPS, "backup_action": "cleanup", "retention_days": 7}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "cleanup" in response.lower() or "cleaned" in response.lower()
 
-    async def test_backups_invalid_action(self, mcp_client: Client):
+    async def test_backups_invalid_action(self, mcp_client: Client) -> None:
         """Test backups with invalid action."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.BACKUPS, "backup_action": "invalid"}
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "validation" in response.lower() or "invalid" in response.lower()
 
-    async def test_backups_missing_action(self, mcp_client: Client):
+    async def test_backups_missing_action(self, mcp_client: Client) -> None:
         """Test backups with missing backup_action."""
         result = await mcp_client.call_tool(
             "swag",
@@ -544,13 +571,14 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
     # HEALTH_CHECK Action Tests
 
     @pytest.mark.slow
-    async def test_health_check_localhost(self, mcp_client: Client):
+    async def test_health_check_localhost(self, mcp_client: Client) -> None:
         """Test health check on localhost (may be slow)."""
         result = await mcp_client.call_tool(
             "swag",
@@ -563,6 +591,7 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         # Should contain health check result
         assert any(
@@ -571,7 +600,7 @@ class TestSwagToolIntegration:
         )
 
     @pytest.mark.slow
-    async def test_health_check_invalid_domain(self, mcp_client: Client):
+    async def test_health_check_invalid_domain(self, mcp_client: Client) -> None:
         """Test health check on invalid domain (may be slow)."""
         result = await mcp_client.call_tool(
             "swag",
@@ -584,6 +613,7 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         # Should indicate failure to connect
         assert (
@@ -592,7 +622,7 @@ class TestSwagToolIntegration:
             or "error" in response.lower()
         )
 
-    async def test_health_check_missing_domain(self, mcp_client: Client):
+    async def test_health_check_missing_domain(self, mcp_client: Client) -> None:
         """Test health check without providing domain."""
         result = await mcp_client.call_tool(
             "swag",
@@ -603,10 +633,11 @@ class TestSwagToolIntegration:
         )
 
         assert result.is_error is False
+        assert isinstance(result.content[0], TextContent)
         response = result.content[0].text
         assert "required" in response.lower() or "missing" in response.lower()
 
-    async def test_health_check_invalid_timeout(self, mcp_client: Client):
+    async def test_health_check_invalid_timeout(self, mcp_client: Client) -> None:
         """Test health check with invalid timeout."""
         from fastmcp.exceptions import ToolError
 
@@ -630,7 +661,7 @@ class TestSwagToolIntegration:
 
     # Error Handling Tests
 
-    async def test_invalid_action(self, mcp_client: Client):
+    async def test_invalid_action(self, mcp_client: Client) -> None:
         """Test with completely invalid action."""
         from fastmcp.exceptions import ToolError
 
@@ -645,7 +676,7 @@ class TestSwagToolIntegration:
                 or "not one of" in str(e).lower()
             )
 
-    async def test_empty_parameters(self, mcp_client: Client):
+    async def test_empty_parameters(self, mcp_client: Client) -> None:
         """Test with minimal parameters."""
         from fastmcp.exceptions import ToolError
 
@@ -663,8 +694,8 @@ class TestSwagToolIntegration:
     # Integration Tests
 
     async def test_full_config_lifecycle(
-        self, mcp_client: Client, test_config_name: str, test_config_cleanup
-    ):
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
         """Test complete configuration lifecycle: create, view, update, remove."""
         config_name = f"{test_config_name}-lifecycle.subdomain.conf"
         test_config_cleanup(config_name)
@@ -687,6 +718,7 @@ class TestSwagToolIntegration:
             "swag", {"action": SwagAction.VIEW, "config_name": config_name}
         )
         assert view_result.is_error is False
+        assert isinstance(view_result.content[0], TextContent)
         assert "server_name" in view_result.content[0].text
 
         # 3. Update the configuration
@@ -707,6 +739,7 @@ class TestSwagToolIntegration:
         )
         assert view_updated_result.is_error is False
         # Should contain the new port
+        assert isinstance(view_updated_result.content[0], TextContent)
         assert "4000" in view_updated_result.content[0].text
 
         # 5. Remove the configuration (cleanup happens automatically)

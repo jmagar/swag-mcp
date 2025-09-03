@@ -18,9 +18,9 @@ location ^~ /{{ service_name }}/ {
     include /config/nginx/resolver.conf;
 
     # MCP Server Configuration
-    set $upstream_app {{ upstream_app }};
-    set $upstream_port {{ upstream_port }};
-    set $upstream_proto {{ upstream_proto }};
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
 
     # Essential settings for MCP streamable-http transport
     proxy_http_version 1.1;
@@ -62,9 +62,9 @@ location ^~ /{{ service_name }}/ {
 location ^~ /{{ service_name }}/health {
     include /config/nginx/resolver.conf;
 
-    set $upstream_app {{ upstream_app }};
-    set $upstream_port {{ upstream_port }};
-    set $upstream_proto {{ upstream_proto }};
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
 
     # Basic headers for health checks
     proxy_set_header Host $host;

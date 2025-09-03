@@ -34,9 +34,9 @@ server {
 {% endif %}
         include /config/nginx/resolver.conf;
 
-        set $upstream_app {{ upstream_app }};
-        set $upstream_port {{ upstream_port }};
-        set $upstream_proto {{ upstream_proto }};
+        set $upstream_app "{{ upstream_app }}";
+        set $upstream_port "{{ upstream_port }}";
+        set $upstream_proto "{{ upstream_proto }}";
 
         # Essential settings for MCP streamable-http
         proxy_http_version 1.1;
@@ -73,9 +73,9 @@ server {
     location /health {
         include /config/nginx/resolver.conf;
 
-        set $upstream_app {{ upstream_app }};
-        set $upstream_port {{ upstream_port }};
-        set $upstream_proto {{ upstream_proto }};
+        set $upstream_app "{{ upstream_app }}";
+        set $upstream_port "{{ upstream_port }}";
+        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

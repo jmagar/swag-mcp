@@ -857,14 +857,14 @@ class SwagManagerService:
         # Apply targeted replacements based on field type
         if update_request.update_field == "port":
             # Update both upstream_port locations
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {update_request.update_value};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
 
         elif update_request.update_field == "upstream":
             # Update upstream_app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {update_request.update_value};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
 
         elif update_request.update_field == "app":
@@ -874,13 +874,13 @@ class SwagManagerService:
             app, port = update_request.update_value.split(":", 1)
 
             # Update app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {app};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{app}";'
             updated_content = re.sub(pattern, replacement, content)
 
             # Update port
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {port};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{port}";'
             updated_content = re.sub(pattern, replacement, updated_content)
 
         elif update_request.update_field == "add_mcp":
@@ -1529,8 +1529,8 @@ class SwagManagerService:
 
     def _extract_upstream_value(self, content: str, variable_name: str) -> str:
         """Extract upstream variable value from nginx configuration content."""
-        # Pattern to match: set $upstream_app value; or set $upstream_port value;
-        pattern = rf"set \${variable_name}\s+([^;]+);"
+        # Pattern to match: set $upstream_app "value"; or set $upstream_port "value";
+        pattern = rf'set \${variable_name}\s+"([^"]*)"'
         match = re.search(pattern, content)
 
         if not match:

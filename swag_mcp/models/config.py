@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from swag_mcp.core.constants import (
+    AUTH_METHODS,
     VALID_CONFIG_NAME_FORMAT,
     VALID_CONFIG_NAME_PATTERN,
     VALID_CONFIG_ONLY_PATTERN,
@@ -13,7 +14,7 @@ from swag_mcp.core.constants import (
 )
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
-# Type alias for authentication methods
+# Type alias for authentication methods (synced with AUTH_METHODS in constants.py)
 AuthMethodType = Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"]
 
 # Compiled regex patterns for efficient validation
@@ -75,6 +76,15 @@ class SwagConfigRequest(BaseModel):
         """Validate config name format."""
         if not v or ".." in v or "/" in v or "\\" in v:
             raise ValueError("Config name contains invalid characters")
+        return v
+
+    @field_validator("auth_method")
+    @classmethod
+    def validate_auth_method(cls, v: str) -> str:
+        """Validate auth method against available methods from constants."""
+        if v not in AUTH_METHODS:
+            valid_methods = ", ".join(AUTH_METHODS)
+            raise ValueError(f"Auth method '{v}' is not valid. Valid methods: {valid_methods}")
         return v
 
 
@@ -228,6 +238,9 @@ class SwagUpdateRequest(BaseModel):
         """Validate update_value based on the update_field type."""
         update_field = self.update_field
         update_value = self.update_value.strip()  # Strip whitespace consistently
+
+        # Persist the normalized value
+        self.update_value = update_value
 
         if update_field == "add_mcp":
             # Use centralized MCP path validation

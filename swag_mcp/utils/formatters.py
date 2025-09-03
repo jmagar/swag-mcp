@@ -119,7 +119,8 @@ def build_template_filename(config_type: str) -> str:
 
     if config_type not in valid_config_types:
         raise ValueError(
-            f"Invalid config type '{config_type}'. Must be one of: {', '.join(sorted(valid_config_types))}"
+            f"Invalid config type '{config_type}'. "
+            f"Must be one of: {', '.join(sorted(valid_config_types))}"
         )
 
     return f"{config_type}.conf.j2"
@@ -157,24 +158,24 @@ def format_config_list(list_filter: str, total_count: int) -> str:
         format_config_list("samples", 0) -> "No sample configurations found"
 
     """
+    # Use dictionary lookup for cleaner conditionals
+    no_results_messages = {
+        "all": "No configurations found",
+        "active": "No active configurations found",
+        "samples": "No sample configurations found",
+    }
+
     if total_count == 0:
-        if list_filter == "all":
-            return "No configurations found"
-        elif list_filter == "active":
-            return "No active configurations found"
-        elif list_filter == "samples":
-            return "No sample configurations found"
-        else:
-            return f"No {list_filter} configurations found"
+        return no_results_messages.get(list_filter, f"No {list_filter} configurations found")
 
     # Handle singular vs plural
     config_word = "configuration" if total_count == 1 else "configurations"
 
-    if list_filter == "all":
-        return f"Found {total_count} {config_word} (all types)"
-    elif list_filter == "active":
-        return f"Found {total_count} active {config_word}"
-    elif list_filter == "samples":
-        return f"Found {total_count} sample {config_word}"
-    else:
-        return f"Found {total_count} {list_filter} {config_word}"
+    # Use dictionary lookup for found messages
+    found_messages = {
+        "all": f"Found {total_count} {config_word} (all types)",
+        "active": f"Found {total_count} active {config_word}",
+        "samples": f"Found {total_count} sample {config_word}",
+    }
+
+    return found_messages.get(list_filter, f"Found {total_count} {list_filter} {config_word}")

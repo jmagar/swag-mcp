@@ -1,7 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal, assert_never, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
@@ -133,7 +133,7 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     @handle_tool_errors
-    async def swag(
+    async def swag(  # type: ignore[return]
         ctx: Context,
         action: Annotated[SwagAction, Field(description="Action to perform")],
         # List parameters
@@ -620,7 +620,7 @@ def register_tools(mcp: FastMCP) -> None:
 
             else:
                 # This should never be reached since all SwagAction enum values are handled above
-                assert_never(action)
+                raise ValueError(f"Unsupported action: {action}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")

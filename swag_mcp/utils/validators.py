@@ -25,17 +25,23 @@ def validate_domain_format(domain: str) -> str:
     if not domain:
         raise ValueError("Domain name cannot be empty")
 
-    if len(domain) > 253:
+    # Normalize Unicode to NFC form and trim whitespace
+    try:
+        normalized_domain = unicodedata.normalize("NFC", domain.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Domain name contains invalid Unicode: {str(e)}") from e
+
+    if len(normalized_domain) > 253:
         raise ValueError("Domain name is too long (maximum 253 characters)")
 
-    if ".." in domain:
+    if ".." in normalized_domain:
         raise ValueError("Domain name cannot contain consecutive dots")
 
-    if domain.startswith(".") or domain.endswith("."):
+    if normalized_domain.startswith(".") or normalized_domain.endswith("."):
         raise ValueError("Domain name cannot start or end with a dot")
 
     # Split domain into parts for more specific validation
-    parts = domain.split(".")
+    parts = normalized_domain.split(".")
 
     if len(parts) < 2:
         raise ValueError("Domain name must contain at least one dot (e.g., example.com)")
@@ -70,7 +76,7 @@ def validate_domain_format(domain: str) -> str:
             # This is actually fine for many domains, so just continue
             pass
 
-    return domain.lower()
+    return normalized_domain.lower()
 
 
 def validate_empty_string(value: Any, default: str) -> str:
@@ -666,36 +672,42 @@ def validate_mcp_path(mcp_path: str) -> str:
     if not mcp_path:
         raise ValueError("MCP path cannot be empty")
 
+    # Normalize Unicode to NFC form and trim whitespace
+    try:
+        normalized_path = unicodedata.normalize("NFC", mcp_path.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"MCP path contains invalid Unicode: {str(e)}") from e
+
     # Length validation
-    if len(mcp_path) > 255:
+    if len(normalized_path) > 255:
         raise ValueError("MCP path is too long (maximum 255 characters)")
 
     # Must start with '/'
-    if not mcp_path.startswith("/"):
+    if not normalized_path.startswith("/"):
         raise ValueError("MCP path must start with '/'")
 
     # Check for path traversal attempts
-    if ".." in mcp_path:
+    if ".." in normalized_path:
         raise ValueError("Path traversal not allowed in MCP paths")
 
     # Check for null bytes and other dangerous characters
     dangerous_chars = ["\0", "\n", "\r", "\t"]
     for char in dangerous_chars:
-        if char in mcp_path:
+        if char in normalized_path:
             raise ValueError(f"Invalid character in MCP path: {repr(char)}")
 
     # Allow only safe characters: letters, digits, '/', '-', '_', '.'
-    if not re.match(r"^[a-zA-Z0-9/_.-]+$", mcp_path):
+    if not re.match(r"^[a-zA-Z0-9/_.-]+$", normalized_path):
         raise ValueError(
             "MCP path can only contain letters, digits, '/', '-', '_', and '.' characters"
         )
 
     # Prevent double slashes (except at the start which is handled above)
-    if "//" in mcp_path:
+    if "//" in normalized_path:
         raise ValueError("MCP path cannot contain consecutive slashes")
 
     # Cannot end with '/' unless it's the root path
-    if mcp_path != "/" and mcp_path.endswith("/"):
+    if normalized_path != "/" and normalized_path.endswith("/"):
         raise ValueError("MCP path cannot end with '/' (except root path)")
 
     # Additional security checks
@@ -711,7 +723,7 @@ def validate_mcp_path(mcp_path: str) -> str:
     ]
 
     for pattern in suspicious_patterns:
-        if re.search(pattern, mcp_path):
+        if re.search(pattern, normalized_path):
             raise ValueError("MCP path contains invalid or potentially dangerous characters")
 
-    return mcp_path
+    return normalized_path

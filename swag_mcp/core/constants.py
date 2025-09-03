@@ -9,7 +9,7 @@ BACKUP_MARKER = ".backup."
 
 # Validation regex patterns
 VALID_NAME_PATTERN = r"^[\w-]+$"  # Service names, alphanumeric + hyphens/underscores
-VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.-]+$"  # Container names/IP addresses
+VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.\[\]:-]+$"  # Container names/IP addresses, IPv6 support
 VALID_CONFIG_NAME_PATTERN = r"^[a-zA-Z0-9_.-]+\.(conf|sample)$"  # Config filenames
 VALID_CONFIG_ONLY_PATTERN = r"^[a-zA-Z0-9_.-]+\.conf$"  # Only .conf files
 VALID_CONFIG_NAME_FORMAT = (
@@ -22,7 +22,15 @@ CONFIG_TYPE_SUBFOLDER = "subfolder"
 CONFIG_TYPE_MCP_SUBDOMAIN = "mcp-subdomain"
 CONFIG_TYPE_MCP_SUBFOLDER = "mcp-subfolder"
 
-# All available configuration types
+# Configuration types tuple for efficient validation and iteration
+CONFIG_TYPES = (
+    CONFIG_TYPE_SUBDOMAIN,
+    CONFIG_TYPE_SUBFOLDER,
+    CONFIG_TYPE_MCP_SUBDOMAIN,
+    CONFIG_TYPE_MCP_SUBFOLDER,
+)
+
+# All available configuration types (legacy list - prefer CONFIG_TYPES tuple)
 ALL_CONFIG_TYPES = [
     CONFIG_TYPE_SUBDOMAIN,
     CONFIG_TYPE_SUBFOLDER,
@@ -70,7 +78,7 @@ DEFAULT_MCP_STREAM_TIMEOUT = 86400  # 24 hours in seconds for long-running AI op
 DEFAULT_MCP_SESSION_TIMEOUT = 3600  # 1 hour in seconds for session management
 
 # Path validation regex - prevents traversal attacks while allowing valid paths
-LOCATION_PATH_REGEX = r"^[a-zA-Z0-9/_-]+$"  # Alphanumerics, slashes, underscores, hyphens only
+LOCATION_PATH_REGEX = r"^[a-zA-Z0-9/_.-]+$"  # Alphanumerics, slashes, underscores, hyphens, dots
 
 # Docker and health check
 DOCKER_CONTAINER_NAME = "swag"
