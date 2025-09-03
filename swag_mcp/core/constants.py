@@ -64,6 +64,14 @@ DEFAULT_AUTH_METHOD = AUTH_METHOD_AUTHELIA
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_LOG_LEVEL = "INFO"
 
+# MCP-specific default constants
+DEFAULT_MCP_PATH = "/mcp"  # Default MCP endpoint path
+DEFAULT_MCP_STREAM_TIMEOUT = 86400  # 24 hours in seconds for long-running AI operations
+DEFAULT_MCP_SESSION_TIMEOUT = 3600  # 1 hour in seconds for session management
+
+# Path validation regex - prevents traversal attacks while allowing valid paths
+LOCATION_PATH_REGEX = r"^[a-zA-Z0-9/_-]+$"  # Alphanumerics, slashes, underscores, hyphens only
+
 # Docker and health check
 DOCKER_CONTAINER_NAME = "swag"
 HEALTH_CHECK_TIMEOUT = 30

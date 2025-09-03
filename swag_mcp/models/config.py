@@ -13,6 +13,9 @@ from swag_mcp.core.constants import (
 )
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
+# Type alias for authentication methods
+AuthMethodType = Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"]
+
 # Compiled regex patterns for efficient validation
 _UPSTREAM_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
@@ -54,7 +57,7 @@ class SwagConfigRequest(BaseModel):
 
     mcp_enabled: bool = Field(default=False, description="Enable MCP/SSE support for AI services")
 
-    auth_method: Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"] = Field(
+    auth_method: AuthMethodType = Field(
         default="authelia", description="Authentication method to use"
     )
 
@@ -132,8 +135,8 @@ class SwagEditRequest(BaseModel):
         default=None, description="Protocol for upstream connection"
     )
 
-    auth_method: Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"] | None = (
-        Field(default=None, description="Authentication method to use")
+    auth_method: AuthMethodType | None = Field(
+        default=None, description="Authentication method to use"
     )
 
     enable_quic: bool | None = Field(default=None, description="Enable QUIC support")

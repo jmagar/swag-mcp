@@ -354,9 +354,10 @@ Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true
 
 - Base type inferred from filename: `.subdomain.conf` or `.subfolder.conf`
 - MCP features added when `mcp_enabled=true` parameter is used
-- No need to specify template type separately - it's determined automatically
+- No need to specify template type separately — it's determined automatically
 
 #### MCP Template Features
+
 - 🚀 Zero-buffering for real-time streaming
 - ⏱️ 24-hour timeouts for long AI tasks
 - 🔄 Server-Sent Events (SSE) support

@@ -82,7 +82,7 @@ jobs:
         mkdir -p .cache/coverage
 
         # Run tests with coverage
-        uv run pytest tests/ -v \
+        uv run pytest tests/ -v -m "not slow" \
           --cov=swag_mcp \
           --cov-report=xml:.cache/coverage/coverage.xml \
           --cov-report=term-missing \

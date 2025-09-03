@@ -12,6 +12,8 @@ import pytest
 from fastmcp import Client, FastMCP
 from swag_mcp.server import create_mcp_server
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
@@ -245,18 +247,18 @@ async def test_config_cleanup():
         if config_file.exists():
             try:
                 config_file.unlink()  # Remove the file
-                print(f"Cleaned up test config: {config_name}")
+                logger.info(f"Cleaned up test config: {config_name}")
             except Exception as e:
-                print(f"Failed to cleanup test config {config_name}: {e}")
+                logger.error(f"Failed to cleanup test config {config_name}: {e}", exc_info=True)
 
         # Also cleanup any backup files
         backup_pattern = f"{config_name}.backup.*"
         for backup_file in proxy_confs_path.glob(backup_pattern):
             try:
                 backup_file.unlink()
-                print(f"Cleaned up backup file: {backup_file.name}")
+                logger.info(f"Cleaned up backup file: {backup_file.name}")
             except Exception as e:
-                print(f"Failed to cleanup backup {backup_file.name}: {e}")
+                logger.error(f"Failed to cleanup backup {backup_file.name}: {e}", exc_info=True)
 
 
 class TestHelpers:

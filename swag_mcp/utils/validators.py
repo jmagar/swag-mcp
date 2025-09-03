@@ -151,22 +151,29 @@ def validate_config_filename(filename: str) -> str:
         )
 
     # Additional validation: ensure it follows proper naming convention
-    # Expected format: service.type.conf or service.type.conf.sample
-    parts = filename.split(".")
+    # Use semantic suffix checks instead of raw segment counts
     if filename.endswith(".conf.sample"):
-        # For sample files: service.type.conf.sample (minimum 4 parts)
-        if len(parts) < 4:
+        # For sample files: verify basename before .conf.sample is non-empty
+        basename = filename[: -len(".conf.sample")]
+        if not basename or basename == "." or basename == ".." or set(basename) == {"."}:
+            raise ValueError(
+                f"Must be a full filename with extension (got: '{filename}'). "
+                "Use 'service.conf' or 'service.conf.sample' format."
+            )
+    elif filename.endswith(".conf"):
+        # For regular files: verify basename before .conf is non-empty
+        basename = filename[: -len(".conf")]
+        if not basename or basename == "." or basename == ".." or set(basename) == {"."}:
             raise ValueError(
                 f"Must be a full filename with extension (got: '{filename}'). "
                 "Use 'service.conf' or 'service.conf.sample' format."
             )
     else:
-        # For regular files: service.type.conf (minimum 3 parts)
-        if len(parts) < 3:
-            raise ValueError(
-                f"Must be a full filename with extension (got: '{filename}'). "
-                "Use 'service.conf' or 'service.conf.sample' format."
-            )
+        # This should not happen due to earlier check, but keep for safety
+        raise ValueError(
+            f"Must be a full filename with extension (got: '{filename}'). "
+            "Use 'service.conf' or 'service.conf.sample' format."
+        )
 
     # Check for suspicious patterns
     suspicious_patterns = [

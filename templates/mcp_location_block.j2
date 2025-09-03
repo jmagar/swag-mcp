@@ -30,6 +30,7 @@
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
         add_header Vary "Accept" always;
+        add_header X-Request-Id $http_x_request_id always;
         # Standard reverse proxy headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -41,11 +42,17 @@
         # MCP-specific headers
         proxy_set_header Accept $http_accept;
         proxy_set_header Mcp-Session-Id $http_mcp_session_id;
+        proxy_set_header X-Request-Id $http_x_request_id;
 
         # Timeouts for persistent connections
         proxy_connect_timeout 60s;
         proxy_send_timeout 86400s;
         proxy_read_timeout 86400s;
 
+{% if upstream_proto == "https" %}
+        # SNI support for HTTPS upstream connections
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_app;
+{% endif %}
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
