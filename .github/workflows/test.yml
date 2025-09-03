@@ -75,18 +75,18 @@ jobs:
         SWAG_MCP_LOG_DIRECTORY: /tmp/swag-test/.swag-mcp/logs
         SWAG_MCP_LOG_FILE_ENABLED: false
         SWAG_MCP_DEFAULT_AUTH_METHOD: authelia
-        SWAG_MCP_DEFAULT_CONFIG_TYPE: subdomain
       run: |
         # Create test directories
         mkdir -p /tmp/swag-test/proxy-confs
         mkdir -p /tmp/swag-test/.swag-mcp/logs
+        mkdir -p .cache/coverage
 
         # Run tests with coverage
         uv run pytest tests/ -v \
           --cov=swag_mcp \
-          --cov-report=xml \
+          --cov-report=xml:.cache/coverage/coverage.xml \
           --cov-report=term-missing \
-          --cov-fail-under=60 \
+          --cov-fail-under=80 \
           --tb=short
 
     - name: Upload coverage reports to Codecov

@@ -125,7 +125,6 @@ dmypy.json
 .pyre/
 
 # Tool caches (ruff, mypy, etc.)
-.cache/
 
 # IDE/Editor files
 .vscode/

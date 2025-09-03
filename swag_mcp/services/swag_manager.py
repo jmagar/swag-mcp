@@ -1617,7 +1617,9 @@ class SwagManagerService:
         lines.insert(insert_index + 1, location_block)
         return "\n".join(lines)
 
-    async def _validate_nginx_syntax(self, changed_file: Path, nginx_path: str = None) -> None:
+    async def _validate_nginx_syntax(
+        self, changed_file: Path, nginx_path: str | None = None
+    ) -> None:
         """Validate nginx syntax of the configuration file.
 
         Args:
@@ -1628,17 +1630,90 @@ class SwagManagerService:
             ValueError: If nginx syntax validation fails
 
         """
-        # Use provided nginx path or default to 'nginx' in PATH
-        nginx_executable = nginx_path or getattr(config, "nginx_path", "nginx")
+        # Verify changed_file exists before running
+        if not changed_file.exists():
+            raise ValueError(f"Configuration file does not exist: {changed_file}")
 
-        proc = await asyncio.create_subprocess_exec(
-            nginx_executable,
-            "-t",
-            "-c",
-            str(changed_file),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await proc.communicate()
-        if proc.returncode != 0:
-            raise ValueError(f"Nginx syntax validation failed: {err.decode().strip()}")
+        # Use provided nginx path or default to 'nginx' in PATH
+        nginx_executable = nginx_path or "nginx"
+
+        async def _run_nginx_test(args: list[str]) -> tuple[int, str, str]:
+            """Run nginx test command with timeout."""
+            try:
+                proc = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        nginx_executable,
+                        *args,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    ),
+                    timeout=30,  # 30 second timeout
+                )
+                stdout, stderr = await proc.communicate()
+                return (
+                    proc.returncode or 0,
+                    stdout.decode("utf-8", errors="replace"),
+                    stderr.decode("utf-8", errors="replace"),
+                )
+            except FileNotFoundError as e:
+                raise ValueError(
+                    f"Nginx executable not found at '{nginx_executable}'. "
+                    f"Please install nginx or specify correct path. Error: {e}"
+                ) from e
+            except TimeoutError as e:
+                raise ValueError(
+                    f"Nginx syntax validation timed out after 30 seconds for file '{changed_file}' "
+                    f"using executable '{nginx_executable}'"
+                ) from e
+
+        # Try primary validation with config file
+        try:
+            returncode, stdout, stderr = await _run_nginx_test(["-t", "-c", str(changed_file)])
+
+            if returncode == 0:
+                return  # Success
+
+            # Primary test failed, include both stdout and stderr in error
+            error_output = f"stdout: {stdout.strip()}, stderr: {stderr.strip()}"
+
+            # Try fallback: plain nginx -t without -c flag
+            try:
+                result = await _run_nginx_test(["-t"])
+                fallback_returncode, fallback_stdout, fallback_stderr = result
+
+                # If fallback succeeds, the issue is with our specific config
+                if fallback_returncode == 0:
+                    raise ValueError(
+                        f"Nginx syntax validation failed for '{changed_file}' "
+                        f"(returncode: {returncode}). Output: {error_output}. "
+                        f"Executable: '{nginx_executable}'"
+                    )
+                else:
+                    # Both failed, report both attempts
+                    fallback_output = (
+                        f"stdout: {fallback_stdout.strip()}, stderr: {fallback_stderr.strip()}"
+                    )
+                    raise ValueError(
+                        f"Nginx syntax validation failed for '{changed_file}' "
+                        f"(returncode: {returncode}). Primary test output: {error_output}. "
+                        f"Fallback test also failed (returncode: {fallback_returncode}): "
+                        f"{fallback_output}. Executable: '{nginx_executable}'"
+                    )
+            except Exception as fallback_error:
+                # Fallback failed for other reasons, report original error with context
+                raise ValueError(
+                    f"Nginx syntax validation failed for '{changed_file}' "
+                    f"(returncode: {returncode}). Output: {error_output}. "
+                    f"Fallback test failed: {str(fallback_error)}. "
+                    f"Executable: '{nginx_executable}'"
+                ) from fallback_error
+
+        except ValueError:
+            # Re-raise ValueError exceptions (our custom ones)
+            raise
+        except Exception as e:
+            # Handle any other unexpected errors
+            raise ValueError(
+                f"Unexpected error during nginx syntax validation for '{changed_file}' "
+                f"using executable '{nginx_executable}': {str(e)}"
+            ) from e

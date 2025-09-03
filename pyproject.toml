@@ -131,6 +131,9 @@ source = ["swag_mcp"]
 [tool.coverage.html]
 directory = ".cache/coverage/htmlcov"
 
+[tool.coverage.xml]
+output = ".cache/coverage/coverage.xml"
+
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",

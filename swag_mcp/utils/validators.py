@@ -157,15 +157,15 @@ def validate_config_filename(filename: str) -> str:
         # For sample files: service.type.conf.sample (minimum 4 parts)
         if len(parts) < 4:
             raise ValueError(
-                "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
-                f"'service.conf.sample' — do not pass service names or partial paths (got: '{filename}')"
+                f"Must be a full filename with extension (got: '{filename}'). "
+                "Use 'service.conf' or 'service.conf.sample' format."
             )
     else:
         # For regular files: service.type.conf (minimum 3 parts)
         if len(parts) < 3:
             raise ValueError(
-                "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
-                f"'service.conf.sample' — do not pass service names or partial paths (got: '{filename}')"
+                f"Must be a full filename with extension (got: '{filename}'). "
+                "Use 'service.conf' or 'service.conf.sample' format."
             )
 
     # Check for suspicious patterns

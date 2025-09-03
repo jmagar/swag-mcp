@@ -280,6 +280,7 @@ Creates a new reverse proxy configuration with automatic health check verificati
 - *"Create MCP streaming proxy for ai-service at ai.example.com:8080"*
 
 **Key Options:**
+
 - **Config Type**: Automatically inferred from filename (service.subdomain.conf or service.subfolder.conf)
 - **MCP Support**: Add `mcp_enabled=true` for streaming/SSE features
 - **Authentication**: none, basic, ldap, authelia, authentik, tinyauth (default: authelia)
@@ -339,20 +340,23 @@ The template system automatically selects the appropriate template based on the 
 
 ### Standard Templates
 Perfect for traditional web applications:
+
 - **`subdomain`** - `service.subdomain.conf` → `app.example.com` → `container:port`
 - **`subfolder`** - `service.subfolder.conf` → `example.com/app` → `container:port`
 
 ### MCP Templates
 Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true`):
+
 - **`mcp-subdomain`** - `service.subdomain.conf` + MCP features → Streamable-HTTP/SSE support
 - **`mcp-subfolder`** - `service.subfolder.conf` + MCP features → Path-based with SSE support
 
-**Template Selection:**
+#### Template Selection
+
 - Base type inferred from filename: `.subdomain.conf` or `.subfolder.conf`
 - MCP features added when `mcp_enabled=true` parameter is used
 - No need to specify template type separately - it's determined automatically
 
-**MCP Template Features:**
+#### MCP Template Features
 - 🚀 Zero-buffering for real-time streaming
 - ⏱️ 24-hour timeouts for long AI tasks
 - 🔄 Server-Sent Events (SSE) support

@@ -1,7 +1,8 @@
 """Pytest configuration and shared fixtures for SWAG MCP tests."""
 
 import asyncio
-import contextlib
+import functools
+import logging
 import os
 import time
 from collections.abc import AsyncGenerator, Generator
@@ -20,11 +21,43 @@ def setup_test_environment():
     proxy_confs_path = os.environ.get("SWAG_MCP_PROXY_CONFS_PATH")
     if not proxy_confs_path:
         # Check if we're in CI environment
-        if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
-            proxy_confs_path = "/tmp/swag-test/proxy-confs"
+        ci_env_vars = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "TRAVIS", "CIRCLECI", "BUILD_NUMBER"]
+        is_ci = any(os.environ.get(var) for var in ci_env_vars)
+
+        if is_ci:
+            # Use CI-friendly temp directory
+            temp_dirs = [
+                os.environ.get("TMPDIR"),
+                os.environ.get("TEMP"),
+                os.environ.get("TMP"),
+                "/tmp",
+            ]
+            base_temp = next((d for d in temp_dirs if d and Path(d).exists()), "/tmp")
+            proxy_confs_path = str(Path(base_temp) / "swag-test" / "proxy-confs")
         else:
-            # Local development environment
-            proxy_confs_path = "/mnt/appdata/swag/nginx/proxy-confs"
+            # Local development environment - try multiple common paths
+            local_paths = [
+                "/mnt/appdata/swag/nginx/proxy-confs",
+                "/opt/swag/nginx/proxy-confs",
+                "/var/lib/swag/nginx/proxy-confs",
+                str(Path.home() / ".swag-mcp-test" / "proxy-confs"),
+            ]
+            # Use first existing path or fallback to home directory
+            proxy_confs_path = next(
+                (p for p in local_paths if Path(p).parent.exists()), local_paths[-1]
+            )
+
+        # Ensure the chosen path exists
+        proxy_path = Path(proxy_confs_path)
+        proxy_path.mkdir(parents=True, exist_ok=True)
+
+        # Verify the path is accessible
+        if not proxy_path.exists() or not os.access(proxy_path, os.W_OK):
+            # Fallback to temp directory if path is not accessible
+            fallback_path = Path("/tmp") / "swag-test" / "proxy-confs"
+            fallback_path.mkdir(parents=True, exist_ok=True)
+            proxy_confs_path = str(fallback_path)
+
         os.environ["SWAG_MCP_PROXY_CONFS_PATH"] = proxy_confs_path
 
     # Set log directory
@@ -89,8 +122,11 @@ server {
     for filename, content in sample_configs.items():
         config_file = proxy_path / filename
         if not config_file.exists():
-            with contextlib.suppress(Exception):
+            try:
                 config_file.write_text(content)
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.exception(f"Failed to create sample config file {filename}: {e}")
 
 
 @pytest.fixture(scope="session")
@@ -137,11 +173,12 @@ async def mcp_server(monkeypatch) -> AsyncGenerator[FastMCP, None]:
     # Also patch the SwagManagerService constructor as a backup
     original_init = SwagManagerService.__init__
 
-    def patched_init(self, config_path=None, template_path=None):
+    @functools.wraps(original_init)
+    def patched_init(self, config_path=None, template_path=None, *args, **kwargs):
         # Force the config_path to our test path
         test_config_path = Path(proxy_confs_path)
         test_template_path = Path("templates")
-        return original_init(self, test_config_path, test_template_path)
+        return original_init(self, test_config_path, test_template_path, *args, **kwargs)
 
     monkeypatch.setattr(SwagManagerService, "__init__", patched_init)
 

@@ -5,13 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ..core.constants import (
+from swag_mcp.core.constants import (
     VALID_CONFIG_NAME_FORMAT,
     VALID_CONFIG_NAME_PATTERN,
     VALID_CONFIG_ONLY_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
-from ..utils.validators import validate_domain_format, validate_mcp_path
+from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
 # Compiled regex patterns for efficient validation
 _UPSTREAM_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
@@ -21,8 +21,8 @@ def _validate_port_number(port_str: str) -> None:
     """Validate port number string and raise ValueError if invalid."""
     try:
         port = int(port_str)
-    except ValueError:
-        raise ValueError("Port must be a valid number")
+    except ValueError as err:
+        raise ValueError("Port must be a valid number") from err
 
     if not (1 <= port <= 65535):
         raise ValueError("Port number must be between 1 and 65535")
@@ -54,7 +54,7 @@ class SwagConfigRequest(BaseModel):
 
     mcp_enabled: bool = Field(default=False, description="Enable MCP/SSE support for AI services")
 
-    auth_method: Literal["none", "ldap", "authelia", "authentik", "tinyauth"] = Field(
+    auth_method: Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"] = Field(
         default="authelia", description="Authentication method to use"
     )
 
@@ -132,8 +132,8 @@ class SwagEditRequest(BaseModel):
         default=None, description="Protocol for upstream connection"
     )
 
-    auth_method: Literal["none", "ldap", "authelia", "authentik", "tinyauth"] | None = Field(
-        default=None, description="Authentication method to use"
+    auth_method: Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"] | None = (
+        Field(default=None, description="Authentication method to use")
     )
 
     enable_quic: bool | None = Field(default=None, description="Enable QUIC support")
