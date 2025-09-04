@@ -1981,6 +1981,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "regex" },
+    { name = "types-regex" },
 ]
 
 [package.dev-dependencies]
@@ -2008,6 +2009,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "regex" },
+    { name = "types-regex", specifier = ">=2025.7.34.20250809" },
 ]
 
 [package.metadata.requires-dev]

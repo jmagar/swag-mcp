@@ -6,6 +6,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+import regex
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,14 +26,14 @@ def validate_domain_format(domain: str) -> str:
     """
     if not domain:
         raise ValueError("Domain name cannot be empty")
-        
+
     # Normalize and strip a trailing dot (FQDN form)
     domain = domain.strip().rstrip(".")
     if len(domain) == 0:
         raise ValueError("Domain name cannot be empty")
     if len(domain) > 253:
         raise ValueError("Domain name is too long (maximum 253 characters)")
-        
+
     # Normalize Unicode to NFC form and trim whitespace
     try:
         normalized_domain = unicodedata.normalize("NFC", domain.strip())
@@ -312,22 +314,11 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     else:
         # Standard validation without emoji
         # Using Unicode property classes for proper international support
-        try:
-            # Try to use regex module for better Unicode support
-            import regex
-
-            if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
-                raise ValueError(
-                    "Service name can only contain Unicode letters, numbers, hyphens, "
-                    "and underscores"
-                )
-        except ImportError:
-            # Fallback to basic validation if regex module not available
-            # Allow Unicode word characters, hyphens, and underscores
-            if not re.match(r"^[\w_-]+$", normalized_name, re.UNICODE):
-                raise ValueError(
-                    "Service name can only contain letters, numbers, hyphens, and underscores"
-                ) from None
+        if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
+            raise ValueError(
+                "Service name can only contain Unicode letters, numbers, hyphens, "
+                "and underscores"
+            )
 
     # Must start with letter or number (Unicode-aware)
     if normalized_name:

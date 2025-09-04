@@ -35,7 +35,7 @@ def _validate_port_number(port_str: str) -> None:
 
 class SwagBaseRequest(BaseModel):
     """Base request model with common action field."""
-    
+
     action: SwagAction = Field(description="The action to perform")
 
 
@@ -76,6 +76,7 @@ class SwagConfigRequest(SwagBaseRequest):
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
         import unicodedata as _ud
+
         v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
@@ -84,6 +85,7 @@ class SwagConfigRequest(SwagBaseRequest):
     def validate_config_name(cls, v: str) -> str:
         """Validate config name format."""
         import unicodedata as _ud
+
         v = _ud.normalize("NFKC", v).strip()
         if not v or ".." in v or "/" in v or "\\" in v:
             raise ValueError("Config name contains invalid characters")
@@ -171,9 +173,11 @@ class SwagEditRequest(SwagBaseRequest):
     @field_validator("server_name", mode="before")
     @classmethod
     def validate_edit_server_name(cls, v: str | None) -> str | None:
+        """Validate server name format for edit requests."""
         if v is None:
             return v
         import unicodedata as _ud
+
         v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
@@ -230,6 +234,7 @@ class SwagHealthCheckRequest(SwagBaseRequest):
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
         import unicodedata as _ud
+
         v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
@@ -330,7 +335,9 @@ class SwagBackupRequest(SwagBaseRequest):
 
     @model_validator(mode="after")
     def _validate_cleanup_requires_retention(self) -> "SwagBackupRequest":
-        if self.backup_action == "cleanup" and (self.retention_days is None or self.retention_days < 0):
+        if self.backup_action == "cleanup" and (
+            self.retention_days is None or self.retention_days < 0
+        ):
             raise ValueError("retention_days must be provided and >= 0 for cleanup action")
         return self
 

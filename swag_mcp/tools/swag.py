@@ -1,7 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal, cast, assert_never
+from typing import Annotated, Any, Literal, assert_never, cast
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
@@ -81,6 +81,7 @@ async def _run_health_check(
 
     try:
         health_request = SwagHealthCheckRequest(
+            action=SwagAction.HEALTH_CHECK,
             domain=server_name,
             timeout=15,
             follow_redirects=True,
@@ -184,7 +185,8 @@ def register_tools(mcp: FastMCP) -> None:
             Field(
                 default="authelia",
                 description=(
-                    "Authentication method: 'none' | 'basic' | 'ldap' | 'authelia' | 'authentik' | 'tinyauth'"
+                    "Authentication method: 'none' | 'basic' | 'ldap' | "
+                    "'authelia' | 'authentik' | 'tinyauth'"
                 ),
             ),
         ] = "authelia",
@@ -361,6 +363,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Convert parameters to new request model
                 config_request = SwagConfigRequest(
+                    action=action,
                     config_name=config_name,
                     server_name=server_name,
                     upstream_app=upstream_app,
@@ -424,6 +427,7 @@ def register_tools(mcp: FastMCP) -> None:
                 await log_action_start(ctx, "Editing configuration", config_name)
 
                 edit_request = SwagEditRequest(
+                    action=action,
                     config_name=config_name,
                     new_content=new_content,
                     create_backup=create_backup,
@@ -449,7 +453,7 @@ def register_tools(mcp: FastMCP) -> None:
                 await log_action_start(ctx, "Removing configuration", config_name)
 
                 remove_request = SwagRemoveRequest(
-                    config_name=config_name, create_backup=create_backup
+                    action=action, config_name=config_name, create_backup=create_backup
                 )
 
                 remove_result = await swag_service.remove_config(remove_request)
@@ -463,7 +467,7 @@ def register_tools(mcp: FastMCP) -> None:
             elif action == SwagAction.LOGS:
                 await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
 
-                logs_request = SwagLogsRequest(log_type=log_type, lines=lines)
+                logs_request = SwagLogsRequest(action=action, log_type=log_type, lines=lines)
 
                 logs_output = await swag_service.get_swag_logs(logs_request)
                 await log_action_success(
@@ -549,6 +553,7 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Validate and create health check request
                 health_request = SwagHealthCheckRequest(
+                    action=action,
                     domain=domain,
                     timeout=timeout,
                     follow_redirects=follow_redirects,
@@ -589,6 +594,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
 
                 update_request = SwagUpdateRequest(
+                    action=action,
                     config_name=config_name,
                     update_field=cast(
                         "Literal['port', 'upstream', 'app', 'add_mcp']", update_field

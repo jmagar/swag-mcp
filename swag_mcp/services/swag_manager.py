@@ -892,6 +892,7 @@ class SwagManagerService:
                 validated_mcp_path = validate_mcp_path(mcp_path)
             except ValueError as e:
                 from swag_mcp.services.errors import ValidationError
+
                 error_msg = f"Invalid MCP path: {str(e)}"
                 logger.error(error_msg)
                 raise ValidationError(error_msg) from e
@@ -1470,6 +1471,7 @@ class SwagManagerService:
             mcp_path = validate_mcp_path(mcp_path)
         except ValueError as e:
             from swag_mcp.services.errors import ValidationError
+
             raise ValidationError(f"Invalid MCP path: {str(e)}") from e
 
         # Read existing config
@@ -1477,6 +1479,7 @@ class SwagManagerService:
             content = await self.read_config(config_name)
         except OSError as e:
             import errno
+
             if e.errno == errno.ENOENT:
                 raise FileNotFoundError(f"Configuration file {config_name} not found") from e
             else:
