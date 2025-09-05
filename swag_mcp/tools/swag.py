@@ -87,10 +87,9 @@ async def _run_health_check(
         health_result = await swag_service.health_check(health_request)
 
         if health_result.success:
-            health_status = (
-                f"✅ Health check passed: {health_result.status_code} "
-                f"({health_result.response_time_ms}ms)"
-            )
+            status_code = health_result.status_code or "unknown"
+            response_time = health_result.response_time_ms or 0
+            health_status = f"✅ Health check passed: {status_code} " f"({response_time}ms)"
             await ctx.info(f"Health check successful for {server_name}")
         else:
             health_status = f"⚠️ Health check failed: {health_result.error or 'Unknown error'}"
@@ -654,7 +653,7 @@ def register_tools(mcp: FastMCP) -> None:
                 )
 
             # This should never be reached as all enum cases are handled above
-            raise AssertionError(f"Unhandled action: {action}")
+            raise ValueError(f"Unhandled action: {action}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")

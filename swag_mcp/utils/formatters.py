@@ -54,7 +54,8 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
     """
     if result.success:
         status_icon = "✅"
-        status_text = f"{result.status_code} OK"
+        status_code = result.status_code if result.status_code is not None else "unknown"
+        status_text = f"{status_code} OK"
         time_text = (
             f"({format_duration(result.response_time_ms)})" if result.response_time_ms else ""
         )

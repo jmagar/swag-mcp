@@ -93,6 +93,19 @@ class SwagConfigRequest(SwagBaseRequest):
             raise ValueError("Config name cannot start or end with '-'")
         return v
 
+    @field_validator("upstream_app", mode="before")
+    @classmethod
+    def validate_upstream_app(cls, v: str) -> str:
+        """Validate upstream app name format."""
+        import unicodedata as _ud
+
+        v = _ud.normalize("NFKC", v).strip()
+        if not v:
+            raise ValueError("Upstream app name cannot be empty")
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("Upstream app name contains invalid characters")
+        return v
+
     @field_validator("auth_method")
     @classmethod
     def validate_auth_method(cls, v: str) -> str:
@@ -180,6 +193,21 @@ class SwagEditRequest(SwagBaseRequest):
 
         v = _ud.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
+
+    @field_validator("upstream_app", mode="before")
+    @classmethod
+    def validate_edit_upstream_app(cls, v: str | None) -> str | None:
+        """Validate upstream app name format for edit requests."""
+        if v is None:
+            return v
+        import unicodedata as _ud
+
+        v = _ud.normalize("NFKC", v).strip()
+        if not v:
+            raise ValueError("Upstream app name cannot be empty")
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("Upstream app name contains invalid characters")
+        return v
 
 
 class SwagRemoveRequest(SwagBaseRequest):

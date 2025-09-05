@@ -347,6 +347,43 @@ class TestSwagToolIntegration:
         response = update_result.content[0].text
         assert "Updated" in response and ("upstream" in response or "new-app" in response)
 
+    async def test_update_add_mcp_location(
+        self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
+    ) -> None:
+        """Test adding an MCP location to an existing configuration."""
+        config_name = f"{test_config_name}-mcp.subdomain.conf"
+        test_config_cleanup(config_name)
+
+        # First create a config
+        create_result = await mcp_client.call_tool(
+            "swag",
+            {
+                "action": SwagAction.CREATE,
+                "config_name": config_name,
+                "server_name": "mcp-test.example.com",
+                "upstream_app": "test-app",
+                "upstream_port": 8080,
+            },
+        )
+        assert create_result.is_error is False
+
+        # Add MCP location
+        update_result = await mcp_client.call_tool(
+            "swag",
+            {
+                "action": SwagAction.UPDATE,
+                "config_name": config_name,
+                "update_field": "add_mcp",
+                "update_value": "/mcp",
+                "create_backup": True,
+            },
+        )
+
+        assert update_result.is_error is False
+        assert isinstance(update_result.content[0], TextContent)
+        response = update_result.content[0].text
+        assert "Updated" in response and ("mcp" in response or "/mcp" in response)
+
     async def test_update_invalid_field(self, mcp_client: Client, test_config_name: str) -> None:
         """Test updating with an invalid field name."""
         result = await mcp_client.call_tool(

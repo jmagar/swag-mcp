@@ -15,6 +15,13 @@ location ^~ /{{ service_name }}/ {
     include /config/nginx/{{ auth_method }}-location.conf;
 {% endif %}
 
+    # Security headers
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     include /config/nginx/resolver.conf;
 
     # MCP Server Configuration
@@ -28,10 +35,15 @@ location ^~ /{{ service_name }}/ {
     proxy_cache off;
     proxy_request_buffering off;
     proxy_max_temp_file_size 0;
-    chunked_transfer_encoding off;
+    chunked_transfer_encoding on;
 
     # Connection management for SSE/streaming support
     proxy_set_header Connection '';
+
+    # Cache control headers for streaming responses
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
 
     # Standard reverse proxy headers
     proxy_set_header Host $host;
@@ -41,13 +53,15 @@ location ^~ /{{ service_name }}/ {
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Port $server_port;
     proxy_set_header X-Forwarded-Uri $request_uri;
+    proxy_set_header X-Forwarded-Prefix /{{ service_name }};
+    proxy_set_header X-Script-Name /{{ service_name }};
 
     # MCP-specific headers for session management and content negotiation
     proxy_set_header Accept $http_accept;
     proxy_set_header Mcp-Session-Id $http_mcp_session_id;
 
     # Timeouts for long-running MCP connections (24h read, 1h connect/send)
-    proxy_connect_timeout 3600s;
+    proxy_connect_timeout 60s;
     proxy_send_timeout 86400s;
     proxy_read_timeout 86400s;
 

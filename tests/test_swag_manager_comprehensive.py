@@ -751,17 +751,17 @@ class TestErrorHandlingEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             yield SwagManagerService(Path(temp_dir), Path(temp_dir))
 
-    async def test_validate_nginx_syntax_docker_error(self, temp_service):
-        """Test nginx syntax validation when Docker fails."""
+    async def test_validate_nginx_syntax_subprocess_error(self, temp_service):
+        """Test nginx syntax validation when nginx executable is not found."""
         test_file = temp_service.config_path / "test.conf"
         test_file.write_text("server { listen 80; }")
 
-        with patch("docker.from_env") as mock_docker:
-            import docker
+        with patch("shutil.which") as mock_which:
+            # Mock nginx not being found
+            mock_which.return_value = None
 
-            mock_docker.side_effect = docker.errors.DockerException("Docker not available")
-
-            # Should handle Docker errors gracefully
+            # Should handle missing nginx gracefully
             result = await temp_service._validate_nginx_syntax(test_file)
-            # Method should return boolean, likely True (assume valid when can't check)
+            # Method should return boolean, True when nginx not available (assume valid)
             assert isinstance(result, bool)
+            assert result is True

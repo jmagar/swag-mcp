@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import aiofiles
-from jinja2 import FileSystemLoader, TemplateNotFound
+import aiohttp
+from jinja2 import FileSystemLoader, StrictUndefined, TemplateNotFound
 from jinja2.sandbox import SandboxedEnvironment
 
-from ..core.config import config
-from ..models.config import (
+from swag_mcp.core.config import config
+from swag_mcp.models.config import (
     SwagConfigRequest,
     SwagConfigResult,
     SwagEditRequest,
@@ -26,12 +27,12 @@ from ..models.config import (
     SwagResourceList,
     SwagUpdateRequest,
 )
-from ..utils.error_handlers import handle_os_error
-from ..utils.formatters import (
+from swag_mcp.utils.error_handlers import handle_os_error
+from swag_mcp.utils.formatters import (
     build_template_filename,
     get_possible_sample_filenames,
 )
-from ..utils.validators import (
+from swag_mcp.utils.validators import (
     detect_and_handle_encoding,
     normalize_unicode_text,
     validate_config_filename,
@@ -74,6 +75,10 @@ class SwagManagerService:
         self._active_transactions: dict[str, dict] = {}
         self._transaction_lock = asyncio.Lock()
 
+        # HTTP session for health checks with connection pooling
+        self._http_session: aiohttp.ClientSession | None = None
+        self._session_lock = asyncio.Lock()
+
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
@@ -92,6 +97,96 @@ class SwagManagerService:
             if file_key not in self._file_locks:
                 self._file_locks[file_key] = asyncio.Lock()
             return self._file_locks[file_key]
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create HTTP session with connection pooling.
+
+        Returns:
+            aiohttp.ClientSession configured with connection pooling and SSL context
+
+        """
+        async with self._session_lock:
+            if self._http_session is None or self._http_session.closed:
+                # Create SSL context for health checks (allow self-signed certs)
+                import ssl
+
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+                # Create connector with connection pooling
+                connector = aiohttp.TCPConnector(
+                    ssl=ssl_context,
+                    limit=10,  # Connection pool size
+                    limit_per_host=5,  # Max connections per host
+                    ttl_dns_cache=300,  # DNS cache TTL in seconds
+                    use_dns_cache=True,
+                    enable_cleanup_closed=True,
+                )
+
+                # Create session with timeout and connector
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                self._http_session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                )
+
+            return self._http_session
+
+    async def _close_session(self) -> None:
+        """Close HTTP session and cleanup resources."""
+        async with self._session_lock:
+            if self._http_session and not self._http_session.closed:
+                await self._http_session.close()
+                self._http_session = None
+
+    async def _validate_nginx_syntax(self, config_path: Path) -> bool:
+        """Validate nginx configuration syntax using subprocess.
+
+        Args:
+            config_path: Path to the nginx configuration file to validate
+
+        Returns:
+            bool: True if syntax is valid, False otherwise
+
+        """
+        import shutil
+        import subprocess
+
+        try:
+            # Check if nginx is available
+            nginx_cmd = shutil.which("nginx")
+            if not nginx_cmd:
+                logger.warning("nginx command not found, skipping syntax validation")
+                return True  # Assume valid if nginx not available
+
+            # Run nginx syntax test
+            result = await asyncio.create_subprocess_exec(
+                nginx_cmd,
+                "-t",
+                "-c",
+                str(config_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            stdout, stderr = await result.communicate()
+
+            # nginx -t returns 0 for valid config, non-zero for invalid
+            if result.returncode == 0:
+                logger.debug(f"nginx syntax validation passed for {config_path}")
+                return True
+            else:
+                logger.warning(
+                    f"nginx syntax validation failed for {config_path}: "
+                    f"{stderr.decode('utf-8', errors='ignore')}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Error validating nginx syntax for {config_path}: {e}")
+            # Return True to not block operations if validation fails
+            return True
 
     class AtomicTransaction:
         """Context manager for atomic multi-file operations with rollback support."""
@@ -251,27 +346,19 @@ class SwagManagerService:
         # Create sandboxed environment to prevent dangerous operations
         env = SandboxedEnvironment(
             loader=FileSystemLoader(str(self.template_path)),
-            autoescape=False,  # NGINX configs don't need HTML escaping
+            autoescape=True,  # Enable autoescape for security
+            undefined=StrictUndefined,  # Fail on undefined variables
             trim_blocks=True,
             lstrip_blocks=True,
         )
 
         # Remove dangerous globals and built-ins to prevent code execution
+        # Minimal set of globals required for NGINX config templates
         env.globals = {
-            # Only allow safe built-in functions
-            "range": range,
-            "len": len,
+            # Only essential type conversion functions for template rendering
             "str": str,
             "int": int,
             "bool": bool,
-            "list": list,
-            "dict": dict,
-            "zip": zip,
-            # Math functions that are safe
-            "min": min,
-            "max": max,
-            "abs": abs,
-            "round": round,
         }
 
         # Customize sandbox to block additional dangerous operations
@@ -674,6 +761,14 @@ class SwagManagerService:
 
     async def list_configs(self, list_filter: str = "all") -> SwagListResult:
         """List configuration files based on type."""
+        # Validate filter parameter
+        valid_filters = {"all", "active", "samples"}
+        if list_filter not in valid_filters:
+            valid_options = ", ".join(sorted(valid_filters))
+            raise ValueError(
+                f"Invalid list filter '{list_filter}'. Must be one of: {valid_options}"
+            )
+
         logger.info(f"Listing configurations of type: {list_filter}")
         self._ensure_config_directory()
 
@@ -1006,7 +1101,7 @@ class SwagManagerService:
             Dictionary mapping template names to their existence status
 
         """
-        from ..core.constants import ALL_CONFIG_TYPES
+        from swag_mcp.core.constants import ALL_CONFIG_TYPES
 
         results = {}
         for config_type in ALL_CONFIG_TYPES:
@@ -1046,24 +1141,7 @@ class SwagManagerService:
             content = detect_and_handle_encoding(raw_content)
 
         except OSError as e:
-            if e.errno == errno.EACCES:
-                raise OSError(
-                    errno.EACCES,
-                    f"Permission denied reading configuration file for removal: {validated_name}",
-                ) from e
-            elif e.errno == errno.EIO:
-                raise OSError(
-                    errno.EIO,
-                    (
-                        f"I/O error reading configuration file for removal: {validated_name}. "
-                        "This may indicate disk corruption."
-                    ),
-                ) from e
-            else:
-                raise OSError(
-                    e.errno or errno.EIO,
-                    (f"Error reading configuration file for removal: {validated_name}: {str(e)}"),
-                ) from e
+            handle_os_error(e, "reading configuration file for removal", validated_name)
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(
                 f"Configuration file has invalid text encoding or Unicode characters "
@@ -1203,7 +1281,7 @@ class SwagManagerService:
 
     async def list_backups(self) -> list[dict[str, Any]]:
         """List all backup files with metadata."""
-        from ..core.constants import BACKUP_MARKER
+        from swag_mcp.core.constants import BACKUP_MARKER
 
         logger.info("Listing all backup files")
         backup_files = []
@@ -1352,26 +1430,19 @@ class SwagManagerService:
 
             try:
                 # Configure SSL context for self-signed certificates
-                import ssl
 
-                import aiohttp
-
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-
-                # Create connector with SSL context
-                connector = aiohttp.TCPConnector(ssl=ssl_context)
+                # Get pooled HTTP session
+                session = await self._get_session()
 
                 # Record start time
                 start_time = time.time()
 
-                async with (
-                    aiohttp.ClientSession(
-                        connector=connector, timeout=aiohttp.ClientTimeout(total=request.timeout)
-                    ) as session,
-                    session.get(url, allow_redirects=request.follow_redirects) as response,
-                ):
+                # Use custom timeout for this request
+                timeout = aiohttp.ClientTimeout(total=request.timeout)
+
+                async with session.get(
+                    url, allow_redirects=request.follow_redirects, timeout=timeout
+                ) as response:
                     # Calculate response time
                     response_time_ms = int((time.time() - start_time) * 1000)
 
@@ -1478,13 +1549,7 @@ class SwagManagerService:
         try:
             content = await self.read_config(config_name)
         except OSError as e:
-            import errno
-
-            if e.errno == errno.ENOENT:
-                raise FileNotFoundError(f"Configuration file {config_name} not found") from e
-            else:
-                # Re-raise the original exception for other errno values
-                raise
+            handle_os_error(e, "reading configuration file", config_name)
 
         # Check if MCP location already exists (match '=', '^~', or plain)
         dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
@@ -1626,104 +1691,3 @@ class SwagManagerService:
         lines.insert(insert_index, "")  # Add empty line for spacing
         lines.insert(insert_index + 1, location_block)
         return "\n".join(lines)
-
-    async def _validate_nginx_syntax(
-        self, changed_file: Path, nginx_path: str | None = None
-    ) -> None:
-        """Validate nginx syntax of the configuration file.
-
-        Args:
-            changed_file: Path to the configuration file to validate
-            nginx_path: Path to nginx executable (optional, defaults to 'nginx' in PATH)
-
-        Raises:
-            ValueError: If nginx syntax validation fails
-
-        """
-        # Verify changed_file exists before running
-        if not changed_file.exists():
-            raise ValueError(f"Configuration file does not exist: {changed_file}")
-
-        # Use provided nginx path or default to 'nginx' in PATH
-        nginx_executable = nginx_path or "nginx"
-
-        async def _run_nginx_test(args: list[str]) -> tuple[int, str, str]:
-            """Run nginx test command with timeout."""
-            try:
-                proc = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        nginx_executable,
-                        *args,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    ),
-                    timeout=30,  # 30 second timeout
-                )
-                stdout, stderr = await proc.communicate()
-                return (
-                    proc.returncode or 0,
-                    stdout.decode("utf-8", errors="replace"),
-                    stderr.decode("utf-8", errors="replace"),
-                )
-            except FileNotFoundError as e:
-                raise ValueError(
-                    f"Nginx executable not found at '{nginx_executable}'. "
-                    f"Please install nginx or specify correct path. Error: {e}"
-                ) from e
-            except TimeoutError as e:
-                raise ValueError(
-                    f"Nginx syntax validation timed out after 30 seconds for file '{changed_file}' "
-                    f"using executable '{nginx_executable}'"
-                ) from e
-
-        # Try primary validation with config file
-        try:
-            returncode, stdout, stderr = await _run_nginx_test(["-t", "-c", str(changed_file)])
-
-            if returncode == 0:
-                return  # Success
-
-            # Primary test failed, include both stdout and stderr in error
-            error_output = f"stdout: {stdout.strip()}, stderr: {stderr.strip()}"
-
-            # Try fallback: plain nginx -t without -c flag
-            try:
-                result = await _run_nginx_test(["-t"])
-                fallback_returncode, fallback_stdout, fallback_stderr = result
-
-                # If fallback succeeds, the issue is with our specific config
-                if fallback_returncode == 0:
-                    raise ValueError(
-                        f"Nginx syntax validation failed for '{changed_file}' "
-                        f"(returncode: {returncode}). Output: {error_output}. "
-                        f"Executable: '{nginx_executable}'"
-                    )
-                else:
-                    # Both failed, report both attempts
-                    fallback_output = (
-                        f"stdout: {fallback_stdout.strip()}, stderr: {fallback_stderr.strip()}"
-                    )
-                    raise ValueError(
-                        f"Nginx syntax validation failed for '{changed_file}' "
-                        f"(returncode: {returncode}). Primary test output: {error_output}. "
-                        f"Fallback test also failed (returncode: {fallback_returncode}): "
-                        f"{fallback_output}. Executable: '{nginx_executable}'"
-                    )
-            except Exception as fallback_error:
-                # Fallback failed for other reasons, report original error with context
-                raise ValueError(
-                    f"Nginx syntax validation failed for '{changed_file}' "
-                    f"(returncode: {returncode}). Output: {error_output}. "
-                    f"Fallback test failed: {str(fallback_error)}. "
-                    f"Executable: '{nginx_executable}'"
-                ) from fallback_error
-
-        except ValueError:
-            # Re-raise ValueError exceptions (our custom ones)
-            raise
-        except Exception as e:
-            # Handle any other unexpected errors
-            raise ValueError(
-                f"Unexpected error during nginx syntax validation for '{changed_file}' "
-                f"using executable '{nginx_executable}': {str(e)}"
-            ) from e

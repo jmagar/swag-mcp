@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -36,6 +37,15 @@ from swag_mcp.utils.formatters import build_template_filename
 setup_logging()
 
 logger = logging.getLogger(__name__)
+
+
+def get_package_version() -> str:
+    """Get the package version dynamically from metadata."""
+    try:
+        return version("swag-mcp")
+    except PackageNotFoundError:
+        # Fallback for development or when package is not installed
+        return "dev"
 
 
 async def register_resources(mcp: FastMCP, swag_service: SwagManagerService) -> None:
@@ -104,14 +114,18 @@ async def create_mcp_server() -> FastMCP:
     @mcp.custom_route(HEALTH_ENDPOINT, methods=[HTTP_METHOD_GET])
     async def health_check(request: Request) -> Response:
         """Health check endpoint for Docker."""
+        version = get_package_version()
+        content = (
+            f'{{"status": "{STATUS_HEALTHY}", "service": "{SERVICE_NAME}", "version": "{version}"}}'
+        )
         return Response(
-            content=f'{{"status": "{STATUS_HEALTHY}", "service": "{SERVICE_NAME}"}}',
+            content=content,
             media_type=MIME_TYPE_APPLICATION_JSON,
             status_code=200,
         )
 
     logger.info("SWAG MCP Server initialized")
-    logger.info("Version: 1.0.0")
+    logger.info(f"Version: {get_package_version()}")
     logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
     logger.info(f"SWAG Proxy Confs Path: {config.proxy_confs_path}")
     logger.info(f"Template path: {config.template_path}")
