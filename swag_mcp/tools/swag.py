@@ -257,7 +257,7 @@ def register_tools(mcp: FastMCP) -> None:
                 description="New value for field (port number, app name, app:port, or MCP path)",
             ),
         ] = "",
-    ) -> ToolResult:  # type: ignore[return]
+    ) -> ToolResult:
         """Unified SWAG reverse proxy configuration management tool.
 
         This single tool handles all SWAG operations based on the 'action' parameter.
@@ -653,11 +653,8 @@ def register_tools(mcp: FastMCP) -> None:
                     result_data, config_name, update_field, update_value, health_check_result
                 )
 
-            else:  # pragma: no cover
-                # This should never happen with proper enum usage
-                return formatter.format_error_result(
-                    f"Unsupported action: {action.value}", action.value
-                )
+            # This should never be reached as all enum cases are handled above
+            raise AssertionError(f"Unhandled action: {action}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
