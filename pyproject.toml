@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "regex",
     "types-regex>=2025.7.34.20250809",
+    "types-docker>=7.1.0.20250822",
 ]
 
 

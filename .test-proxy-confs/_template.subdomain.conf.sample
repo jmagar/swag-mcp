@@ -1,0 +1,9 @@
+# Template sample configuration
+server {
+    listen 443 ssl;
+    server_name app.*;
+
+    location / {
+        proxy_pass http://app:8080;
+    }
+}

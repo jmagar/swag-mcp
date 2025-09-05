@@ -58,6 +58,124 @@ location ^~ /{{ service_name }}/ {
     proxy_pass $upstream_proto://$upstream_app:$upstream_port;
 }
 
+# OAuth discovery endpoints (no auth)
+location = /{{ service_name }}/.well-known/oauth-authorization-server {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Remove subfolder prefix for discovery endpoint
+    rewrite ^/{{ service_name }}/\.well-known/oauth-authorization-server /.well-known/oauth-authorization-server break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+location = /{{ service_name }}/.well-known/openid-configuration {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Remove subfolder prefix for discovery endpoint
+    rewrite ^/{{ service_name }}/\.well-known/openid-configuration /.well-known/openid-configuration break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+# OAuth endpoints (no auth)
+location = /{{ service_name }}/register {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    rewrite ^/{{ service_name }}/register /register break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+location = /{{ service_name }}/authorize {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    rewrite ^/{{ service_name }}/authorize /authorize break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+location = /{{ service_name }}/token {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    rewrite ^/{{ service_name }}/token /token break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+location = /{{ service_name }}/revoke {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    rewrite ^/{{ service_name }}/revoke /revoke break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
+# OAuth callback and other auth-related paths (no auth)
+location ^~ /{{ service_name }}/auth/ {
+    include /config/nginx/resolver.conf;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Remove subfolder prefix for auth paths
+    rewrite ^/{{ service_name }}/auth/(.*) /auth/$1 break;
+
+    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+}
+
 # Optional: Health check endpoint for your MCP server (no auth)
 location ^~ /{{ service_name }}/health {
     include /config/nginx/resolver.conf;

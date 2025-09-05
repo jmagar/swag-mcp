@@ -1,9 +1,10 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal, assert_never, cast
+from typing import Annotated, Literal, cast
 
 from fastmcp import Context, FastMCP
+from fastmcp.tools.tool import ToolResult
 from pydantic import Field
 
 from swag_mcp.core.constants import (
@@ -19,15 +20,11 @@ from swag_mcp.models.config import (
 )
 from swag_mcp.models.enums import BackupSubAction, SwagAction
 from swag_mcp.services.swag_manager import SwagManagerService
-from swag_mcp.utils.formatters import format_config_list, format_health_check_result
+from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
 from swag_mcp.utils.tool_decorators import handle_tool_errors
 from swag_mcp.utils.tool_helpers import (
-    build_config_response,
-    error_response,
-    format_backup_message,
     log_action_start,
     log_action_success,
-    success_response,
     validate_list_filter,
     validate_required_params,
 )
@@ -134,7 +131,7 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     @handle_tool_errors
-    async def swag(  # type: ignore[return]
+    async def swag(
         ctx: Context,
         action: Annotated[SwagAction, Field(description="Action to perform")],
         # List parameters
@@ -260,7 +257,7 @@ def register_tools(mcp: FastMCP) -> None:
                 description="New value for field (port number, app name, app:port, or MCP path)",
             ),
         ] = "",
-    ) -> dict[str, Any]:
+    ) -> ToolResult:  # type: ignore[return]
         """Unified SWAG reverse proxy configuration management tool.
 
         This single tool handles all SWAG operations based on the 'action' parameter.
@@ -318,26 +315,31 @@ def register_tools(mcp: FastMCP) -> None:
         # Create service instance per-invocation for stateless operation
         swag_service = SwagManagerService()
 
+        # Create formatter for token-efficient dual content responses
+        formatter = TokenEfficientFormatter()
+
         # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
         try:
             if action == SwagAction.LIST:
                 await log_action_start(ctx, "Listing SWAG configurations", list_filter)
 
                 if error := validate_list_filter(list_filter):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Invalid list filter"), "list"
+                    )
 
                 result = await swag_service.list_configs(list_filter)
 
-                # Use standardized formatter for consistency
-                formatted_message = format_config_list(list_filter, result.total_count)
-                await log_action_success(ctx, formatted_message)
+                # Convert service result to dict for formatter
+                result_data = {
+                    "configs": result.configs,
+                    "total_count": result.total_count,
+                    "list_filter": result.list_filter,
+                }
 
-                return success_response(
-                    formatted_message,
-                    total_count=result.total_count,
-                    configs=result.configs,
-                    list_filter=list_filter,
-                )
+                await log_action_success(ctx, f"Listed {result.total_count} configurations")
+
+                return formatter.format_list_result(result_data, list_filter)
 
             elif action == SwagAction.CREATE:
                 # Validate required parameters
@@ -353,7 +355,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "create",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "create"
+                    )
 
                 # Use parameters directly
                 auth_method_final = auth_method
@@ -383,10 +387,15 @@ def register_tools(mcp: FastMCP) -> None:
                     swag_service, ctx, server_name, create_result.filename
                 )
 
-                return success_response(
-                    f"Created {create_result.filename}",
-                    filename=create_result.filename,
-                    health_check=health_check_result,
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "filename": create_result.filename,
+                    "backup_created": getattr(create_result, "backup_created", None),
+                }
+
+                return formatter.format_create_result(
+                    result_data, create_result.filename, health_check_result
                 )
 
             elif action == SwagAction.VIEW:
@@ -396,7 +405,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "view",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing config_name"), "view"
+                    )
 
                 await log_action_start(ctx, "Reading configuration", config_name)
 
@@ -405,14 +416,18 @@ def register_tools(mcp: FastMCP) -> None:
                     await log_action_success(
                         ctx, f"Successfully read {config_name} ({len(content)} characters)"
                     )
-                    return success_response(
-                        f"Read {config_name}",
-                        config_name=config_name,
-                        content=content,
-                        character_count=len(content),
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "success": True,
+                        "config_name": config_name,
+                        "content": content,
+                        "character_count": len(content),
+                    }
+
+                    return formatter.format_view_result(result_data, config_name)
                 except FileNotFoundError as e:
-                    return error_response(str(e))
+                    return formatter.format_error_result(str(e), "view")
 
             elif action == SwagAction.EDIT:
                 if error := validate_required_params(
@@ -422,7 +437,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "edit",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "edit"
+                    )
 
                 await log_action_start(ctx, "Editing configuration", config_name)
 
@@ -435,11 +452,13 @@ def register_tools(mcp: FastMCP) -> None:
 
                 edit_result = await swag_service.update_config(edit_request)
 
-                return build_config_response(
-                    config_name=config_name,
-                    operation="Updated",
-                    backup_created=edit_result.backup_created,
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": edit_result.backup_created,
+                }
+
+                return formatter.format_edit_result(result_data, config_name)
 
             elif action == SwagAction.REMOVE:
                 if error := validate_required_params(
@@ -448,7 +467,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "remove",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing config_name"), "remove"
+                    )
 
                 await log_action_start(ctx, "Removing configuration", config_name)
 
@@ -458,11 +479,13 @@ def register_tools(mcp: FastMCP) -> None:
 
                 remove_result = await swag_service.remove_config(remove_request)
 
-                return build_config_response(
-                    config_name=config_name,
-                    operation="Removed",
-                    backup_created=remove_result.backup_created,
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": remove_result.backup_created,
+                }
+
+                return formatter.format_remove_result(result_data, config_name)
 
             elif action == SwagAction.LOGS:
                 await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
@@ -475,13 +498,13 @@ def register_tools(mcp: FastMCP) -> None:
                     f"Retrieved {len(logs_output)} characters of {log_type} log output",
                 )
 
-                return success_response(
-                    f"Retrieved {lines} lines of {log_type} logs",
-                    log_type=log_type,
-                    lines_requested=lines,
-                    logs=logs_output,
-                    character_count=len(logs_output),
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "logs": logs_output,
+                    "character_count": len(logs_output),
+                }
+
+                return formatter.format_logs_result(result_data, log_type, lines)
 
             elif action == SwagAction.BACKUPS:
                 if error := validate_required_params(
@@ -490,13 +513,14 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "backups",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing backup_action"), "backups"
+                    )
 
                 # Validate backup_action
                 if backup_action not in ["cleanup", "list"]:
-                    return error_response(
-                        "Invalid backup_action. Must be 'cleanup' or 'list'",
-                        "validation_error",
+                    return formatter.format_error_result(
+                        "Invalid backup_action. Must be 'cleanup' or 'list'", "backups"
                     )
 
                 # Dispatch to appropriate sub-action
@@ -517,11 +541,14 @@ def register_tools(mcp: FastMCP) -> None:
                         message = "No old backup files to clean up"
 
                     await log_action_success(ctx, message)
-                    return success_response(
-                        message,
-                        cleaned_count=cleaned_count,
-                        retention_days=retention_days_param,
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "cleaned_count": cleaned_count,
+                        "retention_days": retention_days_param or 30,  # Default fallback
+                    }
+
+                    return formatter.format_backup_result(result_data, backup_action)
 
                 elif backup_action == BackupSubAction.LIST:
                     await log_action_start(ctx, "Listing backup files", "all backup files")
@@ -534,11 +561,14 @@ def register_tools(mcp: FastMCP) -> None:
                         message = f"Found {len(backup_files)} backup files"
 
                     await log_action_success(ctx, message)
-                    return success_response(
-                        message,
-                        backup_files=backup_files,
-                        total_count=len(backup_files),
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "backup_files": backup_files,
+                        "total_count": len(backup_files),
+                    }
+
+                    return formatter.format_backup_result(result_data, backup_action)
 
             elif action == SwagAction.HEALTH_CHECK:
                 if error := validate_required_params(
@@ -547,7 +577,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "health_check",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing domain"), "health_check"
+                    )
 
                 await log_action_start(ctx, "Starting health check", domain)
 
@@ -562,21 +594,18 @@ def register_tools(mcp: FastMCP) -> None:
                 # Perform health check
                 health_result = await swag_service.health_check(health_request)
 
-                # Format the response using helper function
-                message, status = format_health_check_result(health_result)
-                await log_action_success(ctx, f"Health check {status} for {domain}")
+                await log_action_success(ctx, f"Health check completed for {domain}")
 
-                # Use success/error response based on health check result
-                if health_result.success:
-                    return success_response(
-                        message,
-                        domain=domain,
-                        status=status,
-                        status_code=health_result.status_code,
-                        response_time_ms=health_result.response_time_ms,
-                    )
-                else:
-                    return error_response(health_result.error or "Health check failed")
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": health_result.success,
+                    "domain": health_result.domain,
+                    "status_code": health_result.status_code,
+                    "response_time_ms": health_result.response_time_ms,
+                    "error": getattr(health_result, "error", None),
+                }
+
+                return formatter.format_health_check_result(result_data)
 
             elif action == SwagAction.UPDATE:
                 if error := validate_required_params(
@@ -587,7 +616,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "update",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "update"
+                    )
 
                 await log_action_start(
                     ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
@@ -610,26 +641,26 @@ def register_tools(mcp: FastMCP) -> None:
                     swag_service, ctx, config_name, update_field, update_value
                 )
 
-                base_message = format_backup_message(
-                    f"Updated {update_field} in {config_name}", update_result.backup_created
+                await log_action_success(ctx, f"Updated {update_field} in {config_name}")
+
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": update_result.backup_created,
+                }
+
+                return formatter.format_update_result(
+                    result_data, config_name, update_field, update_value, health_check_result
                 )
 
-                await log_action_success(ctx, base_message)
-                return success_response(
-                    base_message,
-                    config_name=config_name,
-                    field=update_field,
-                    new_value=update_value,
-                    backup_created=update_result.backup_created,
-                    health_check=health_check_result,
+            else:  # pragma: no cover
+                # This should never happen with proper enum usage
+                return formatter.format_error_result(
+                    f"Unsupported action: {action.value}", action.value
                 )
-
-            else:
-                assert_never(action)
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
-            return error_response(
-                f"Tool execution failed: {str(e)}",
-                action=action.value,
-            )
+            return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
+
+    # Tool registration complete
