@@ -119,16 +119,16 @@ def build_config_response(
     )
 
 
-def validate_config_type(config_type: str) -> dict[str, Any] | None:
-    """Validate config_type parameter for list action.
+def validate_list_filter(list_filter: str) -> dict[str, Any] | None:
+    """Validate list_filter parameter for list action.
 
     Args:
-        config_type: Configuration type to validate
+        list_filter: List filter type to validate
 
     Returns:
         Error dict if invalid, None if valid
 
     """
-    if config_type not in ["all", "active", "samples"]:
-        return error_response("config_type must be 'all', 'active', or 'samples'")
+    if list_filter not in ["all", "active", "samples"]:
+        return error_response("list_filter must be 'all', 'active', or 'samples'")
     return None

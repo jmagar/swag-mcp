@@ -6,13 +6,12 @@ import sys
 from pathlib import Path
 
 from fastmcp import FastMCP
-from fastmcp.resources import DirectoryResource, FileResource
+from fastmcp.resources import DirectoryResource
 from starlette.requests import Request
 from starlette.responses import Response
 
 from swag_mcp.core.config import config
 from swag_mcp.core.constants import (
-    BACKUP_MARKER,
     CONF_EXTENSION,
     CONF_PATTERN,
     CONFIG_TYPE_SUBDOMAIN,
@@ -20,7 +19,6 @@ from swag_mcp.core.constants import (
     HEALTH_ENDPOINT,
     HTTP_METHOD_GET,
     MIME_TYPE_APPLICATION_JSON,
-    MIME_TYPE_TEXT_PLAIN,
     SAMPLE_EXTENSION,
     SAMPLE_PATTERN,
     SERVICE_NAME,
@@ -72,34 +70,6 @@ async def register_resources(mcp: FastMCP, swag_service: SwagManagerService) -> 
             pattern=SAMPLE_PATTERN,
         )
     )
-
-    # Register FileResource instances for each config file
-    # Register active config files
-    for conf_file in config_path.glob(CONF_PATTERN):
-        if not conf_file.name.endswith(SAMPLE_EXTENSION) and BACKUP_MARKER not in conf_file.name:
-            service_name = _extract_service_name(conf_file.name)
-            mcp.add_resource(
-                FileResource(
-                    uri=f"{SWAG_URI_BASE}{service_name}",  # type: ignore[arg-type]
-                    name=f"SWAG Config: {service_name}",
-                    description=f"Active SWAG configuration for {service_name} service",
-                    path=conf_file,
-                    mime_type=MIME_TYPE_TEXT_PLAIN,
-                )
-            )
-
-    # Register sample config files
-    for sample_file in config_path.glob(SAMPLE_PATTERN):
-        service_name = _extract_service_name(sample_file.name.replace(SAMPLE_EXTENSION, ""))
-        mcp.add_resource(
-            FileResource(
-                uri=f"{SWAG_URI_SAMPLES}{service_name}",  # type: ignore[arg-type]
-                name=f"SWAG Sample: {service_name}",
-                description=f"Sample SWAG configuration template for {service_name} service",
-                path=sample_file,
-                mime_type=MIME_TYPE_TEXT_PLAIN,
-            )
-        )
 
 
 def _extract_service_name(filename: str) -> str:

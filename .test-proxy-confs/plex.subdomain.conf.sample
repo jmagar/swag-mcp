@@ -1,0 +1,9 @@
+# Plex sample configuration
+server {
+    listen 443 ssl;
+    server_name plex.*;
+
+    location / {
+        proxy_pass http://plex:32400;
+    }
+}

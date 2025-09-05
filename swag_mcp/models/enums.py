@@ -11,7 +11,6 @@ class SwagAction(str, Enum):
     VIEW = "view"
     EDIT = "edit"
     UPDATE = "update"
-    CONFIG = "config"
     REMOVE = "remove"
     LOGS = "logs"
     BACKUPS = "backups"

@@ -6,6 +6,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+import regex
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,52 +27,44 @@ def validate_domain_format(domain: str) -> str:
     if not domain:
         raise ValueError("Domain name cannot be empty")
 
+    # Normalize and strip a trailing dot (FQDN form)
+    domain = domain.strip().rstrip(".")
+    if len(domain) == 0:
+        raise ValueError("Domain name cannot be empty")
     if len(domain) > 253:
         raise ValueError("Domain name is too long (maximum 253 characters)")
 
-    if ".." in domain:
+    # Normalize Unicode to NFC form and trim whitespace
+    try:
+        normalized_domain = unicodedata.normalize("NFC", domain.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Domain name contains invalid Unicode: {str(e)}") from e
+
+    if ".." in normalized_domain:
         raise ValueError("Domain name cannot contain consecutive dots")
 
-    if domain.startswith(".") or domain.endswith("."):
-        raise ValueError("Domain name cannot start or end with a dot")
+    if normalized_domain.startswith("."):
+        raise ValueError("Domain name cannot start with a dot")
 
     # Split domain into parts for more specific validation
-    parts = domain.split(".")
+    parts = normalized_domain.split(".")
 
     if len(parts) < 2:
         raise ValueError("Domain name must contain at least one dot (e.g., example.com)")
 
-    # Validate each part of the domain
-    for i, part in enumerate(parts):
+    label_re = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+    for part in parts:
         if not part:
             raise ValueError("Domain name cannot have empty parts")
-
         if len(part) > 63:
             raise ValueError(f"Domain part '{part}' is too long (maximum 63 characters)")
+        if not label_re.match(part):
+            raise ValueError(
+                f"Domain part '{part}' contains invalid characters. "
+                "Labels must match ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$"
+            )
 
-        if part.startswith("-") or part.endswith("-"):
-            raise ValueError(f"Domain part '{part}' cannot start or end with hyphen")
-
-        # For the top-level domain (last part), be more strict
-        if i == len(parts) - 1:
-            # TLD should only contain letters (and possibly numbers for newer TLDs)
-            if not re.match(r"^[a-zA-Z0-9]+$", part):
-                raise ValueError(f"Top-level domain '{part}' contains invalid characters")
-        else:
-            # For subdomains and domain names, allow underscores (common in practice)
-            # even though they're not strictly RFC compliant
-            if not re.match(r"^[a-zA-Z0-9_-]+$", part):
-                raise ValueError(
-                    f"Domain part '{part}' contains invalid characters. Only letters, "
-                    f"numbers, hyphens, and underscores are allowed"
-                )
-
-        # Ensure it doesn't start with a number (for domain names, not subdomains)
-        if i == len(parts) - 2 and part[0].isdigit():  # Second to last part is the main domain
-            # This is actually fine for many domains, so just continue
-            pass
-
-    return domain.lower()
+    return normalized_domain.lower()
 
 
 def validate_empty_string(value: Any, default: str) -> str:
@@ -92,40 +86,88 @@ def validate_empty_string(value: Any, default: str) -> str:
 def validate_config_filename(filename: str) -> str:
     """Validate configuration filename for security.
 
+    This function requires a FULL filename including extension - no service name resolution
+    is performed.
+
     Args:
-        filename: Configuration filename to validate
+        filename: Full configuration filename to validate (e.g., "jellyfin.subdomain.conf")
 
     Returns:
         Validated filename if safe
 
     Raises:
-        ValueError: If filename contains dangerous patterns
+        ValueError: If filename contains dangerous patterns or is not a complete filename
+
+    Note:
+        Must be a full filename including extension, e.g., 'service.conf' or a sample file
+        'service.conf.sample' — do not pass service names or partial paths
 
     """
     if not filename:
         raise ValueError("Configuration filename cannot be empty")
 
-    # Basic length check
-    if len(filename) > 255:
+    # Normalize Unicode and trim whitespace to prevent bypass attempts
+    try:
+        normalized_filename = unicodedata.normalize("NFC", filename.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Configuration filename contains invalid Unicode: {str(e)}") from e
+
+    # Basic length check (on normalized filename)
+    if len(normalized_filename) > 255:
         raise ValueError("Configuration filename too long")
 
-    # Check for path traversal attempts
-    if ".." in filename:
-        raise ValueError("Path traversal not allowed in configuration names")
+    # Check for path separators (reject any path components)
+    if "/" in normalized_filename or "\\" in normalized_filename:
+        raise ValueError("Path separators not allowed in configuration filenames")
 
-    # Check for absolute paths
-    if filename.startswith(("/", "\\")):
-        raise ValueError("Absolute paths not allowed in configuration names")
+    # Check for path traversal segments
+    if ".." in normalized_filename:
+        raise ValueError("Path traversal segments not allowed in configuration names")
+
+    # Check for hidden files (files starting with dot)
+    if normalized_filename.startswith("."):
+        raise ValueError("Hidden files (starting with '.') not allowed")
 
     # Check for null bytes and other dangerous characters
     dangerous_chars = ["\0", "\n", "\r", "\t"]
     for char in dangerous_chars:
-        if char in filename:
+        if char in normalized_filename:
             raise ValueError(f"Invalid character in configuration name: {repr(char)}")
 
-    # Ensure it's a valid config file name
+    # Use normalized filename for all subsequent validation
+    filename = normalized_filename
+
+    # Require full filename format - must end with .conf or .conf.sample extension
     if not filename.endswith(".conf") and not filename.endswith(".conf.sample"):
-        raise ValueError("Configuration filename must end with .conf or .conf.sample")
+        raise ValueError(
+            "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
+            "'service.conf.sample' — do not pass service names or partial paths"
+        )
+
+    # Additional validation: ensure it follows proper naming convention
+    # Use semantic suffix checks instead of raw segment counts
+    if filename.endswith(".conf.sample"):
+        # For sample files: verify basename before .conf.sample is non-empty
+        basename = filename[: -len(".conf.sample")]
+        if not basename or basename == "." or basename == ".." or set(basename) == {"."}:
+            raise ValueError(
+                f"Must be a full filename with extension (got: '{filename}'). "
+                "Use 'service.conf' or 'service.conf.sample' format."
+            )
+    elif filename.endswith(".conf"):
+        # For regular files: verify basename before .conf is non-empty
+        basename = filename[: -len(".conf")]
+        if not basename or basename == "." or basename == ".." or set(basename) == {"."}:
+            raise ValueError(
+                f"Must be a full filename with extension (got: '{filename}'). "
+                "Use 'service.conf' or 'service.conf.sample' format."
+            )
+    else:
+        # This should not happen due to earlier check, but keep for safety
+        raise ValueError(
+            f"Must be a full filename with extension (got: '{filename}'). "
+            "Use 'service.conf' or 'service.conf.sample' format."
+        )
 
     # Check for suspicious patterns
     suspicious_patterns = [
@@ -272,22 +314,11 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     else:
         # Standard validation without emoji
         # Using Unicode property classes for proper international support
-        try:
-            # Try to use regex module for better Unicode support
-            import regex  # type: ignore[import-untyped]
-
-            if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
-                raise ValueError(
-                    "Service name can only contain Unicode letters, numbers, hyphens, "
-                    "and underscores"
-                )
-        except ImportError:
-            # Fallback to basic validation if regex module not available
-            # Allow Unicode word characters, hyphens, and underscores
-            if not re.match(r"^[\w_-]+$", normalized_name, re.UNICODE):
-                raise ValueError(
-                    "Service name can only contain letters, numbers, hyphens, and underscores"
-                ) from None
+        if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
+            raise ValueError(
+                "Service name can only contain Unicode letters, numbers, hyphens, "
+                "and underscores"
+            )
 
     # Must start with letter or number (Unicode-aware)
     if normalized_name:
@@ -600,3 +631,76 @@ def validate_upstream_port(port: int) -> int:
         pass
 
     return port
+
+
+def validate_mcp_path(mcp_path: str) -> str:
+    """Validate MCP path format for security and correctness.
+
+    Args:
+        mcp_path: MCP path to validate
+
+    Returns:
+        Validated MCP path
+
+    Raises:
+        ValueError: If MCP path is invalid
+
+    """
+    if not mcp_path:
+        raise ValueError("MCP path cannot be empty")
+
+    # Normalize Unicode to NFC form and trim whitespace
+    try:
+        normalized_path = unicodedata.normalize("NFC", mcp_path.strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"MCP path contains invalid Unicode: {str(e)}") from e
+
+    # Length validation
+    if len(normalized_path) > 255:
+        raise ValueError("MCP path is too long (maximum 255 characters)")
+
+    # Must start with '/'
+    if not normalized_path.startswith("/"):
+        raise ValueError("MCP path must start with '/'")
+
+    # Check for path traversal attempts
+    if ".." in normalized_path:
+        raise ValueError("Path traversal not allowed in MCP paths")
+
+    # Check for null bytes and other dangerous characters
+    dangerous_chars = ["\0", "\n", "\r", "\t"]
+    for char in dangerous_chars:
+        if char in normalized_path:
+            raise ValueError(f"Invalid character in MCP path: {repr(char)}")
+
+    # Allow only safe characters: letters, digits, '/', '-', '_', '.'
+    if not re.match(r"^[a-zA-Z0-9/_.-]+$", normalized_path):
+        raise ValueError(
+            "MCP path can only contain letters, digits, '/', '-', '_', and '.' characters"
+        )
+
+    # Prevent double slashes (except at the start which is handled above)
+    if "//" in normalized_path:
+        raise ValueError("MCP path cannot contain consecutive slashes")
+
+    # Cannot end with '/' unless it's the root path
+    if normalized_path != "/" and normalized_path.endswith("/"):
+        raise ValueError("MCP path cannot end with '/' (except root path)")
+
+    # Additional security checks
+    # Check for suspicious patterns that might be used for injection
+    suspicious_patterns = [
+        r"[<>:\"|?*]",  # Characters that could cause issues in configs
+        r"[\x00-\x1f\x7f]",  # Control characters
+        r"\|",  # Pipe character
+        r";",  # Semicolon (command separator)
+        r"&",  # Ampersand (command operator)
+        r"\$",  # Dollar sign (variable expansion)
+        r"`",  # Backtick (command substitution)
+    ]
+
+    for pattern in suspicious_patterns:
+        if re.search(pattern, normalized_path):
+            raise ValueError("MCP path contains invalid or potentially dangerous characters")
+
+    return normalized_path

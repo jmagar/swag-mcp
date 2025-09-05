@@ -28,9 +28,7 @@ from ..models.config import (
 )
 from ..utils.error_handlers import handle_os_error
 from ..utils.formatters import (
-    build_config_filename,
     build_template_filename,
-    get_possible_config_filenames,
     get_possible_sample_filenames,
 )
 from ..utils.validators import (
@@ -39,6 +37,7 @@ from ..utils.validators import (
     validate_config_filename,
     validate_domain_format,
     validate_file_content_safety,
+    validate_mcp_path,
     validate_service_name,
     validate_upstream_port,
 )
@@ -673,112 +672,21 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    def prepare_config_defaults(
-        self, auth_method: str, enable_quic: bool, config_type: str | None
-    ) -> tuple[str, bool, str]:
-        """Prepare configuration defaults from parameters and config.
-
-        Args:
-            auth_method: Authentication method parameter
-            enable_quic: QUIC enable parameter
-            config_type: Configuration type parameter
-
-        Returns:
-            Tuple of (auth_method, enable_quic, config_type) with defaults applied
-
-        """
-        # Use defaults from environment configuration if not specified
-        if auth_method == "none":
-            auth_method = "authelia"  # Default to Authelia for security
-        if not enable_quic:
-            enable_quic = config.default_quic_enabled
-        if config_type is None:
-            config_type = config.default_config_type
-
-        return auth_method, enable_quic, config_type
-
-    def _resolve_config_filename(self, config_name: str, allow_create: bool = False) -> str:
-        """Resolve config name to actual filename by auto-detecting extension.
-
-        Args:
-            config_name: Either a full filename with extension or just a service name
-            allow_create: If True, return best filename even if file doesn't exist
-
-        Returns:
-            The resolved filename (existing or best match for creation)
-
-        Raises:
-            FileNotFoundError: If no matching configuration file is found and allow_create is False
-
-        """
-        # If already has extension, use as-is
-        if config_name.endswith((".conf", ".sample")):
-            config_file = self.config_path / config_name
-            if config_file.exists() or allow_create:
-                return config_name
-            else:
-                raise FileNotFoundError(f"Configuration {config_name} not found")
-
-        # Try different extensions in order of preference
-        candidates = get_possible_config_filenames(config_name, config.default_config_type)
-        candidates.extend(
-            [
-                build_config_filename(config_name, "mcp-subdomain"),
-                build_config_filename(config_name, "mcp-subfolder"),
-                f"{config_name}.conf",  # fallback
-            ]
-        )
-
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_candidates = []
-        for candidate in candidates:
-            if candidate not in seen:
-                seen.add(candidate)
-                unique_candidates.append(candidate)
-
-        # Find first existing file
-        for candidate in unique_candidates:
-            config_file = self.config_path / candidate
-            if config_file.exists():
-                logger.info(f"Resolved '{config_name}' to '{candidate}'")
-                return candidate
-
-        # If allow_create is True, return the best candidate for creation
-        if allow_create and unique_candidates:
-            best_candidate = unique_candidates[0]  # Use default config type
-            logger.info(f"Resolved '{config_name}' to '{best_candidate}' (for creation)")
-            return best_candidate
-
-        # No file found, provide helpful error message
-        available_files = [f.name for f in self.config_path.glob("*.conf")]
-        available_files.extend([f.name for f in self.config_path.glob("*.sample")])
-        available_files.sort()
-
-        error_msg = (
-            f"No configuration file found for '{config_name}'. "
-            f"Tried: {', '.join(unique_candidates)}"
-        )
-        if available_files:
-            error_msg += f". Available files: {', '.join(available_files)}"
-
-        raise FileNotFoundError(error_msg)
-
-    async def list_configs(self, config_type: str = "all") -> SwagListResult:
+    async def list_configs(self, list_filter: str = "all") -> SwagListResult:
         """List configuration files based on type."""
-        logger.info(f"Listing configurations of type: {config_type}")
+        logger.info(f"Listing configurations of type: {list_filter}")
         self._ensure_config_directory()
 
         configs = []
 
-        if config_type in ["all", "active"]:
+        if list_filter in ["all", "active"]:
             # List active configurations (.conf files, not .sample)
             active_configs = [
                 f.name for f in self.config_path.glob("*.conf") if not f.name.endswith(".sample")
             ]
             configs.extend(active_configs)
 
-        if config_type in ["all", "samples"]:
+        if list_filter in ["all", "samples"]:
             # List sample configurations (.sample files)
             sample_configs = [f.name for f in self.config_path.glob("*.sample")]
             configs.extend(sample_configs)
@@ -788,16 +696,15 @@ class SwagManagerService:
 
         logger.info(f"Found {len(configs)} configurations")
 
-        return SwagListResult(configs=configs, total_count=len(configs), config_type=config_type)
+        return SwagListResult(configs=configs, total_count=len(configs), list_filter=list_filter)
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content."""
         logger.info(f"Reading configuration: {config_name}")
         self._ensure_config_directory()
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(config_name)
 
         config_file = self.config_path / validated_name
 
@@ -906,9 +813,8 @@ class SwagManagerService:
         """Update configuration with optional backup."""
         logger.info(f"Updating configuration: {edit_request.config_name}")
 
-        # Resolve config name to actual filename and validate it (allow creation for edit)
-        resolved_name = self._resolve_config_filename(edit_request.config_name, allow_create=True)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(edit_request.config_name)
 
         # Security validation: validate configuration content for dangerous patterns
         validated_content = self._validate_config_content(
@@ -938,8 +844,6 @@ class SwagManagerService:
 
     async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
         """Update specific field in existing configuration using regex replacement."""
-        import re
-
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
@@ -953,14 +857,14 @@ class SwagManagerService:
         # Apply targeted replacements based on field type
         if update_request.update_field == "port":
             # Update both upstream_port locations
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {update_request.update_value};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
 
         elif update_request.update_field == "upstream":
             # Update upstream_app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {update_request.update_value};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
 
         elif update_request.update_field == "app":
@@ -970,14 +874,39 @@ class SwagManagerService:
             app, port = update_request.update_value.split(":", 1)
 
             # Update app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {app};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{app}";'
             updated_content = re.sub(pattern, replacement, content)
 
             # Update port
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {port};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{port}";'
             updated_content = re.sub(pattern, replacement, updated_content)
+
+        elif update_request.update_field == "add_mcp":
+            # Add MCP location block - delegate to the dedicated method
+            mcp_path = update_request.update_value if update_request.update_value else "/mcp"
+
+            # Validate the computed MCP path
+            try:
+                validated_mcp_path = validate_mcp_path(mcp_path)
+            except ValueError as e:
+                from swag_mcp.services.errors import ValidationError
+
+                error_msg = f"Invalid MCP path: {str(e)}"
+                logger.error(error_msg)
+                raise ValidationError(error_msg) from e
+
+            # Call the add_mcp_location method with validated path
+            result = await self.add_mcp_location(
+                config_name=update_request.config_name,
+                mcp_path=validated_mcp_path,
+                create_backup=update_request.create_backup,
+            )
+
+            # Return early since add_mcp_location handles everything
+            return result
+
         else:
             raise ValueError(f"Unsupported update field: {update_request.update_field}")
 
@@ -1096,9 +1025,8 @@ class SwagManagerService:
         """Remove configuration with optional backup."""
         logger.info(f"Removing configuration: {remove_request.config_name}")
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(remove_request.config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(remove_request.config_name)
 
         config_file = self.config_path / validated_name
 
@@ -1308,8 +1236,6 @@ class SwagManagerService:
 
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""
-        import re
-
         if retention_days is None:
             retention_days = config.backup_retention_days
 
@@ -1533,3 +1459,271 @@ class SwagManagerService:
             success=False,
             error=error_msg,
         )
+
+    async def add_mcp_location(
+        self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
+    ) -> SwagConfigResult:
+        """Add MCP location block to existing SWAG configuration."""
+        logger.info(f"Adding MCP location block to {config_name} at path {mcp_path}")
+
+        # Validate MCP path format using the existing validator
+        try:
+            mcp_path = validate_mcp_path(mcp_path)
+        except ValueError as e:
+            from swag_mcp.services.errors import ValidationError
+
+            raise ValidationError(f"Invalid MCP path: {str(e)}") from e
+
+        # Read existing config
+        try:
+            content = await self.read_config(config_name)
+        except OSError as e:
+            import errno
+
+            if e.errno == errno.ENOENT:
+                raise FileNotFoundError(f"Configuration file {config_name} not found") from e
+            else:
+                # Re-raise the original exception for other errno values
+                raise
+
+        # Check if MCP location already exists (match '=', '^~', or plain)
+        dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
+        if dup_pat.search(content):
+            raise ValueError(f"MCP location {mcp_path} already exists in configuration")
+
+        # Create backup if requested
+        backup_name = None
+        if create_backup:
+            backup_name = await self._create_backup(config_name)
+
+        try:
+            # Begin atomic transaction
+            async with self.begin_transaction(f"add_mcp:{config_name}") as txn:
+                # Extract current upstream values from config
+                upstream_app = self._extract_upstream_value(content, "upstream_app")
+                upstream_port = self._extract_upstream_value(content, "upstream_port")
+                upstream_proto = self._extract_upstream_value(content, "upstream_proto")
+                auth_method = self._extract_auth_method(content)
+
+                # Render MCP location block
+                mcp_block = await self._render_mcp_location_block(
+                    mcp_path=mcp_path,
+                    upstream_app=upstream_app,
+                    upstream_port=upstream_port,
+                    upstream_proto=upstream_proto,
+                    auth_method=auth_method,
+                )
+
+                # Insert MCP location block before the last closing brace
+                updated_content = self._insert_location_block(content, mcp_block)
+
+                # Write updated content (track for rollback)
+                config_file = self.config_path / config_name
+                await txn.track_file_modification(config_file)
+                await self._safe_write_file(
+                    config_file, updated_content, f"MCP location addition for {config_name}"
+                )
+
+                # Validate nginx syntax before committing (abort on failure)
+                await self._validate_nginx_syntax(config_file)
+
+                logger.info(f"Successfully added MCP location block to {config_name}")
+                await txn.commit()
+                return SwagConfigResult(
+                    filename=config_name, content=updated_content, backup_created=backup_name
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to add MCP location to {config_name}: {str(e)}")
+            raise ValueError(f"Failed to add MCP location: {str(e)}") from e
+
+    def _extract_upstream_value(self, content: str, variable_name: str) -> str:
+        """Extract upstream variable value from nginx configuration content."""
+        # Pattern to match: set $upstream_app "value"; or set $upstream_port "value";
+        pattern = rf'set \${variable_name}\s+"([^"]*)"'
+        match = re.search(pattern, content)
+
+        if not match:
+            raise ValueError(f"Could not find {variable_name} in configuration")
+
+        return str(match.group(1)).strip()
+
+    def _extract_auth_method(self, content: str) -> str:
+        """Extract authentication method from nginx configuration content."""
+        # Look for auth method includes like: include /config/nginx/authelia-server.conf;
+        pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
+        matches = re.findall(pattern, content)
+
+        # Also check for basic auth
+        if "auth_basic" in content and "auth_basic_user_file" in content:
+            return "basic"
+
+        if not matches:
+            return "none"
+
+        # Return the first auth method found
+        auth_method = matches[0]
+
+        # Validate it's a known auth method
+        valid_auth_methods = ["authelia", "authentik", "ldap", "tinyauth", "basic"]
+        if auth_method not in valid_auth_methods:
+            return "none"
+
+        return str(auth_method)
+
+    async def _render_mcp_location_block(
+        self,
+        mcp_path: str,
+        upstream_app: str,
+        upstream_port: str,
+        upstream_proto: str,
+        auth_method: str,
+    ) -> str:
+        """Render MCP location block template with provided variables."""
+        try:
+            # Get the template
+            template = self.template_env.get_template("mcp_location_block.j2")
+
+            # Render with variables
+            rendered = template.render(
+                mcp_path=mcp_path,
+                upstream_app=upstream_app,
+                upstream_port=upstream_port,
+                upstream_proto=upstream_proto,
+                auth_method=auth_method,
+            )
+
+            return rendered
+
+        except Exception as e:
+            raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
+
+    def _insert_location_block(self, content: str, location_block: str) -> str:
+        """Insert location block before the closing brace of the outermost server block."""
+        lines = content.splitlines()
+        server_start = -1
+        # Find the start of the server block
+        for i, line in enumerate(lines):
+            if re.match(r"^\s*server\s*\{", line):
+                server_start = i
+                break
+        if server_start == -1:
+            raise ValueError("Could not find start of server block")
+        # Track brace nesting from the server block start
+        brace_count = 0
+        insert_index = -1
+        for i in range(server_start, len(lines)):
+            # Count braces in the line
+            brace_count += lines[i].count("{")
+            brace_count -= lines[i].count("}")
+            # When brace_count returns to zero, we've found the server block's closing brace
+            if brace_count == 0:
+                insert_index = i
+                break
+        if insert_index == -1:
+            raise ValueError("Could not find server block closing brace")
+        # Insert the location block before the closing brace
+        lines.insert(insert_index, "")  # Add empty line for spacing
+        lines.insert(insert_index + 1, location_block)
+        return "\n".join(lines)
+
+    async def _validate_nginx_syntax(
+        self, changed_file: Path, nginx_path: str | None = None
+    ) -> None:
+        """Validate nginx syntax of the configuration file.
+
+        Args:
+            changed_file: Path to the configuration file to validate
+            nginx_path: Path to nginx executable (optional, defaults to 'nginx' in PATH)
+
+        Raises:
+            ValueError: If nginx syntax validation fails
+
+        """
+        # Verify changed_file exists before running
+        if not changed_file.exists():
+            raise ValueError(f"Configuration file does not exist: {changed_file}")
+
+        # Use provided nginx path or default to 'nginx' in PATH
+        nginx_executable = nginx_path or "nginx"
+
+        async def _run_nginx_test(args: list[str]) -> tuple[int, str, str]:
+            """Run nginx test command with timeout."""
+            try:
+                proc = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        nginx_executable,
+                        *args,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    ),
+                    timeout=30,  # 30 second timeout
+                )
+                stdout, stderr = await proc.communicate()
+                return (
+                    proc.returncode or 0,
+                    stdout.decode("utf-8", errors="replace"),
+                    stderr.decode("utf-8", errors="replace"),
+                )
+            except FileNotFoundError as e:
+                raise ValueError(
+                    f"Nginx executable not found at '{nginx_executable}'. "
+                    f"Please install nginx or specify correct path. Error: {e}"
+                ) from e
+            except TimeoutError as e:
+                raise ValueError(
+                    f"Nginx syntax validation timed out after 30 seconds for file '{changed_file}' "
+                    f"using executable '{nginx_executable}'"
+                ) from e
+
+        # Try primary validation with config file
+        try:
+            returncode, stdout, stderr = await _run_nginx_test(["-t", "-c", str(changed_file)])
+
+            if returncode == 0:
+                return  # Success
+
+            # Primary test failed, include both stdout and stderr in error
+            error_output = f"stdout: {stdout.strip()}, stderr: {stderr.strip()}"
+
+            # Try fallback: plain nginx -t without -c flag
+            try:
+                result = await _run_nginx_test(["-t"])
+                fallback_returncode, fallback_stdout, fallback_stderr = result
+
+                # If fallback succeeds, the issue is with our specific config
+                if fallback_returncode == 0:
+                    raise ValueError(
+                        f"Nginx syntax validation failed for '{changed_file}' "
+                        f"(returncode: {returncode}). Output: {error_output}. "
+                        f"Executable: '{nginx_executable}'"
+                    )
+                else:
+                    # Both failed, report both attempts
+                    fallback_output = (
+                        f"stdout: {fallback_stdout.strip()}, stderr: {fallback_stderr.strip()}"
+                    )
+                    raise ValueError(
+                        f"Nginx syntax validation failed for '{changed_file}' "
+                        f"(returncode: {returncode}). Primary test output: {error_output}. "
+                        f"Fallback test also failed (returncode: {fallback_returncode}): "
+                        f"{fallback_output}. Executable: '{nginx_executable}'"
+                    )
+            except Exception as fallback_error:
+                # Fallback failed for other reasons, report original error with context
+                raise ValueError(
+                    f"Nginx syntax validation failed for '{changed_file}' "
+                    f"(returncode: {returncode}). Output: {error_output}. "
+                    f"Fallback test failed: {str(fallback_error)}. "
+                    f"Executable: '{nginx_executable}'"
+                ) from fallback_error
+
+        except ValueError:
+            # Re-raise ValueError exceptions (our custom ones)
+            raise
+        except Exception as e:
+            # Handle any other unexpected errors
+            raise ValueError(
+                f"Unexpected error during nginx syntax validation for '{changed_file}' "
+                f"using executable '{nginx_executable}': {str(e)}"
+            ) from e

@@ -2,6 +2,8 @@
 
 > **Intelligent reverse proxy management for SWAG (Secure Web Application Gateway) with Model Context Protocol support**
 
+[![Test Suite](https://github.com/jmagar/swag-mcp/workflows/Test%20Suite/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
+[![Docker Build](https://github.com/jmagar/swag-mcp/workflows/Build%20and%20Push%20Docker%20Image/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
@@ -10,8 +12,6 @@
 Transform your SWAG reverse proxy management with AI-powered automation and real-time health monitoring. The unified `swag` tool provides comprehensive functionality for managing SWAG proxy configs for your self-hosted services and MCP servers.
 
 > **What is MCP?** Model Context Protocol enables LLMs like Claude to interact with external tools and services. This server implements MCP to allow AI assistants to manage your SWAG configurations through natural language.
-
-> **🔄 v2.0 Update**: The tool architecture has been unified! All functionality is now accessed through natural language commands instead of separate tools. See the migration guide below.
 
 ---
 
@@ -128,11 +128,10 @@ SWAG_MCP_LOG_DIRECTORY=/app/.swag-mcp/logs
 
 # Security (Defaults shown)
 SWAG_MCP_DEFAULT_AUTH_METHOD=authelia    # Never expose services without auth!
-SWAG_MCP_DEFAULT_CONFIG_TYPE=subdomain   # or subfolder, mcp-subdomain, mcp-subfolder
 
 # Server Settings
 SWAG_MCP_HOST=0.0.0.0  # For Docker/external access
-SWAG_MCP_PORT=8000     # External port (internal is always 8000)
+# Note: Container uses port 8000 internally (default), host port mapping configurable via SWAG_MCP_PORT
 ```
 
 <details>
@@ -230,6 +229,7 @@ Once installed, try these common commands with your AI assistant:
 **Make changes:**
 - *"Update plex config to use port 32401"*
 - *"Change sonarr upstream to new-sonarr container"*
+- *"Add an MCP endpoint to jellyfin.subdomain.conf"*
 - *"Remove the old test.subdomain.conf"*
 
 **View logs and troubleshoot:**
@@ -250,23 +250,22 @@ Simply describe what you want in natural language:
 - *"Check if [domain] is working"*
 - *"List all proxy configurations"*
 - *"Update [config] to use port [port]"*
-
+- *"Add an MCP endpoint to [config]"*
 The AI assistant will translate your request into the appropriate tool parameters.
 
 ### Available Actions
 
 | Action | Description | Key Parameters |
 |--------|-------------|----------------|
-| **`list`** | List all configurations | `config_type` (all/active/samples) |
+| **`list`** | List all configurations | `list_filter` (all/active/samples) |
 | **`create`** | Generate new proxy configuration | `service_name`, `server_name`, `upstream_app`, `upstream_port` |
 | **`view`** | Read configuration content | `config_name` |
 | **`edit`** | Modify configuration safely | `config_name`, `new_content`, `create_backup` |
-| **`update`** | Update specific config fields | `config_name`, `update_field`, `update_value` |
+| **`update`** | Update specific config fields | `config_name`, `update_field` (port/upstream/app/add_mcp), `update_value` |
 | **`remove`** | Delete configuration | `config_name`, `create_backup` |
 | **`health_check`** | Verify service accessibility | `domain`, `timeout`, `follow_redirects` |
 | **`logs`** | View SWAG container logs | `log_type`, `lines` |
-| **`config`** | View current default settings | _(no parameters)_ |
-| **`cleanup_backups`** | Manage backup files | `retention_days` |
+| **`backups`** | Manage backup files | `retention_days` |
 
 <details>
 <summary>📖 Detailed Action Documentation</summary>
@@ -281,8 +280,11 @@ Creates a new reverse proxy configuration with automatic health check verificati
 - *"Create MCP streaming proxy for ai-service at ai.example.com:8080"*
 
 **Key Options:**
-- **Config Types**: subdomain, subfolder, mcp-subdomain, mcp-subfolder
-- **Authentication**: none, ldap, authelia, authentik, tinyauth (default: authelia)
+
+
+- **Config Type**: Automatically inferred from filename (service.subdomain.conf or service.subfolder.conf)
+- **MCP Support**: Add `mcp_enabled=true` for streaming/SSE features
+- **Authentication**: none, basic, ldap, authelia, authentik, tinyauth (default: authelia)
 - **Protocols**: http, https (default: http)
 - **QUIC Support**: Available for enhanced performance
 
@@ -303,11 +305,20 @@ Intelligently tests service availability through multiple endpoints.
 #### `update` Action
 Update specific fields in existing configurations without full rewrites.
 
+**Supported Update Fields:**
+
+- **`port`** - Update upstream port (e.g., "8080", "32400")
+- **`upstream`** - Update upstream app name/IP (e.g., "myapp", "192.168.1.100")
+- **`app`** - Update both app name and port (e.g., "myapp:8080")
+- **`add_mcp`** - Add MCP streaming endpoint (e.g., "/mcp", "/ai-service")
+
 **Natural Language Examples:**
 - *"Update port for app.subdomain.conf to 8081"*
 - *"Change upstream app for app.subdomain.conf to newapp"*
 - *"Update app.subdomain.conf to use newapp:8081"*
 - *"Modify plex config to use port 32401"*
+- *"Add an MCP endpoint to jellyfin.subdomain.conf"*
+- *"Add an MCP location at /ai-service to plex.subdomain.conf"*
 
 #### `list` Action
 List and filter configuration files.
@@ -333,47 +344,33 @@ View SWAG container logs for debugging.
 
 ## 🏗️ Template System
 
+The template system automatically selects the appropriate template based on the configuration filename format and the `mcp_enabled` parameter:
+
 ### Standard Templates
 Perfect for traditional web applications:
-- **`subdomain`** - `app.example.com` → `container:port`
-- **`subfolder`** - `example.com/app` → `container:port`
+
+- **`subdomain`** - `service.subdomain.conf` → `app.example.com` → `container:port`
+- **`subfolder`** - `service.subfolder.conf` → `example.com/app` → `container:port`
 
 ### MCP Templates
-Optimized for remote MCP services with streaming:
-- **`mcp-subdomain`** - MCP service on subdomain with Streamable-HTTP/SSE support
-- **`mcp-subfolder`** - MCP service on path with Streamable-HTTP/SSE support
+Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true`):
 
-**MCP Template Features:**
+- **`mcp-subdomain`** - `service.subdomain.conf` + MCP features → Streamable-HTTP/SSE support
+- **`mcp-subfolder`** - `service.subfolder.conf` + MCP features → Path-based with SSE support
+
+#### Template Selection
+
+- Base type inferred from filename: `.subdomain.conf` or `.subfolder.conf`
+- MCP features added when `mcp_enabled=true` parameter is used
+- No need to specify template type separately — it's determined automatically
+
+#### MCP Template Features
+
 - 🚀 Zero-buffering for real-time streaming
 - ⏱️ 24-hour timeouts for long AI tasks
 - 🔄 Server-Sent Events (SSE) support
 - 📡 WebSocket upgrade capability
 - 🛡️ Authelia integration by default
-
----
-
-## 🔄 Migration Guide (v1 → v2)
-
-If you're upgrading from v1.x, the tool architecture has been unified for better maintainability and consistency:
-
-### Old Approach (v1.x)
-Multiple separate tools with programmatic calls:
-- `swag_create()`, `swag_health_check()`, `swag_list()`, etc.
-- Required knowledge of specific function names and parameters
-
-### New Approach (v2.x)
-Single tool with natural language interaction:
-- *"Create proxy for app at app.com using port 8080"*
-- *"Check if app.com is working"*
-- *"List all active configurations"*
-- *"Remove app.subdomain.conf"*
-
-### Key Changes
-- **Natural Language**: No more function calls - just describe what you want
-- **Single Tool**: All functionality consolidated into one `swag` tool
-- **Easier to Use**: AI assistant handles parameter mapping automatically
-- **New Features**: Added `update` action for modifying existing configs
-- **Environment Variables**: All now use `SWAG_MCP_` prefix consistently
 
 ---
 
@@ -491,7 +488,7 @@ swag-mcp/
 ## 🔐 Security Best Practices
 
 ### 🛡️ Authentication by Default
-Starting with v2.0, **all services are protected with Authelia authentication by default**. This prevents accidental exposure of services to the internet.
+**All services are protected with Authelia authentication by default**. This prevents accidental exposure of services to the internet.
 
 ### ⚠️ Disabling Authentication (Not Recommended)
 If you absolutely must disable authentication:

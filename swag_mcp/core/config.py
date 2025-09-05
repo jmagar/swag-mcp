@@ -9,7 +9,6 @@ from pydantic_settings import BaseSettings
 from ..utils.validators import validate_empty_string
 from .constants import (
     DEFAULT_AUTH_METHOD,
-    DEFAULT_CONFIG_TYPE,
     DEFAULT_HOST,
     DEFAULT_LOG_LEVEL,
 )
@@ -52,10 +51,6 @@ class SwagConfig(BaseSettings):
 
     default_quic_enabled: bool = Field(
         default=False, description="Default QUIC setting for new configurations"
-    )
-
-    default_config_type: str = Field(
-        default="subdomain", description="Default configuration type (subdomain or subfolder)"
     )
 
     # Backup settings
@@ -122,9 +117,6 @@ class SwagConfig(BaseSettings):
     # Validators to handle empty string values
     handle_empty_auth_method = field_validator("default_auth_method", mode="before")(
         create_empty_string_validator(DEFAULT_AUTH_METHOD)
-    )
-    handle_empty_config_type = field_validator("default_config_type", mode="before")(
-        create_empty_string_validator(DEFAULT_CONFIG_TYPE)
     )
     handle_empty_host = field_validator("host", mode="before")(
         create_empty_string_validator(DEFAULT_HOST)
