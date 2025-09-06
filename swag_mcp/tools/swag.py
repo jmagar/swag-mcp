@@ -1,16 +1,16 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal, cast
 
 from fastmcp import Context, FastMCP
+from fastmcp.tools.tool import ToolResult
 from pydantic import Field
 
-from ..core.config import config
-from ..core.constants import (
+from swag_mcp.core.constants import (
     VALID_UPSTREAM_PATTERN,
 )
-from ..models.config import (
+from swag_mcp.models.config import (
     SwagConfigRequest,
     SwagEditRequest,
     SwagHealthCheckRequest,
@@ -18,31 +18,29 @@ from ..models.config import (
     SwagRemoveRequest,
     SwagUpdateRequest,
 )
-from ..models.enums import BackupSubAction, SwagAction
-from ..services.swag_manager import SwagManagerService
-from ..utils.formatters import format_health_check_result
-from ..utils.tool_decorators import handle_tool_errors
-from ..utils.tool_helpers import (
-    build_config_response,
-    error_response,
-    format_backup_message,
+from swag_mcp.models.enums import BackupSubAction, SwagAction
+from swag_mcp.services.swag_manager import SwagManagerService
+from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
+from swag_mcp.utils.tool_decorators import handle_tool_errors
+from swag_mcp.utils.tool_helpers import (
     log_action_start,
     log_action_success,
-    success_response,
-    validate_config_type,
+    validate_list_filter,
     validate_required_params,
 )
 
 logger = logging.getLogger(__name__)
 
-# Initialize the SWAG manager service
-swag_service = SwagManagerService()
+# Service will be instantiated per-invocation for stateless operation
 
 
-async def _extract_server_name_from_config(config_name: str) -> str | None:
+async def _extract_server_name_from_config(
+    swag_service: SwagManagerService, config_name: str
+) -> str | None:
     """Extract server_name from nginx config file.
 
     Args:
+        swag_service: Service instance for configuration operations
         config_name: Configuration file name
 
     Returns:
@@ -62,10 +60,13 @@ async def _extract_server_name_from_config(config_name: str) -> str | None:
     return None
 
 
-async def _run_health_check(ctx: Context, server_name: str) -> str:
+async def _run_health_check(
+    swag_service: SwagManagerService, ctx: Context, server_name: str
+) -> str:
     """Run health check for a domain and return formatted status.
 
     Args:
+        swag_service: Service instance for health check operations
         ctx: FastMCP context for logging
         server_name: Domain name to check
 
@@ -77,6 +78,7 @@ async def _run_health_check(ctx: Context, server_name: str) -> str:
 
     try:
         health_request = SwagHealthCheckRequest(
+            action=SwagAction.HEALTH_CHECK,
             domain=server_name,
             timeout=15,
             follow_redirects=True,
@@ -85,10 +87,9 @@ async def _run_health_check(ctx: Context, server_name: str) -> str:
         health_result = await swag_service.health_check(health_request)
 
         if health_result.success:
-            health_status = (
-                f"✅ Health check passed: {health_result.status_code} "
-                f"({health_result.response_time_ms}ms)"
-            )
+            status_code = health_result.status_code or "unknown"
+            response_time = health_result.response_time_ms or 0
+            health_status = f"✅ Health check passed: {status_code} " f"({response_time}ms)"
             await ctx.info(f"Health check successful for {server_name}")
         else:
             health_status = f"⚠️ Health check failed: {health_result.error or 'Unknown error'}"
@@ -102,23 +103,25 @@ async def _run_health_check(ctx: Context, server_name: str) -> str:
         return health_status
 
 
-async def _run_post_create_health_check(ctx: Context, server_name: str, filename: str) -> str:
+async def _run_post_create_health_check(
+    swag_service: SwagManagerService, ctx: Context, server_name: str, filename: str
+) -> str:
     """Run health check after config creation and format results."""
-    health_status = await _run_health_check(ctx, server_name)
+    health_status = await _run_health_check(swag_service, ctx, server_name)
     return f"Created configuration: {filename}\n{health_status}"
 
 
 async def _run_post_update_health_check(
-    ctx: Context, config_name: str, field: str, new_value: str
+    swag_service: SwagManagerService, ctx: Context, config_name: str, field: str, new_value: str
 ) -> str:
     """Run health check after config update and format results."""
     # Extract server name from config
-    server_name = await _extract_server_name_from_config(config_name)
+    server_name = await _extract_server_name_from_config(swag_service, config_name)
     if not server_name:
         # Can't determine server name, skip health check
         return f"Updated {field} in {config_name} to {new_value}"
 
-    health_status = await _run_health_check(ctx, server_name)
+    health_status = await _run_health_check(swag_service, ctx, server_name)
     return f"Updated {field} in {config_name} to {new_value}\n{health_status}"
 
 
@@ -131,11 +134,11 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context,
         action: Annotated[SwagAction, Field(description="Action to perform")],
         # List parameters
-        config_type: Annotated[
-            str,
+        list_filter: Annotated[
+            Literal["all", "active", "samples"],
             Field(
                 default="all",
-                description="Type of configurations to list: 'all' | 'active' | 'samples'",
+                description="Filter for listing configurations: 'all' | 'active' | 'samples'",
             ),
         ] = "all",
         # Create parameters
@@ -166,7 +169,7 @@ def register_tools(mcp: FastMCP) -> None:
             int, Field(default=0, ge=0, le=65535, description="Port number the service runs on")
         ] = 0,
         upstream_proto: Annotated[
-            str,
+            Literal["http", "https"],
             Field(default="http", description="Protocol for upstream connection: 'http' | 'https'"),
         ] = "http",
         mcp_enabled: Annotated[
@@ -178,7 +181,8 @@ def register_tools(mcp: FastMCP) -> None:
             Field(
                 default="authelia",
                 description=(
-                    "Authentication method: 'none' | 'ldap' | 'authelia' | 'authentik' | 'tinyauth'"
+                    "Authentication method: 'none' | 'basic' | 'ldap' | "
+                    "'authelia' | 'authentik' | 'tinyauth'"
                 ),
             ),
         ] = "authelia",
@@ -208,12 +212,12 @@ def register_tools(mcp: FastMCP) -> None:
         ] = 50,
         # Backup parameters
         backup_action: Annotated[
-            str,
+            BackupSubAction,
             Field(
-                default="",
+                default=BackupSubAction.LIST,
                 description="Backup action: 'cleanup' or 'list'",
             ),
-        ] = "",
+        ] = BackupSubAction.LIST,
         retention_days: Annotated[
             int,
             Field(
@@ -242,17 +246,17 @@ def register_tools(mcp: FastMCP) -> None:
             str,
             Field(
                 default="",
-                description="Field to update: 'port' | 'upstream' | 'app'",
+                description="Field to update: 'port' | 'upstream' | 'app' | 'add_mcp'",
             ),
         ] = "",
         update_value: Annotated[
             str,
             Field(
                 default="",
-                description="New value for the field (port number, app name, or app:port)",
+                description="New value for field (port number, app name, app:port, or MCP path)",
             ),
         ] = "",
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         """Unified SWAG reverse proxy configuration management tool.
 
         This single tool handles all SWAG operations based on the 'action' parameter.
@@ -261,7 +265,7 @@ def register_tools(mcp: FastMCP) -> None:
         Actions:
         • list: List configuration files
           - Required: action
-          - Optional: config_type (default: "all")
+          - Optional: list_filter (default: "all")
 
         • create: Create new reverse proxy configuration
           - Required: action, config_name, server_name, upstream_app, upstream_port
@@ -277,10 +281,7 @@ def register_tools(mcp: FastMCP) -> None:
         • update: Update specific field in existing configuration
           - Required: action, config_name, update_field, update_value
           - Optional: create_backup
-          - update_field options: 'port' | 'upstream' | 'app'
-
-        • config: View current default settings
-          - Required: action
+          - update_field options: 'port' | 'upstream' | 'app' | 'add_mcp'
 
         • remove: Remove configuration file
           - Required: action, config_name
@@ -304,27 +305,40 @@ def register_tools(mcp: FastMCP) -> None:
           "List all active proxy configurations"
           "Show the plex.subdomain.conf configuration"
           "Update port for crawler.subdomain.conf to 8011"
+          "Add MCP endpoint to jellyfin.subdomain.conf"
+          "Add MCP location at /ai-service to plex.subdomain.conf"
           "Clean up backup files older than 7 days"
           "List all backup files"
 
         """
+        # Create service instance per-invocation for stateless operation
+        swag_service = SwagManagerService()
+
+        # Create formatter for token-efficient dual content responses
+        formatter = TokenEfficientFormatter()
+
         # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
         try:
             if action == SwagAction.LIST:
-                await log_action_start(ctx, "Listing SWAG configurations", config_type)
+                await log_action_start(ctx, "Listing SWAG configurations", list_filter)
 
-                if error := validate_config_type(config_type):
-                    return error
+                if error := validate_list_filter(list_filter):
+                    return formatter.format_error_result(
+                        error.get("message", "Invalid list filter"), "list"
+                    )
 
-                result = await swag_service.list_configs(config_type)
-                await log_action_success(ctx, f"Found {result.total_count} configurations")
+                result = await swag_service.list_configs(list_filter)
 
-                return success_response(
-                    f"Listed {result.total_count} {config_type} configurations",
-                    total_count=result.total_count,
-                    configs=result.configs,
-                    config_type=config_type,
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "configs": result.configs,
+                    "total_count": result.total_count,
+                    "list_filter": result.list_filter,
+                }
+
+                await log_action_success(ctx, f"Listed {result.total_count} configurations")
+
+                return formatter.format_list_result(result_data, list_filter)
 
             elif action == SwagAction.CREATE:
                 # Validate required parameters
@@ -340,24 +354,24 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "create",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "create"
+                    )
 
-                # Prepare configuration defaults
-                (
-                    auth_method_final,
-                    enable_quic_final,
-                    _,  # config_type not used anymore
-                ) = swag_service.prepare_config_defaults(auth_method, enable_quic, None)
+                # Use parameters directly
+                auth_method_final = auth_method
+                enable_quic_final = enable_quic
 
                 await log_action_start(ctx, "Creating configuration", config_name)
 
                 # Convert parameters to new request model
                 config_request = SwagConfigRequest(
+                    action=action,
                     config_name=config_name,
                     server_name=server_name,
                     upstream_app=upstream_app,
                     upstream_port=upstream_port,
-                    upstream_proto=upstream_proto,  # type: ignore[arg-type]
+                    upstream_proto=upstream_proto,
                     mcp_enabled=mcp_enabled,
                     auth_method=auth_method_final,  # type: ignore[arg-type]
                     enable_quic=enable_quic_final,
@@ -369,13 +383,18 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Run health check and return formatted result
                 health_check_result = await _run_post_create_health_check(
-                    ctx, server_name, create_result.filename
+                    swag_service, ctx, server_name, create_result.filename
                 )
 
-                return success_response(
-                    f"Created {create_result.filename}",
-                    filename=create_result.filename,
-                    health_check=health_check_result,
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "filename": create_result.filename,
+                    "backup_created": getattr(create_result, "backup_created", None),
+                }
+
+                return formatter.format_create_result(
+                    result_data, create_result.filename, health_check_result
                 )
 
             elif action == SwagAction.VIEW:
@@ -385,7 +404,9 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "view",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing config_name"), "view"
+                    )
 
                 await log_action_start(ctx, "Reading configuration", config_name)
 
@@ -394,14 +415,18 @@ def register_tools(mcp: FastMCP) -> None:
                     await log_action_success(
                         ctx, f"Successfully read {config_name} ({len(content)} characters)"
                     )
-                    return success_response(
-                        f"Read {config_name}",
-                        config_name=config_name,
-                        content=content,
-                        character_count=len(content),
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "success": True,
+                        "config_name": config_name,
+                        "content": content,
+                        "character_count": len(content),
+                    }
+
+                    return formatter.format_view_result(result_data, config_name)
                 except FileNotFoundError as e:
-                    return error_response(str(e))
+                    return formatter.format_error_result(str(e), "view")
 
             elif action == SwagAction.EDIT:
                 if error := validate_required_params(
@@ -411,11 +436,14 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "edit",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "edit"
+                    )
 
                 await log_action_start(ctx, "Editing configuration", config_name)
 
                 edit_request = SwagEditRequest(
+                    action=action,
                     config_name=config_name,
                     new_content=new_content,
                     create_backup=create_backup,
@@ -423,29 +451,13 @@ def register_tools(mcp: FastMCP) -> None:
 
                 edit_result = await swag_service.update_config(edit_request)
 
-                return build_config_response(
-                    config_name=config_name,
-                    operation="Updated",
-                    backup_created=edit_result.backup_created,
-                )
-
-            elif action == SwagAction.CONFIG:
-                await log_action_start(
-                    ctx, "Retrieving current default configuration", "environment variables"
-                )
-
-                current_defaults = {
-                    "default_auth_method": config.default_auth_method,
-                    "default_quic_enabled": config.default_quic_enabled,
-                    "default_config_type": config.default_config_type,
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": edit_result.backup_created,
                 }
 
-                await log_action_success(ctx, "Retrieved current defaults")
-                return success_response(
-                    "Current defaults retrieved. To change these values, "
-                    "update your .env file and restart the server.",
-                    defaults=current_defaults,
-                )
+                return formatter.format_edit_result(result_data, config_name)
 
             elif action == SwagAction.REMOVE:
                 if error := validate_required_params(
@@ -454,26 +466,30 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "remove",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing config_name"), "remove"
+                    )
 
                 await log_action_start(ctx, "Removing configuration", config_name)
 
                 remove_request = SwagRemoveRequest(
-                    config_name=config_name, create_backup=create_backup
+                    action=action, config_name=config_name, create_backup=create_backup
                 )
 
                 remove_result = await swag_service.remove_config(remove_request)
 
-                return build_config_response(
-                    config_name=config_name,
-                    operation="Removed",
-                    backup_created=remove_result.backup_created,
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": remove_result.backup_created,
+                }
+
+                return formatter.format_remove_result(result_data, config_name)
 
             elif action == SwagAction.LOGS:
                 await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
 
-                logs_request = SwagLogsRequest(log_type=log_type, lines=lines)
+                logs_request = SwagLogsRequest(action=action, log_type=log_type, lines=lines)
 
                 logs_output = await swag_service.get_swag_logs(logs_request)
                 await log_action_success(
@@ -481,29 +497,16 @@ def register_tools(mcp: FastMCP) -> None:
                     f"Retrieved {len(logs_output)} characters of {log_type} log output",
                 )
 
-                return success_response(
-                    f"Retrieved {lines} lines of {log_type} logs",
-                    log_type=log_type,
-                    lines_requested=lines,
-                    logs=logs_output,
-                    character_count=len(logs_output),
-                )
+                # Convert service result to dict for formatter
+                result_data = {
+                    "logs": logs_output,
+                    "character_count": len(logs_output),
+                }
+
+                return formatter.format_logs_result(result_data, log_type, lines)
 
             elif action == SwagAction.BACKUPS:
-                if error := validate_required_params(
-                    {
-                        "backup_action": (backup_action, "backup_action"),
-                    },
-                    "backups",
-                ):
-                    return error
-
-                # Validate backup_action
-                if backup_action not in ["cleanup", "list"]:
-                    return error_response(
-                        "Invalid backup_action. Must be 'cleanup' or 'list'",
-                        "validation_error",
-                    )
+                # backup_action is now properly typed as BackupSubAction enum
 
                 # Dispatch to appropriate sub-action
                 if backup_action == BackupSubAction.CLEANUP:
@@ -523,11 +526,14 @@ def register_tools(mcp: FastMCP) -> None:
                         message = "No old backup files to clean up"
 
                     await log_action_success(ctx, message)
-                    return success_response(
-                        message,
-                        cleaned_count=cleaned_count,
-                        retention_days=retention_days_param,
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "cleaned_count": cleaned_count,
+                        "retention_days": retention_days_param or 30,  # Default fallback
+                    }
+
+                    return formatter.format_backup_result(result_data, backup_action)
 
                 elif backup_action == BackupSubAction.LIST:
                     await log_action_start(ctx, "Listing backup files", "all backup files")
@@ -540,11 +546,14 @@ def register_tools(mcp: FastMCP) -> None:
                         message = f"Found {len(backup_files)} backup files"
 
                     await log_action_success(ctx, message)
-                    return success_response(
-                        message,
-                        backup_files=backup_files,
-                        total_count=len(backup_files),
-                    )
+
+                    # Convert service result to dict for formatter
+                    result_data = {
+                        "backup_files": backup_files,
+                        "total_count": len(backup_files),
+                    }
+
+                    return formatter.format_backup_result(result_data, backup_action)
 
             elif action == SwagAction.HEALTH_CHECK:
                 if error := validate_required_params(
@@ -553,12 +562,15 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "health_check",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing domain"), "health_check"
+                    )
 
                 await log_action_start(ctx, "Starting health check", domain)
 
                 # Validate and create health check request
                 health_request = SwagHealthCheckRequest(
+                    action=action,
                     domain=domain,
                     timeout=timeout,
                     follow_redirects=follow_redirects,
@@ -567,21 +579,18 @@ def register_tools(mcp: FastMCP) -> None:
                 # Perform health check
                 health_result = await swag_service.health_check(health_request)
 
-                # Format the response using helper function
-                message, status = format_health_check_result(health_result)
-                await log_action_success(ctx, f"Health check {status} for {domain}")
+                await log_action_success(ctx, f"Health check completed for {domain}")
 
-                # Use success/error response based on health check result
-                if health_result.success:
-                    return success_response(
-                        message,
-                        domain=domain,
-                        status=status,
-                        status_code=health_result.status_code,
-                        response_time_ms=health_result.response_time_ms,
-                    )
-                else:
-                    return error_response(health_result.error or "Health check failed")
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": health_result.success,
+                    "domain": health_result.domain,
+                    "status_code": health_result.status_code,
+                    "response_time_ms": health_result.response_time_ms,
+                    "error": getattr(health_result, "error", None),
+                }
+
+                return formatter.format_health_check_result(result_data)
 
             elif action == SwagAction.UPDATE:
                 if error := validate_required_params(
@@ -592,15 +601,20 @@ def register_tools(mcp: FastMCP) -> None:
                     },
                     "update",
                 ):
-                    return error
+                    return formatter.format_error_result(
+                        error.get("message", "Missing required parameters"), "update"
+                    )
 
                 await log_action_start(
                     ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
                 )
 
                 update_request = SwagUpdateRequest(
+                    action=action,
                     config_name=config_name,
-                    update_field=update_field,  # type: ignore[arg-type]
+                    update_field=cast(
+                        "Literal['port', 'upstream', 'app', 'add_mcp']", update_field
+                    ),
                     update_value=update_value,
                     create_backup=create_backup,
                 )
@@ -609,26 +623,26 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Run health check and return formatted result
                 health_check_result = await _run_post_update_health_check(
-                    ctx, config_name, update_field, update_value
+                    swag_service, ctx, config_name, update_field, update_value
                 )
 
-                base_message = format_backup_message(
-                    f"Updated {update_field} in {config_name}", update_result.backup_created
+                await log_action_success(ctx, f"Updated {update_field} in {config_name}")
+
+                # Convert service result to dict for formatter
+                result_data = {
+                    "success": True,
+                    "backup_created": update_result.backup_created,
+                }
+
+                return formatter.format_update_result(
+                    result_data, config_name, update_field, update_value, health_check_result
                 )
 
-                await log_action_success(ctx, base_message)
-                return success_response(
-                    base_message,
-                    config_name=config_name,
-                    field=update_field,
-                    new_value=update_value,
-                    backup_created=update_result.backup_created,
-                    health_check=health_check_result,
-                )
+            # This should never be reached as all enum cases are handled above
+            raise ValueError(f"Unhandled action: {action}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
-            return error_response(
-                f"Tool execution failed: {str(e)}",
-                action=action.value,
-            )
+            return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
+
+    # Tool registration complete

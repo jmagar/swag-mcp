@@ -16,7 +16,6 @@ dependencies = [
     "aiofiles>=24.1.0",
     "aiohttp>=3.9.0",
     "pyyaml>=6.0.0",
-    "regex",
 ]
 
 
@@ -40,6 +39,7 @@ dev-dependencies = [
     "types-aiofiles",
     "types-PyYAML",
     "types-regex>=2025.7.34.20250809",
+    "types-docker>=7.1.0.20250822",
 ]
 
 [tool.pytest.ini_options]
@@ -48,6 +48,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+cache_dir = ".cache/pytest"
+markers = [
+    "slow: marks tests as slow (potentially network-dependent)",
+]
 
 [tool.ruff]
 cache-dir = ".cache/ruff"
@@ -119,6 +123,25 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["aiohttp"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+data_file = ".cache/coverage/.coverage"
+source = ["swag_mcp"]
+
+[tool.coverage.html]
+directory = ".cache/coverage/htmlcov"
+
+[tool.coverage.xml]
+output = ".cache/coverage/coverage.xml"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]

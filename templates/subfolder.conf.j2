@@ -13,10 +13,22 @@ location ^~ /{{ service_name }}/ {
     include /config/nginx/{{ auth_method }}-location.conf;
 {% endif %}
 
+    # Security headers
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
-    set $upstream_app {{ upstream_app }};
-    set $upstream_port {{ upstream_port }};
-    set $upstream_proto {{ upstream_proto }};
+
+    # Set X-Forwarded-Prefix and X-Script-Name for subfolder routing
+    proxy_set_header X-Forwarded-Prefix /{{ service_name }};
+    proxy_set_header X-Script-Name /{{ service_name }};
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
     proxy_pass $upstream_proto://$upstream_app:$upstream_port;
 }

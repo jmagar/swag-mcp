@@ -97,7 +97,10 @@ celerybeat.pid
 
 # Environments
 .env
-.env.backup
+.env.*
+!.env.example
+.envrc
+.envrc.local
 .venv
 env/
 venv/
@@ -124,7 +127,6 @@ dmypy.json
 .pyre/
 
 # Tool caches (ruff, mypy, etc.)
-.cache/
 
 # IDE/Editor files
 .vscode/
@@ -145,9 +147,7 @@ Thumbs.db
 # Project specific
 *.log
 /.swag-mcp/
+.test-proxy-confs/*.backup.*
 
 # AI review and fix documentation
 *-fixes.md
-
-# Tests directory
-tests/

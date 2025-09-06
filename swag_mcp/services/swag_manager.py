@@ -5,16 +5,18 @@ import errno
 import logging
 import os
 import re
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import aiofiles
-from jinja2 import FileSystemLoader, TemplateNotFound
+import aiohttp
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound
 from jinja2.sandbox import SandboxedEnvironment
 
-from ..core.config import config
-from ..models.config import (
+from swag_mcp.core.config import config
+from swag_mcp.models.config import (
     SwagConfigRequest,
     SwagConfigResult,
     SwagEditRequest,
@@ -26,19 +28,18 @@ from ..models.config import (
     SwagResourceList,
     SwagUpdateRequest,
 )
-from ..utils.error_handlers import handle_os_error
-from ..utils.formatters import (
-    build_config_filename,
+from swag_mcp.utils.error_handlers import handle_os_error
+from swag_mcp.utils.formatters import (
     build_template_filename,
-    get_possible_config_filenames,
     get_possible_sample_filenames,
 )
-from ..utils.validators import (
+from swag_mcp.utils.validators import (
     detect_and_handle_encoding,
     normalize_unicode_text,
     validate_config_filename,
     validate_domain_format,
     validate_file_content_safety,
+    validate_mcp_path,
     validate_service_name,
     validate_upstream_port,
 )
@@ -55,12 +56,23 @@ class SwagManagerService:
         template_path: Path | None = None,
     ) -> None:
         """Initialize the SWAG manager service."""
-        self.config_path = config_path or config.proxy_confs_path
-        self.template_path = template_path or config.template_path
-        self._directory_checked = False
+        self.config_path: Path = config_path or config.proxy_confs_path
+        self.template_path: Path = template_path or config.template_path
+        self._directory_checked: bool = False
 
         # Initialize secure Jinja2 environment with sandboxing
-        self.template_env = self._create_secure_template_environment()
+        self.template_env: Environment = self._create_secure_template_environment()
+
+        # Testable hooks for template rendering
+        self._pre_render_hook: Callable[[str, dict], None] | None = (
+            None  # Called before template rendering
+        )
+        self._post_render_hook: Callable[[str, dict, str], None] | None = (
+            None  # Called after template rendering
+        )
+        self._template_vars_hook: Callable[[dict], dict] | None = (
+            None  # Called to modify template variables
+        )
 
         # Initialize asyncio locks for concurrent operation safety
         self._backup_lock = asyncio.Lock()  # Protects backup creation operations
@@ -75,7 +87,36 @@ class SwagManagerService:
         self._active_transactions: dict[str, dict] = {}
         self._transaction_lock = asyncio.Lock()
 
+        # HTTP session for health checks with connection pooling
+        self._http_session: aiohttp.ClientSession | None = None
+        self._session_lock = asyncio.Lock()
+
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
+
+    def set_template_hooks(
+        self,
+        pre_render_hook: Callable[[str, dict], None] | None = None,
+        post_render_hook: Callable[[str, dict, str], None] | None = None,
+        template_vars_hook: Callable[[dict], dict] | None = None,
+    ) -> None:
+        """Set testable hooks for template rendering.
+
+        Args:
+            pre_render_hook: Called before template rendering with (template_name, variables)
+            post_render_hook: Called after template rendering with (template_name, variables,
+                rendered_content)
+            template_vars_hook: Called to modify template variables, should return modified dict
+
+        """
+        self._pre_render_hook = pre_render_hook
+        self._post_render_hook = post_render_hook
+        self._template_vars_hook = template_vars_hook
+
+    def clear_template_hooks(self) -> None:
+        """Clear all template rendering hooks (useful for test cleanup)."""
+        self._pre_render_hook = None
+        self._post_render_hook = None
+        self._template_vars_hook = None
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
         """Get or create a per-file lock for fine-grained concurrency control.
@@ -93,6 +134,96 @@ class SwagManagerService:
             if file_key not in self._file_locks:
                 self._file_locks[file_key] = asyncio.Lock()
             return self._file_locks[file_key]
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create HTTP session with connection pooling.
+
+        Returns:
+            aiohttp.ClientSession configured with connection pooling and SSL context
+
+        """
+        async with self._session_lock:
+            if self._http_session is None or self._http_session.closed:
+                # Create SSL context for health checks (allow self-signed certs)
+                import ssl
+
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+                # Create connector with connection pooling
+                connector = aiohttp.TCPConnector(
+                    ssl=ssl_context,
+                    limit=10,  # Connection pool size
+                    limit_per_host=5,  # Max connections per host
+                    ttl_dns_cache=300,  # DNS cache TTL in seconds
+                    use_dns_cache=True,
+                    enable_cleanup_closed=True,
+                )
+
+                # Create session with timeout and connector
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                self._http_session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                )
+
+            return self._http_session
+
+    async def _close_session(self) -> None:
+        """Close HTTP session and cleanup resources."""
+        async with self._session_lock:
+            if self._http_session and not self._http_session.closed:
+                await self._http_session.close()
+                self._http_session = None
+
+    async def _validate_nginx_syntax(self, config_path: Path) -> bool:
+        """Validate nginx configuration syntax using subprocess.
+
+        Args:
+            config_path: Path to the nginx configuration file to validate
+
+        Returns:
+            bool: True if syntax is valid, False otherwise
+
+        """
+        import shutil
+        import subprocess
+
+        try:
+            # Check if nginx is available
+            nginx_cmd = shutil.which("nginx")
+            if not nginx_cmd:
+                logger.warning("nginx command not found, skipping syntax validation")
+                return True  # Assume valid if nginx not available
+
+            # Run nginx syntax test
+            result = await asyncio.create_subprocess_exec(
+                nginx_cmd,
+                "-t",
+                "-c",
+                str(config_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            stdout, stderr = await result.communicate()
+
+            # nginx -t returns 0 for valid config, non-zero for invalid
+            if result.returncode == 0:
+                logger.debug(f"nginx syntax validation passed for {config_path}")
+                return True
+            else:
+                logger.warning(
+                    f"nginx syntax validation failed for {config_path}: "
+                    f"{stderr.decode('utf-8', errors='ignore')}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Error validating nginx syntax for {config_path}: {e}")
+            # Return True to not block operations if validation fails
+            return True
 
     class AtomicTransaction:
         """Context manager for atomic multi-file operations with rollback support."""
@@ -252,27 +383,19 @@ class SwagManagerService:
         # Create sandboxed environment to prevent dangerous operations
         env = SandboxedEnvironment(
             loader=FileSystemLoader(str(self.template_path)),
-            autoescape=False,  # NGINX configs don't need HTML escaping
+            autoescape=True,  # Enable autoescape for security
+            undefined=StrictUndefined,  # Fail on undefined variables
             trim_blocks=True,
             lstrip_blocks=True,
         )
 
         # Remove dangerous globals and built-ins to prevent code execution
+        # Minimal set of globals required for NGINX config templates
         env.globals = {
-            # Only allow safe built-in functions
-            "range": range,
-            "len": len,
+            # Only essential type conversion functions for template rendering
             "str": str,
             "int": int,
             "bool": bool,
-            "list": list,
-            "dict": dict,
-            "zip": zip,
-            # Math functions that are safe
-            "min": min,
-            "max": max,
-            "abs": abs,
-            "round": round,
         }
 
         # Customize sandbox to block additional dangerous operations
@@ -673,112 +796,31 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    def prepare_config_defaults(
-        self, auth_method: str, enable_quic: bool, config_type: str | None
-    ) -> tuple[str, bool, str]:
-        """Prepare configuration defaults from parameters and config.
-
-        Args:
-            auth_method: Authentication method parameter
-            enable_quic: QUIC enable parameter
-            config_type: Configuration type parameter
-
-        Returns:
-            Tuple of (auth_method, enable_quic, config_type) with defaults applied
-
-        """
-        # Use defaults from environment configuration if not specified
-        if auth_method == "none":
-            auth_method = "authelia"  # Default to Authelia for security
-        if not enable_quic:
-            enable_quic = config.default_quic_enabled
-        if config_type is None:
-            config_type = config.default_config_type
-
-        return auth_method, enable_quic, config_type
-
-    def _resolve_config_filename(self, config_name: str, allow_create: bool = False) -> str:
-        """Resolve config name to actual filename by auto-detecting extension.
-
-        Args:
-            config_name: Either a full filename with extension or just a service name
-            allow_create: If True, return best filename even if file doesn't exist
-
-        Returns:
-            The resolved filename (existing or best match for creation)
-
-        Raises:
-            FileNotFoundError: If no matching configuration file is found and allow_create is False
-
-        """
-        # If already has extension, use as-is
-        if config_name.endswith((".conf", ".sample")):
-            config_file = self.config_path / config_name
-            if config_file.exists() or allow_create:
-                return config_name
-            else:
-                raise FileNotFoundError(f"Configuration {config_name} not found")
-
-        # Try different extensions in order of preference
-        candidates = get_possible_config_filenames(config_name, config.default_config_type)
-        candidates.extend(
-            [
-                build_config_filename(config_name, "mcp-subdomain"),
-                build_config_filename(config_name, "mcp-subfolder"),
-                f"{config_name}.conf",  # fallback
-            ]
-        )
-
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_candidates = []
-        for candidate in candidates:
-            if candidate not in seen:
-                seen.add(candidate)
-                unique_candidates.append(candidate)
-
-        # Find first existing file
-        for candidate in unique_candidates:
-            config_file = self.config_path / candidate
-            if config_file.exists():
-                logger.info(f"Resolved '{config_name}' to '{candidate}'")
-                return candidate
-
-        # If allow_create is True, return the best candidate for creation
-        if allow_create and unique_candidates:
-            best_candidate = unique_candidates[0]  # Use default config type
-            logger.info(f"Resolved '{config_name}' to '{best_candidate}' (for creation)")
-            return best_candidate
-
-        # No file found, provide helpful error message
-        available_files = [f.name for f in self.config_path.glob("*.conf")]
-        available_files.extend([f.name for f in self.config_path.glob("*.sample")])
-        available_files.sort()
-
-        error_msg = (
-            f"No configuration file found for '{config_name}'. "
-            f"Tried: {', '.join(unique_candidates)}"
-        )
-        if available_files:
-            error_msg += f". Available files: {', '.join(available_files)}"
-
-        raise FileNotFoundError(error_msg)
-
-    async def list_configs(self, config_type: str = "all") -> SwagListResult:
+    async def list_configs(
+        self, list_filter: Literal["all", "active", "samples"] = "all"
+    ) -> SwagListResult:
         """List configuration files based on type."""
-        logger.info(f"Listing configurations of type: {config_type}")
+        # Validate filter parameter
+        valid_filters = {"all", "active", "samples"}
+        if list_filter not in valid_filters:
+            valid_options = ", ".join(sorted(valid_filters))
+            raise ValueError(
+                f"Invalid list filter '{list_filter}'. Must be one of: {valid_options}"
+            )
+
+        logger.info(f"Listing configurations of type: {list_filter}")
         self._ensure_config_directory()
 
         configs = []
 
-        if config_type in ["all", "active"]:
+        if list_filter in ["all", "active"]:
             # List active configurations (.conf files, not .sample)
             active_configs = [
                 f.name for f in self.config_path.glob("*.conf") if not f.name.endswith(".sample")
             ]
             configs.extend(active_configs)
 
-        if config_type in ["all", "samples"]:
+        if list_filter in ["all", "samples"]:
             # List sample configurations (.sample files)
             sample_configs = [f.name for f in self.config_path.glob("*.sample")]
             configs.extend(sample_configs)
@@ -788,16 +830,15 @@ class SwagManagerService:
 
         logger.info(f"Found {len(configs)} configurations")
 
-        return SwagListResult(configs=configs, total_count=len(configs), config_type=config_type)
+        return SwagListResult(configs=configs, total_count=len(configs), list_filter=list_filter)
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content."""
         logger.info(f"Reading configuration: {config_name}")
         self._ensure_config_directory()
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(config_name)
 
         config_file = self.config_path / validated_name
 
@@ -885,9 +926,21 @@ class SwagManagerService:
                 # Validate all template variables for security
                 safe_template_vars = self._validate_template_variables(template_vars)
 
+                # Apply template variables hook if set (for testing)
+                if self._template_vars_hook:
+                    safe_template_vars = self._template_vars_hook(safe_template_vars)
+
+                # Call pre-render hook if set (for testing)
+                if self._pre_render_hook:
+                    self._pre_render_hook(template_name, safe_template_vars)
+
                 # Render template with validated variables
                 template = self.template_env.get_template(template_name)
                 content = template.render(**safe_template_vars)
+
+                # Call post-render hook if set (for testing)
+                if self._post_render_hook:
+                    self._post_render_hook(template_name, safe_template_vars, content)
             except TemplateNotFound as e:
                 raise ValueError(f"Template {template_name} not found") from e
             except Exception as e:
@@ -906,9 +959,8 @@ class SwagManagerService:
         """Update configuration with optional backup."""
         logger.info(f"Updating configuration: {edit_request.config_name}")
 
-        # Resolve config name to actual filename and validate it (allow creation for edit)
-        resolved_name = self._resolve_config_filename(edit_request.config_name, allow_create=True)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(edit_request.config_name)
 
         # Security validation: validate configuration content for dangerous patterns
         validated_content = self._validate_config_content(
@@ -938,8 +990,6 @@ class SwagManagerService:
 
     async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
         """Update specific field in existing configuration using regex replacement."""
-        import re
-
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
@@ -953,15 +1003,29 @@ class SwagManagerService:
         # Apply targeted replacements based on field type
         if update_request.update_field == "port":
             # Update both upstream_port locations
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {update_request.update_value};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
+
+            # Update upstream comment to reflect new port
+            upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
+            upstream_comment_replacement = rf"\g<1>{update_request.update_value}"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
 
         elif update_request.update_field == "upstream":
             # Update upstream_app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {update_request.update_value};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
+
+            # Update upstream comment to reflect new app
+            upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
+            upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
 
         elif update_request.update_field == "app":
             # Update both app and port (format: "app:port")
@@ -970,14 +1034,46 @@ class SwagManagerService:
             app, port = update_request.update_value.split(":", 1)
 
             # Update app
-            pattern = r"set \$upstream_app [^;]+;"
-            replacement = f"set $upstream_app {app};"
+            pattern = r'set \$upstream_app "[^"]*";'
+            replacement = f'set $upstream_app "{app}";'
             updated_content = re.sub(pattern, replacement, content)
 
             # Update port
-            pattern = r"set \$upstream_port \d+;"
-            replacement = f"set $upstream_port {port};"
+            pattern = r'set \$upstream_port "[^"]*";'
+            replacement = f'set $upstream_port "{port}";'
             updated_content = re.sub(pattern, replacement, updated_content)
+
+            # Update upstream comment to reflect both new app and port
+            upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
+            upstream_comment_replacement = f"# Upstream: http://{app}:{port}"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
+
+        elif update_request.update_field == "add_mcp":
+            # Add MCP location block - delegate to the dedicated method
+            mcp_path = update_request.update_value if update_request.update_value else "/mcp"
+
+            # Validate the computed MCP path
+            try:
+                validated_mcp_path = validate_mcp_path(mcp_path)
+            except ValueError as e:
+                from swag_mcp.services.errors import ValidationError
+
+                error_msg = f"Invalid MCP path: {str(e)}"
+                logger.error(error_msg)
+                raise ValidationError(error_msg) from e
+
+            # Call the add_mcp_location method with validated path
+            result = await self.add_mcp_location(
+                config_name=update_request.config_name,
+                mcp_path=validated_mcp_path,
+                create_backup=update_request.create_backup,
+            )
+
+            # Return early since add_mcp_location handles everything
+            return result
+
         else:
             raise ValueError(f"Unsupported update field: {update_request.update_field}")
 
@@ -1063,7 +1159,12 @@ class SwagManagerService:
 
     async def validate_template_exists(self, config_type: str) -> bool:
         """Validate that the required template exists."""
-        template_name = build_template_filename(config_type)
+        try:
+            template_name = build_template_filename(config_type)
+        except ValueError:
+            # Invalid config_type, template doesn't exist
+            return False
+
         try:
             self.template_env.get_template(template_name)
             return True
@@ -1077,17 +1178,23 @@ class SwagManagerService:
             Dictionary mapping template names to their existence status
 
         """
-        from ..core.constants import ALL_CONFIG_TYPES
+        from swag_mcp.core.constants import ALL_CONFIG_TYPES
 
         results = {}
         for config_type in ALL_CONFIG_TYPES:
             template_name = build_template_filename(config_type)
+            # Check template existence directly to avoid duplicate template_name assignment
             try:
                 self.template_env.get_template(template_name)
-                results[template_name] = True
-                logger.debug(f"Template validation passed: {template_name}")
+                exists = True
             except TemplateNotFound:
-                results[template_name] = False
+                exists = False
+
+            results[config_type] = exists
+
+            if exists:
+                logger.debug(f"Template validation passed: {template_name}")
+            else:
                 logger.warning(f"Template validation failed: {template_name}")
 
         return results
@@ -1096,9 +1203,8 @@ class SwagManagerService:
         """Remove configuration with optional backup."""
         logger.info(f"Removing configuration: {remove_request.config_name}")
 
-        # Resolve config name to actual filename and validate it
-        resolved_name = self._resolve_config_filename(remove_request.config_name)
-        validated_name = validate_config_filename(resolved_name)
+        # Validate config name directly (must be full filename)
+        validated_name = validate_config_filename(remove_request.config_name)
 
         config_file = self.config_path / validated_name
 
@@ -1118,24 +1224,7 @@ class SwagManagerService:
             content = detect_and_handle_encoding(raw_content)
 
         except OSError as e:
-            if e.errno == errno.EACCES:
-                raise OSError(
-                    errno.EACCES,
-                    f"Permission denied reading configuration file for removal: {validated_name}",
-                ) from e
-            elif e.errno == errno.EIO:
-                raise OSError(
-                    errno.EIO,
-                    (
-                        f"I/O error reading configuration file for removal: {validated_name}. "
-                        "This may indicate disk corruption."
-                    ),
-                ) from e
-            else:
-                raise OSError(
-                    e.errno or errno.EIO,
-                    (f"Error reading configuration file for removal: {validated_name}: {str(e)}"),
-                ) from e
+            handle_os_error(e, "reading configuration file for removal", validated_name)
         except (ValueError, UnicodeDecodeError) as e:
             raise ValueError(
                 f"Configuration file has invalid text encoding or Unicode characters "
@@ -1275,7 +1364,7 @@ class SwagManagerService:
 
     async def list_backups(self) -> list[dict[str, Any]]:
         """List all backup files with metadata."""
-        from ..core.constants import BACKUP_MARKER
+        from swag_mcp.core.constants import BACKUP_MARKER
 
         logger.info("Listing all backup files")
         backup_files = []
@@ -1308,8 +1397,6 @@ class SwagManagerService:
 
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""
-        import re
-
         if retention_days is None:
             retention_days = config.backup_retention_days
 
@@ -1426,26 +1513,19 @@ class SwagManagerService:
 
             try:
                 # Configure SSL context for self-signed certificates
-                import ssl
 
-                import aiohttp
-
-                ssl_context = ssl.create_default_context()
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-
-                # Create connector with SSL context
-                connector = aiohttp.TCPConnector(ssl=ssl_context)
+                # Get pooled HTTP session
+                session = await self._get_session()
 
                 # Record start time
                 start_time = time.time()
 
-                async with (
-                    aiohttp.ClientSession(
-                        connector=connector, timeout=aiohttp.ClientTimeout(total=request.timeout)
-                    ) as session,
-                    session.get(url, allow_redirects=request.follow_redirects) as response,
-                ):
+                # Use custom timeout for this request
+                timeout = aiohttp.ClientTimeout(total=request.timeout)
+
+                async with session.get(
+                    url, allow_redirects=request.follow_redirects, timeout=timeout
+                ) as response:
                     # Calculate response time
                     response_time_ms = int((time.time() - start_time) * 1000)
 
@@ -1533,3 +1613,186 @@ class SwagManagerService:
             success=False,
             error=error_msg,
         )
+
+    async def add_mcp_location(
+        self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
+    ) -> SwagConfigResult:
+        """Add MCP location block to existing SWAG configuration."""
+        logger.info(f"Adding MCP location block to {config_name} at path {mcp_path}")
+
+        # Validate MCP path format using the existing validator
+        try:
+            mcp_path = validate_mcp_path(mcp_path)
+        except ValueError as e:
+            from swag_mcp.services.errors import ValidationError
+
+            raise ValidationError(f"Invalid MCP path: {str(e)}") from e
+
+        # Read existing config
+        try:
+            content = await self.read_config(config_name)
+        except OSError as e:
+            handle_os_error(e, "reading configuration file", config_name)
+
+        # Check if MCP location already exists (match '=', '^~', or plain)
+        dup_pat = re.compile(rf"^\s*location\s+(?:=\s+|\^~\s+)?{re.escape(mcp_path)}\s*\{{", re.M)
+        if dup_pat.search(content):
+            raise ValueError(f"MCP location {mcp_path} already exists in configuration")
+
+        # Create backup if requested
+        backup_name = None
+        if create_backup:
+            backup_name = await self._create_backup(config_name)
+
+        try:
+            # Begin atomic transaction
+            async with self.begin_transaction(f"add_mcp:{config_name}") as txn:
+                # Extract current upstream values from config
+                upstream_app = self._extract_upstream_value(content, "upstream_app")
+                upstream_port = self._extract_upstream_value(content, "upstream_port")
+                upstream_proto_raw = self._extract_upstream_value(content, "upstream_proto")
+                # Validate and cast upstream_proto to Literal type
+                from typing import cast
+
+                if upstream_proto_raw not in ("http", "https"):
+                    upstream_proto_raw = "http"  # Default to safe value
+                upstream_proto = cast(Literal["http", "https"], upstream_proto_raw)
+                auth_method = self._extract_auth_method(content)
+
+                # Render MCP location block
+                mcp_block = await self._render_mcp_location_block(
+                    mcp_path=mcp_path,
+                    upstream_app=upstream_app,
+                    upstream_port=upstream_port,
+                    upstream_proto=upstream_proto,
+                    auth_method=auth_method,
+                )
+
+                # Insert MCP location block before the last closing brace
+                updated_content = self._insert_location_block(content, mcp_block)
+
+                # Write updated content (track for rollback)
+                config_file = self.config_path / config_name
+                await txn.track_file_modification(config_file)
+                await self._safe_write_file(
+                    config_file, updated_content, f"MCP location addition for {config_name}"
+                )
+
+                # Validate nginx syntax before committing (abort on failure)
+                await self._validate_nginx_syntax(config_file)
+
+                logger.info(f"Successfully added MCP location block to {config_name}")
+                await txn.commit()
+                return SwagConfigResult(
+                    filename=config_name, content=updated_content, backup_created=backup_name
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to add MCP location to {config_name}: {str(e)}")
+            raise ValueError(f"Failed to add MCP location: {str(e)}") from e
+
+    def _extract_upstream_value(self, content: str, variable_name: str) -> str:
+        """Extract upstream variable value from nginx configuration content."""
+        # Pattern to match: set $upstream_app "value"; or set $upstream_port "value";
+        pattern = rf'set \${variable_name}\s+"([^"]*)"'
+        match = re.search(pattern, content)
+
+        if not match:
+            raise ValueError(f"Could not find {variable_name} in configuration")
+
+        return str(match.group(1)).strip()
+
+    def _extract_auth_method(self, content: str) -> str:
+        """Extract authentication method from nginx configuration content."""
+        # Look for auth method includes like: include /config/nginx/authelia-server.conf;
+        pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
+        matches = re.findall(pattern, content)
+
+        # Also check for basic auth
+        if "auth_basic" in content and "auth_basic_user_file" in content:
+            return "basic"
+
+        if not matches:
+            return "none"
+
+        # Return the first auth method found
+        auth_method = matches[0]
+
+        # Validate it's a known auth method
+        valid_auth_methods = ["authelia", "authentik", "ldap", "tinyauth", "basic"]
+        if auth_method not in valid_auth_methods:
+            return "none"
+
+        return str(auth_method)
+
+    async def _render_mcp_location_block(
+        self,
+        mcp_path: str,
+        upstream_app: str,
+        upstream_port: str,
+        upstream_proto: Literal["http", "https"],
+        auth_method: str,
+    ) -> str:
+        """Render MCP location block template with provided variables."""
+        try:
+            # Get the template
+            template_name = "mcp_location_block.j2"
+            template = self.template_env.get_template(template_name)
+
+            # Prepare template variables
+            template_vars = {
+                "mcp_path": mcp_path,
+                "upstream_app": upstream_app,
+                "upstream_port": upstream_port,
+                "upstream_proto": upstream_proto,
+                "auth_method": auth_method,
+            }
+
+            # Apply template variables hook if set (for testing)
+            if self._template_vars_hook:
+                template_vars = self._template_vars_hook(template_vars)
+
+            # Call pre-render hook if set (for testing)
+            if self._pre_render_hook:
+                self._pre_render_hook(template_name, template_vars)
+
+            # Render with variables
+            rendered = template.render(**template_vars)
+
+            # Call post-render hook if set (for testing)
+            if self._post_render_hook:
+                self._post_render_hook(template_name, template_vars, rendered)
+
+            return rendered
+
+        except Exception as e:
+            raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
+
+    def _insert_location_block(self, content: str, location_block: str) -> str:
+        """Insert location block before the closing brace of the outermost server block."""
+        lines = content.splitlines()
+        server_start = -1
+        # Find the start of the server block
+        for i, line in enumerate(lines):
+            if re.match(r"^\s*server\s*\{", line):
+                server_start = i
+                break
+        if server_start == -1:
+            raise ValueError("Could not find start of server block")
+        # Track brace nesting from the server block start
+        brace_count = 0
+        insert_index = -1
+        for i in range(server_start, len(lines)):
+            # Count braces in the line
+            brace_count += lines[i].count("{")
+            brace_count -= lines[i].count("}")
+            # When brace_count returns to zero, we've found the server block's closing brace
+            if brace_count == 0:
+                insert_index = i
+                break
+        if insert_index == -1:
+            raise ValueError("Could not find server block closing brace")
+        # Insert the location block before the closing brace
+        lines.insert(insert_index, "")  # Add empty line for spacing
+        lines.insert(insert_index + 1, location_block)
+        return "\n".join(lines)

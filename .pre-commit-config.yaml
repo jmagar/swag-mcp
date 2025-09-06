@@ -33,4 +33,7 @@ repos:
           - pyyaml>=6.0.0
           - pytest
           - types-requests
+          - regex>=2024.11.6
+          - types-regex~=2024.11.0
+          - types-jinja2>=2.11.2
         args: [--config-file=pyproject.toml]
