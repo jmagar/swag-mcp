@@ -13,6 +13,7 @@ from fastmcp.resources import DirectoryResource
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from swag_mcp.core.config import SwagConfig as SwagConfig  # re-export for tests
 from swag_mcp.core.config import config
 from swag_mcp.core.constants import (
     CONF_EXTENSION,
@@ -32,9 +33,6 @@ from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
 
 # Re-exports for testing
-from swag_mcp.middleware.error_handling import (
-    get_error_handling_middleware,
-)
 from swag_mcp.middleware.rate_limiting import get_rate_limiting_middleware
 from swag_mcp.middleware.request_logging import get_logging_middleware
 from swag_mcp.middleware.timing import get_timing_middleware
@@ -43,7 +41,6 @@ from swag_mcp.tools.swag import register_tools
 from swag_mcp.utils.formatters import build_template_filename
 
 # Aliases for test compatibility (tests expect these specific names)
-error_handling_middleware = get_error_handling_middleware
 timing_middleware = get_timing_middleware
 request_logging_middleware = get_logging_middleware
 rate_limiting_middleware = get_rate_limiting_middleware
@@ -77,7 +74,7 @@ def get_package_version() -> str:
     return _cached_version
 
 
-async def register_resources(mcp: FastMCP) -> None:
+def register_resources(mcp: FastMCP) -> None:
     """Register all SWAG resources with the FastMCP server using Resource classes."""
     # Get the config directory path
     config_path = Path(config.proxy_confs_path)
@@ -134,7 +131,7 @@ async def create_mcp_server() -> FastMCP:
     register_tools(mcp)
 
     # Register SWAG resources
-    await register_resources(mcp)
+    register_resources(mcp)
 
     # Add health check endpoint for Docker health checks
     @mcp.custom_route(HEALTH_ENDPOINT, methods=[HTTP_METHOD_GET])
@@ -144,9 +141,9 @@ async def create_mcp_server() -> FastMCP:
         payload = {"status": STATUS_HEALTHY, "service": SERVICE_NAME, "version": version}
         return JSONResponse(content=payload, status_code=200)
 
-    version = get_package_version()
     logger.info("SWAG MCP Server initialized")
-    logger.info(f"Version: {version}")
+    _v = get_package_version()
+    logger.info(f"Version: {_v}")
     logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
     logger.info(f"SWAG Proxy Confs Path: {config.proxy_confs_path}")
     logger.info(f"Template path: {config.template_path}")

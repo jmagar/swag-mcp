@@ -212,12 +212,12 @@ def register_tools(mcp: FastMCP) -> None:
         ] = 50,
         # Backup parameters
         backup_action: Annotated[
-            str,
+            BackupSubAction,
             Field(
-                default="",
+                default=BackupSubAction.LIST,
                 description="Backup action: 'cleanup' or 'list'",
             ),
-        ] = "",
+        ] = BackupSubAction.LIST,
         retention_days: Annotated[
             int,
             Field(
@@ -506,23 +506,7 @@ def register_tools(mcp: FastMCP) -> None:
                 return formatter.format_logs_result(result_data, log_type, lines)
 
             elif action == SwagAction.BACKUPS:
-                if error := validate_required_params(
-                    {
-                        "backup_action": (backup_action, "backup_action"),
-                    },
-                    "backups",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing backup_action"), "backups"
-                    )
-
-                # Validate backup_action
-                if backup_action not in [e.value for e in BackupSubAction]:
-                    valid_actions = [e.value for e in BackupSubAction]
-                    return formatter.format_error_result(
-                        f"Invalid backup_action. Must be one of: {', '.join(valid_actions)}",
-                        "backups",
-                    )
+                # backup_action is now properly typed as BackupSubAction enum
 
                 # Dispatch to appropriate sub-action
                 if backup_action == BackupSubAction.CLEANUP:

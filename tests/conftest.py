@@ -98,7 +98,11 @@ server {
     listen 443 ssl;
     server_name jellyfin.*;
 
+    include /config/nginx/ssl.conf;
+
     location / {
+        include /config/nginx/proxy.conf;
+        include /config/nginx/resolver.conf;
         proxy_pass http://jellyfin:8096;
     }
 }""",
@@ -107,7 +111,11 @@ server {
     listen 443 ssl;
     server_name plex.*;
 
+    include /config/nginx/ssl.conf;
+
     location / {
+        include /config/nginx/proxy.conf;
+        include /config/nginx/resolver.conf;
         proxy_pass http://plex:32400;
     }
 }""",
@@ -116,7 +124,11 @@ server {
     listen 443 ssl;
     server_name app.*;
 
+    include /config/nginx/ssl.conf;
+
     location / {
+        include /config/nginx/proxy.conf;
+        include /config/nginx/resolver.conf;
         proxy_pass http://app:8080;
     }
 }""",

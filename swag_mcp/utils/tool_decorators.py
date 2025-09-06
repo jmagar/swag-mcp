@@ -1,32 +1,24 @@
 """Decorators for SWAG MCP tools."""
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
+from collections.abc import Callable as _Callable
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Concatenate, ParamSpec, TypeVar
 
+from fastmcp import Context
+from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
-T = TypeVar("T")
-
-# Lazy formatter factory to avoid duplication
-_formatter_instance = None
+R = TypeVar("R")
 
 
-def _get_token_formatter() -> Any:
-    """Get cached TokenEfficientFormatter instance."""
-    global _formatter_instance
-    if _formatter_instance is None:
-        from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
-
-        _formatter_instance = TokenEfficientFormatter()
-    return _formatter_instance
-
-
-def handle_tool_errors(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+def handle_tool_errors(
+    func: _Callable[Concatenate[Context, P], Awaitable[R]],
+) -> _Callable[Concatenate[Context, P], Awaitable[R | ToolResult]]:
     """Handle common tool errors with consistent logging.
 
     Handles:
@@ -44,29 +36,25 @@ def handle_tool_errors(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable
     """
 
     @wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+    async def wrapper(ctx: Context, *args: P.args, **kwargs: P.kwargs) -> R | ToolResult:
         try:
-            return await func(*args, **kwargs)
+            return await func(ctx, *args, **kwargs)
         except ValidationError as e:
             error_msg = f"Invalid parameters for {func.__name__}: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            # Return error instead of raising to maintain return type contract
-            formatter = _get_token_formatter()
-            return formatter.format_error_result(error_msg, "validation")
+            # Return ToolResult for error cases
+            return ToolResult(content=error_msg)
         except FileNotFoundError as e:
             error_msg = str(e)
             logger.error(error_msg)
-            formatter = _get_token_formatter()
-            return formatter.format_error_result(error_msg, "file_not_found")
+            return ToolResult(content=error_msg)
         except ValueError as e:
             error_msg = str(e)
             logger.error(error_msg)
-            formatter = _get_token_formatter()
-            return formatter.format_error_result(error_msg, "value_error")
+            return ToolResult(content=error_msg)
         except Exception as e:
             error_msg = f"Failed to execute {func.__name__}: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            formatter = _get_token_formatter()
-            return formatter.format_error_result(error_msg, "unexpected_error")
+            return ToolResult(content=error_msg)
 
     return wrapper

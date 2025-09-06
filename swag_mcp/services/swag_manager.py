@@ -1650,7 +1650,13 @@ class SwagManagerService:
                 # Extract current upstream values from config
                 upstream_app = self._extract_upstream_value(content, "upstream_app")
                 upstream_port = self._extract_upstream_value(content, "upstream_port")
-                upstream_proto = self._extract_upstream_value(content, "upstream_proto")
+                upstream_proto_raw = self._extract_upstream_value(content, "upstream_proto")
+                # Validate and cast upstream_proto to Literal type
+                from typing import cast
+
+                if upstream_proto_raw not in ("http", "https"):
+                    upstream_proto_raw = "http"  # Default to safe value
+                upstream_proto = cast(Literal["http", "https"], upstream_proto_raw)
                 auth_method = self._extract_auth_method(content)
 
                 # Render MCP location block
@@ -1724,7 +1730,7 @@ class SwagManagerService:
         mcp_path: str,
         upstream_app: str,
         upstream_port: str,
-        upstream_proto: str,
+        upstream_proto: Literal["http", "https"],
         auth_method: str,
     ) -> str:
         """Render MCP location block template with provided variables."""

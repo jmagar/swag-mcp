@@ -196,6 +196,10 @@
 
     # Health check endpoint (no auth required)
     location /health {
+        # Disable buffering for immediate health check responses
+        proxy_buffering off;
+        proxy_cache off;
+
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
