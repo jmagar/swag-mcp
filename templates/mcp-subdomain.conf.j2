@@ -45,6 +45,7 @@ server {
         # enable for {{ auth_method }} (requires {{ auth_method }}-server.conf in the server block)
         include /config/nginx/{{ auth_method }}-location.conf;
 {% endif %}
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -89,6 +90,7 @@ server {
 
     # OAuth discovery endpoints (no auth)
     location = /.well-known/oauth-authorization-server {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -103,6 +105,7 @@ server {
     }
 
     location = /.well-known/openid-configuration {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -118,6 +121,7 @@ server {
 
     # OAuth endpoints (no auth)
     location = /register {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -132,6 +136,7 @@ server {
     }
 
     location = /authorize {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -146,6 +151,7 @@ server {
     }
 
     location = /token {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -160,6 +166,7 @@ server {
     }
 
     location = /revoke {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -175,6 +182,7 @@ server {
 
     # OAuth callback and other auth-related paths (no auth)
     location /auth/ {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         set $upstream_app "{{ upstream_app }}";
@@ -190,7 +198,13 @@ server {
 
     # Health check endpoint (no auth required)
     location /health {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
+
+        # Disable buffering for immediate health check responses
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering off;
 
         set $upstream_app "{{ upstream_app }}";
         set $upstream_port "{{ upstream_port }}";

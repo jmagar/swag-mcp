@@ -142,9 +142,10 @@ class TestFormatters:
     def test_format_health_check_result(self):
         """Test health check result formatting."""
         result = {"accessible": True, "status_code": 200}
-        icon, msg = format_health_check_result(result)
-        assert icon == "✅"
-        assert "accessible" in msg
+        message, status = format_health_check_result(result)
+        assert "✅" in message
+        assert "200" in message
+        assert status == "successful"
 
     def test_get_possible_sample_filenames(self):
         """Test sample filename generation."""

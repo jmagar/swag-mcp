@@ -36,21 +36,19 @@ class TestErrorHandling:
 
     def test_create_user_friendly_error(self):
         """Test creation of user-friendly error messages."""
-        # ValidationError
-        try:
-            raise ValidationError(
-                [
-                    {
-                        "loc": ("port",),
-                        "msg": "ensure this value is greater than 0",
-                        "type": "value_error.number.not_gt",
-                    }
-                ],
-                str,
-            )
-        except ValidationError as e:
-            result = create_user_friendly_error(e)
-            assert "Port number must be between" in result or "Invalid" in result
+        # ValidationError - create directly without try-except
+        error_data = [
+            {
+                "type": "greater_than",
+                "loc": ("port",),
+                "msg": "Input should be greater than 0",
+                "input": 0,
+                "ctx": {"gt": 0},
+            }
+        ]
+        validation_error = ValidationError.from_exception_data("ValidationError", error_data)
+        result = create_user_friendly_error(validation_error)
+        assert "Port number must be between" in result or "Invalid" in result
 
         # FileNotFoundError
         error = FileNotFoundError("test.conf not found")

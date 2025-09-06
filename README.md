@@ -2,8 +2,8 @@
 
 > **Intelligent reverse proxy management for SWAG (Secure Web Application Gateway) with Model Context Protocol support**
 
-[![Test Suite](https://github.com/jmagar/swag-mcp/workflows/Test%20Suite/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
-[![Docker Build](https://github.com/jmagar/swag-mcp/workflows/Build%20and%20Push%20Docker%20Image/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
+[![Test Suite](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
+[![Docker Build](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
@@ -307,10 +307,10 @@ Update specific fields in existing configurations without full rewrites.
 
 **Supported Update Fields:**
 
-- **`port`** - Update upstream port (e.g., "8080", "32400")
-- **`upstream`** - Update upstream app name/IP (e.g., "myapp", "192.168.1.100")
-- **`app`** - Update both app name and port (e.g., "myapp:8080")
-- **`add_mcp`** - Add MCP streaming endpoint (e.g., "/mcp", "/ai-service")
+- **`port`** - Update upstream port (e.g., "8080")
+- **`upstream`** - Update upstream app name or IP address (e.g., "myapp")
+- **`app`** - Update app name and port (e.g., "myapp:8080")
+- **`add_mcp`** - Add MCP streaming-endpoint path (e.g., "/mcp")
 
 **Natural Language Examples:**
 - *"Update port for app.subdomain.conf to 8081"*
@@ -356,7 +356,7 @@ Perfect for traditional web applications:
 Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true`):
 
 - **`mcp-subdomain`** - `service.subdomain.conf` + MCP features → Streamable-HTTP/SSE support
-- **`mcp-subfolder`** - `service.subfolder.conf` + MCP features → Path-based with SSE support
+- **`mcp-subfolder`** - `service.subfolder.conf` + MCP features → path-based with SSE support
 
 #### Template Selection
 

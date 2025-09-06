@@ -64,17 +64,21 @@ class TestSecureTemplateEnvironment:
         """Test that template environment has security restrictions."""
         env = temp_service.template_env
 
-        # Check that only safe globals are available
+        # Check that only essential safe globals are available
         safe_globals = env.globals.keys()
-        assert "range" in safe_globals
-        assert "len" in safe_globals
+        # Only essential type conversion functions for template rendering
         assert "str" in safe_globals
+        assert "int" in safe_globals
+        assert "bool" in safe_globals
 
-        # Check that dangerous functions are not available
+        # Check that dangerous functions are not available (SSTI prevention)
+        assert "range" not in safe_globals  # Removed for security
+        assert "len" not in safe_globals  # Removed for security
         assert "__import__" not in safe_globals
         assert "eval" not in safe_globals
         assert "exec" not in safe_globals
         assert "open" not in safe_globals
+        assert "__builtins__" not in safe_globals
 
     def test_is_safe_attribute_blocks_dangerous_attrs(self, temp_service):
         """Test that is_safe_attribute blocks dangerous attributes."""

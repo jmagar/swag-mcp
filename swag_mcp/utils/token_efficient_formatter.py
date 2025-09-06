@@ -8,10 +8,12 @@ Based on the Docker MCP token-efficient formatting system.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
+
+from swag_mcp.models.enums import BackupSubAction
 
 
 class TokenEfficientFormatter:
@@ -53,7 +55,9 @@ class TokenEfficientFormatter:
         """Format timestamp for compact display."""
         return timestamp.strftime("%m-%d %H:%M")
 
-    def format_list_result(self, result: dict[str, Any], list_filter: str = "all") -> ToolResult:
+    def format_list_result(
+        self, result: dict[str, Any], list_filter: Literal["all", "active", "samples"] = "all"
+    ) -> ToolResult:
         """Format configuration list with token-efficient display.
 
         Token Efficiency Strategy: Grouped display with status indicators and size info.
@@ -290,7 +294,7 @@ class TokenEfficientFormatter:
 
         Token Efficiency Strategy: Summary with counts and age grouping.
         """
-        if backup_action == "cleanup":
+        if backup_action == BackupSubAction.CLEANUP:
             cleaned_count = result.get("cleaned_count", 0)
             retention_days = result.get("retention_days", "default")
 
@@ -304,7 +308,7 @@ class TokenEfficientFormatter:
                     f"🧹 No old backups to cleanup " f"(retention: {retention_days} days)"
                 )
 
-        elif backup_action == "list":
+        elif backup_action == BackupSubAction.LIST:
             backup_files = result.get("backup_files", [])
             total_count = result.get("total_count", len(backup_files))
 

@@ -62,6 +62,10 @@ AUTH_METHODS = (
     AUTH_METHOD_TINYAUTH,
 )
 
+# List filter options
+LIST_FILTERS = ["all", "active", "samples"]
+DEFAULT_LIST_FILTER = "all"
+
 # Default values
 DEFAULT_AUTH_METHOD = AUTH_METHOD_AUTHELIA
 DEFAULT_HOST = "127.0.0.1"
@@ -74,6 +78,12 @@ DEFAULT_MCP_SESSION_TIMEOUT = 3600  # 1 hour in seconds for session management
 
 # Path validation regex - prevents traversal attacks while allowing valid paths
 LOCATION_PATH_REGEX = r"^[a-zA-Z0-9/_.-]+$"  # Alphanumerics, slashes, underscores, hyphens, dots
+
+# Domain validation pattern (RFC compliant)
+DOMAIN_PATTERN = (
+    r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?"
+    r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
+)
 
 # Docker and health check
 DOCKER_CONTAINER_NAME = "swag"

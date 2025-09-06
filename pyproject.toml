@@ -17,7 +17,6 @@ dependencies = [
     "aiohttp>=3.9.0",
     "pyyaml>=6.0.0",
     "regex",
-    "types-regex>=2025.7.34.20250809",
 ]
 
 

@@ -12,7 +12,7 @@ from swag_mcp.core.constants import (
     VALID_CONFIG_ONLY_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
-from swag_mcp.models.enums import SwagAction
+from swag_mcp.models.enums import BackupSubAction, SwagAction
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
 # Type alias for authentication methods (synced with AUTH_METHODS in constants.py)
@@ -137,7 +137,9 @@ class SwagListResult(BaseModel):
 
     total_count: int = Field(..., description="Total number of configurations found")
 
-    list_filter: str = Field(..., description="Type of configurations listed")
+    list_filter: Literal["all", "active", "samples"] = Field(
+        ..., description="Type of configurations listed"
+    )
 
 
 class SwagEditRequest(SwagBaseRequest):
@@ -353,9 +355,7 @@ class SwagUpdateRequest(SwagBaseRequest):
 class SwagBackupRequest(SwagBaseRequest):
     """Request model for backup management operations."""
 
-    backup_action: Literal["cleanup", "list"] = Field(
-        ..., description="Backup action: 'cleanup' or 'list'"
-    )
+    backup_action: BackupSubAction = Field(..., description="Backup action: 'cleanup' or 'list'")
 
     retention_days: int | None = Field(
         default=None, description="Days to retain backups (only for cleanup action)"
@@ -363,7 +363,7 @@ class SwagBackupRequest(SwagBaseRequest):
 
     @model_validator(mode="after")
     def _validate_cleanup_requires_retention(self) -> "SwagBackupRequest":
-        if self.backup_action == "cleanup" and (
+        if self.backup_action == BackupSubAction.CLEANUP and (
             self.retention_days is None or self.retention_days < 0
         ):
             raise ValueError("retention_days must be provided and >= 0 for cleanup action")

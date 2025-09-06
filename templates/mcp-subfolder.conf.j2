@@ -22,6 +22,7 @@ location ^~ /{{ service_name }}/ {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     # MCP Server Configuration
@@ -74,6 +75,7 @@ location ^~ /{{ service_name }}/ {
 
 # OAuth discovery endpoints (no auth)
 location = /{{ service_name }}/.well-known/oauth-authorization-server {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -91,6 +93,7 @@ location = /{{ service_name }}/.well-known/oauth-authorization-server {
 }
 
 location = /{{ service_name }}/.well-known/openid-configuration {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -109,6 +112,7 @@ location = /{{ service_name }}/.well-known/openid-configuration {
 
 # OAuth endpoints (no auth)
 location = /{{ service_name }}/register {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -125,6 +129,7 @@ location = /{{ service_name }}/register {
 }
 
 location = /{{ service_name }}/authorize {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -141,6 +146,7 @@ location = /{{ service_name }}/authorize {
 }
 
 location = /{{ service_name }}/token {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -157,6 +163,7 @@ location = /{{ service_name }}/token {
 }
 
 location = /{{ service_name }}/revoke {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -174,6 +181,7 @@ location = /{{ service_name }}/revoke {
 
 # OAuth callback and other auth-related paths (no auth)
 location ^~ /{{ service_name }}/auth/ {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
@@ -192,7 +200,13 @@ location ^~ /{{ service_name }}/auth/ {
 
 # Optional: Health check endpoint for your MCP server (no auth)
 location ^~ /{{ service_name }}/health {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
+
+    # Disable buffering for immediate health check responses
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_request_buffering off;
 
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";

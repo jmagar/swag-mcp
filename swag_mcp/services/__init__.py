@@ -1,6 +1,6 @@
 """SWAG MCP Services package."""
 
-from .errors import (
+from swag_mcp.services.errors import (
     ConfigurationNotFoundError,
     FileOperationError,
     SwagServiceError,

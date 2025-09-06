@@ -8,6 +8,8 @@ from typing import Any
 
 import regex
 
+from swag_mcp.core.constants import DOMAIN_PATTERN, VALID_NAME_PATTERN
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,23 +48,9 @@ def validate_domain_format(domain: str) -> str:
     if normalized_domain.startswith("."):
         raise ValueError("Domain name cannot start with a dot")
 
-    # Split domain into parts for more specific validation
-    parts = normalized_domain.split(".")
-
-    if len(parts) < 2:
-        raise ValueError("Domain name must contain at least one dot (e.g., example.com)")
-
-    label_re = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
-    for part in parts:
-        if not part:
-            raise ValueError("Domain name cannot have empty parts")
-        if len(part) > 63:
-            raise ValueError(f"Domain part '{part}' is too long (maximum 63 characters)")
-        if not label_re.match(part):
-            raise ValueError(
-                f"Domain part '{part}' contains invalid characters. "
-                "Labels must match ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$"
-            )
+    # Validate using canonical DOMAIN_PATTERN
+    if not re.match(DOMAIN_PATTERN, normalized_domain):
+        raise ValueError("Domain name format is invalid. Must be a valid hostname.")
 
     return normalized_domain.lower()
 
@@ -137,12 +125,21 @@ def validate_config_filename(filename: str) -> str:
     # Use normalized filename for all subsequent validation
     filename = normalized_filename
 
-    # Require full filename format - must end with .conf or .conf.sample extension
+    # Auto-extend bare filenames with .conf extension
     if not filename.endswith(".conf") and not filename.endswith(".conf.sample"):
-        raise ValueError(
-            "Must be a full filename including extension, e.g., 'service.conf' or a sample file "
-            "'service.conf.sample' — do not pass service names or partial paths"
-        )
+        # Check if it's a bare filename that we can auto-extend
+        if not filename.endswith(".") and "." not in filename:
+            # Simple service name like "jellyfin" -> "jellyfin.conf"
+            filename = f"{filename}.conf"
+        elif filename.count(".") == 1 and not filename.endswith("."):
+            # Service with config type like "jellyfin.subdomain" -> "jellyfin.subdomain.conf"
+            filename = f"{filename}.conf"
+        else:
+            # Complex filename that we can't auto-extend safely
+            raise ValueError(
+                "Must be a full filename including extension, e.g., 'service.conf' or a sample "
+                "file 'service.conf.sample' — do not pass service names or partial paths"
+            )
 
     # Additional validation: ensure it follows proper naming convention
     # Use semantic suffix checks instead of raw segment counts
@@ -397,6 +394,13 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     if len(normalized_name) == 0:
         raise ValueError("Service name cannot be empty after normalization")
 
+    # Validate against VALID_NAME_PATTERN and check for leading/trailing hyphens
+    if not re.match(VALID_NAME_PATTERN, normalized_name):
+        raise ValueError("Service name can only contain letters, numbers, hyphens, and underscores")
+
+    if normalized_name.startswith("-") or normalized_name.endswith("-"):
+        raise ValueError("Service name cannot start or end with '-'")
+
     return normalized_name
 
 
@@ -555,6 +559,59 @@ def detect_and_handle_encoding(content: bytes) -> str:
     raise ValueError("Unable to decode content as text - may be binary data")
 
 
+async def validate_file_content_safety_async(file_path: Path) -> bool:
+    """Async version of file content safety check.
+
+    Args:
+        file_path: Path to the file to check
+
+    Returns:
+        True if file appears to be text, False otherwise
+
+    """
+    try:
+        import aiofiles
+
+        # Check if the file is a symlink (security risk)
+        if file_path.is_symlink():
+            return False
+
+        # Check if path is within allowed directory (prevent symlink attacks)
+        real_path = file_path.resolve()
+
+        # Additional security check: ensure resolved path is still within the expected directory
+        # This prevents following symlinks to files outside the allowed directory
+        try:
+            # Get the parent directory of the original file path
+            allowed_parent = file_path.parent.resolve()
+            # Check if the resolved path is within the allowed directory
+            real_path.relative_to(allowed_parent)
+        except ValueError:
+            # If relative_to fails, the resolved path is outside the allowed directory
+            return False
+
+        # Read first few bytes to detect binary content
+        async with aiofiles.open(real_path, "rb") as f:
+            sample = await f.read(512)  # Read first 512 bytes
+
+        # Check for null bytes (common in binary files)
+        if b"\0" in sample:
+            return False
+
+        # Try to decode using our enhanced encoding detection
+        try:
+            decoded_text = detect_and_handle_encoding(sample)
+            # Additional check: ensure the decoded content is reasonable text
+            is_decoded_empty_with_sample = len(decoded_text.strip()) == 0 and len(sample) > 0
+            return not is_decoded_empty_with_sample
+        except (ValueError, UnicodeDecodeError):
+            return False
+
+    except (OSError, ImportError):
+        # Fall back to sync version if aiofiles not available or other OS error
+        return validate_file_content_safety(file_path)
+
+
 def validate_file_content_safety(file_path: Path) -> bool:
     """Check if a file can be safely read as text.
 
@@ -683,9 +740,9 @@ def validate_mcp_path(mcp_path: str) -> str:
     if "//" in normalized_path:
         raise ValueError("MCP path cannot contain consecutive slashes")
 
-    # Cannot end with '/' unless it's the root path
+    # Normalize trailing slashes - remove them unless it's the root path
     if normalized_path != "/" and normalized_path.endswith("/"):
-        raise ValueError("MCP path cannot end with '/' (except root path)")
+        normalized_path = normalized_path.rstrip("/")
 
     # Additional security checks
     # Check for suspicious patterns that might be used for injection

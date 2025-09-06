@@ -5,13 +5,14 @@ import errno
 import logging
 import os
 import re
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import aiofiles
 import aiohttp
-from jinja2 import FileSystemLoader, StrictUndefined, TemplateNotFound
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound
 from jinja2.sandbox import SandboxedEnvironment
 
 from swag_mcp.core.config import config
@@ -55,12 +56,23 @@ class SwagManagerService:
         template_path: Path | None = None,
     ) -> None:
         """Initialize the SWAG manager service."""
-        self.config_path = config_path or config.proxy_confs_path
-        self.template_path = template_path or config.template_path
-        self._directory_checked = False
+        self.config_path: Path = config_path or config.proxy_confs_path
+        self.template_path: Path = template_path or config.template_path
+        self._directory_checked: bool = False
 
         # Initialize secure Jinja2 environment with sandboxing
-        self.template_env = self._create_secure_template_environment()
+        self.template_env: Environment = self._create_secure_template_environment()
+
+        # Testable hooks for template rendering
+        self._pre_render_hook: Callable[[str, dict], None] | None = (
+            None  # Called before template rendering
+        )
+        self._post_render_hook: Callable[[str, dict, str], None] | None = (
+            None  # Called after template rendering
+        )
+        self._template_vars_hook: Callable[[dict], dict] | None = (
+            None  # Called to modify template variables
+        )
 
         # Initialize asyncio locks for concurrent operation safety
         self._backup_lock = asyncio.Lock()  # Protects backup creation operations
@@ -80,6 +92,31 @@ class SwagManagerService:
         self._session_lock = asyncio.Lock()
 
         logger.info(f"Initialized SWAG manager with proxy configs path: {self.config_path}")
+
+    def set_template_hooks(
+        self,
+        pre_render_hook: Callable[[str, dict], None] | None = None,
+        post_render_hook: Callable[[str, dict, str], None] | None = None,
+        template_vars_hook: Callable[[dict], dict] | None = None,
+    ) -> None:
+        """Set testable hooks for template rendering.
+
+        Args:
+            pre_render_hook: Called before template rendering with (template_name, variables)
+            post_render_hook: Called after template rendering with (template_name, variables,
+                rendered_content)
+            template_vars_hook: Called to modify template variables, should return modified dict
+
+        """
+        self._pre_render_hook = pre_render_hook
+        self._post_render_hook = post_render_hook
+        self._template_vars_hook = template_vars_hook
+
+    def clear_template_hooks(self) -> None:
+        """Clear all template rendering hooks (useful for test cleanup)."""
+        self._pre_render_hook = None
+        self._post_render_hook = None
+        self._template_vars_hook = None
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
         """Get or create a per-file lock for fine-grained concurrency control.
@@ -759,7 +796,9 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    async def list_configs(self, list_filter: str = "all") -> SwagListResult:
+    async def list_configs(
+        self, list_filter: Literal["all", "active", "samples"] = "all"
+    ) -> SwagListResult:
         """List configuration files based on type."""
         # Validate filter parameter
         valid_filters = {"all", "active", "samples"}
@@ -887,9 +926,21 @@ class SwagManagerService:
                 # Validate all template variables for security
                 safe_template_vars = self._validate_template_variables(template_vars)
 
+                # Apply template variables hook if set (for testing)
+                if self._template_vars_hook:
+                    safe_template_vars = self._template_vars_hook(safe_template_vars)
+
+                # Call pre-render hook if set (for testing)
+                if self._pre_render_hook:
+                    self._pre_render_hook(template_name, safe_template_vars)
+
                 # Render template with validated variables
                 template = self.template_env.get_template(template_name)
                 content = template.render(**safe_template_vars)
+
+                # Call post-render hook if set (for testing)
+                if self._post_render_hook:
+                    self._post_render_hook(template_name, safe_template_vars, content)
             except TemplateNotFound as e:
                 raise ValueError(f"Template {template_name} not found") from e
             except Exception as e:
@@ -956,11 +1007,25 @@ class SwagManagerService:
             replacement = f'set $upstream_port "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
 
+            # Update upstream comment to reflect new port
+            upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
+            upstream_comment_replacement = rf"\g<1>{update_request.update_value}"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
+
         elif update_request.update_field == "upstream":
             # Update upstream_app
             pattern = r'set \$upstream_app "[^"]*";'
             replacement = f'set $upstream_app "{update_request.update_value}";'
             updated_content = re.sub(pattern, replacement, content)
+
+            # Update upstream comment to reflect new app
+            upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
+            upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
 
         elif update_request.update_field == "app":
             # Update both app and port (format: "app:port")
@@ -977,6 +1042,13 @@ class SwagManagerService:
             pattern = r'set \$upstream_port "[^"]*";'
             replacement = f'set $upstream_port "{port}";'
             updated_content = re.sub(pattern, replacement, updated_content)
+
+            # Update upstream comment to reflect both new app and port
+            upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
+            upstream_comment_replacement = f"# Upstream: http://{app}:{port}"
+            updated_content = re.sub(
+                upstream_comment_pattern, upstream_comment_replacement, updated_content
+            )
 
         elif update_request.update_field == "add_mcp":
             # Add MCP location block - delegate to the dedicated method
@@ -1087,7 +1159,12 @@ class SwagManagerService:
 
     async def validate_template_exists(self, config_type: str) -> bool:
         """Validate that the required template exists."""
-        template_name = build_template_filename(config_type)
+        try:
+            template_name = build_template_filename(config_type)
+        except ValueError:
+            # Invalid config_type, template doesn't exist
+            return False
+
         try:
             self.template_env.get_template(template_name)
             return True
@@ -1106,12 +1183,18 @@ class SwagManagerService:
         results = {}
         for config_type in ALL_CONFIG_TYPES:
             template_name = build_template_filename(config_type)
+            # Check template existence directly to avoid duplicate template_name assignment
             try:
                 self.template_env.get_template(template_name)
-                results[template_name] = True
-                logger.debug(f"Template validation passed: {template_name}")
+                exists = True
             except TemplateNotFound:
-                results[template_name] = False
+                exists = False
+
+            results[config_type] = exists
+
+            if exists:
+                logger.debug(f"Template validation passed: {template_name}")
+            else:
                 logger.warning(f"Template validation failed: {template_name}")
 
         return results
@@ -1647,16 +1730,32 @@ class SwagManagerService:
         """Render MCP location block template with provided variables."""
         try:
             # Get the template
-            template = self.template_env.get_template("mcp_location_block.j2")
+            template_name = "mcp_location_block.j2"
+            template = self.template_env.get_template(template_name)
+
+            # Prepare template variables
+            template_vars = {
+                "mcp_path": mcp_path,
+                "upstream_app": upstream_app,
+                "upstream_port": upstream_port,
+                "upstream_proto": upstream_proto,
+                "auth_method": auth_method,
+            }
+
+            # Apply template variables hook if set (for testing)
+            if self._template_vars_hook:
+                template_vars = self._template_vars_hook(template_vars)
+
+            # Call pre-render hook if set (for testing)
+            if self._pre_render_hook:
+                self._pre_render_hook(template_name, template_vars)
 
             # Render with variables
-            rendered = template.render(
-                mcp_path=mcp_path,
-                upstream_app=upstream_app,
-                upstream_port=upstream_port,
-                upstream_proto=upstream_proto,
-                auth_method=auth_method,
-            )
+            rendered = template.render(**template_vars)
+
+            # Call post-render hook if set (for testing)
+            if self._post_render_hook:
+                self._post_render_hook(template_name, template_vars, rendered)
 
             return rendered
 

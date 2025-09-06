@@ -1,9 +1,11 @@
 """Helper utilities for SWAG MCP tools to reduce code duplication."""
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import Context
+
+from swag_mcp.core.constants import LIST_FILTERS
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +121,7 @@ def build_config_response(
     )
 
 
-def validate_list_filter(list_filter: str) -> dict[str, Any] | None:
+def validate_list_filter(list_filter: Literal["all", "active", "samples"]) -> dict[str, Any] | None:
     """Validate list_filter parameter for list action.
 
     Args:
@@ -129,6 +131,7 @@ def validate_list_filter(list_filter: str) -> dict[str, Any] | None:
         Error dict if invalid, None if valid
 
     """
-    if list_filter not in ["all", "active", "samples"]:
-        return error_response("list_filter must be 'all', 'active', or 'samples'")
+    if list_filter not in LIST_FILTERS:
+        valid_filters = "', '".join(LIST_FILTERS)
+        return error_response(f"list_filter must be '{valid_filters}'")
     return None

@@ -169,7 +169,7 @@ def register_tools(mcp: FastMCP) -> None:
             int, Field(default=0, ge=0, le=65535, description="Port number the service runs on")
         ] = 0,
         upstream_proto: Annotated[
-            str,
+            Literal["http", "https"],
             Field(default="http", description="Protocol for upstream connection: 'http' | 'https'"),
         ] = "http",
         mcp_enabled: Annotated[
@@ -371,7 +371,7 @@ def register_tools(mcp: FastMCP) -> None:
                     server_name=server_name,
                     upstream_app=upstream_app,
                     upstream_port=upstream_port,
-                    upstream_proto=upstream_proto,  # type: ignore[arg-type]
+                    upstream_proto=upstream_proto,
                     mcp_enabled=mcp_enabled,
                     auth_method=auth_method_final,  # type: ignore[arg-type]
                     enable_quic=enable_quic_final,
@@ -517,9 +517,11 @@ def register_tools(mcp: FastMCP) -> None:
                     )
 
                 # Validate backup_action
-                if backup_action not in ["cleanup", "list"]:
+                if backup_action not in [e.value for e in BackupSubAction]:
+                    valid_actions = [e.value for e in BackupSubAction]
                     return formatter.format_error_result(
-                        "Invalid backup_action. Must be 'cleanup' or 'list'", "backups"
+                        f"Invalid backup_action. Must be one of: {', '.join(valid_actions)}",
+                        "backups",
                     )
 
                 # Dispatch to appropriate sub-action
