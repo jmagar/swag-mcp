@@ -147,7 +147,8 @@ Thumbs.db
 # Project specific
 *.log
 /.swag-mcp/
-.test-proxy-confs/*.backup.*
+tests/test-proxy-confs/*.backup.*
+tests/test-proxy-confs/*.conf
 
 # AI review and fix documentation
 *-fixes.md

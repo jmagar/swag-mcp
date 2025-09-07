@@ -60,7 +60,11 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
             result.get("status_code") if isinstance(result, dict) else result.status_code
         )
         status_code = status_code_value if status_code_value is not None else "unknown"
-        status_text = str(status_code)
+        # Extract just the numeric status code, removing redundant text like "OK"
+        if isinstance(status_code, str) and " " in status_code:
+            status_text = status_code.split()[0]  # Take first part (e.g., "200" from "200 OK")
+        else:
+            status_text = str(status_code)
         response_time_ms = (
             result.get("response_time_ms") if isinstance(result, dict) else result.response_time_ms
         )
@@ -98,7 +102,12 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
             else getattr(result, "status_code", None)
         )
         if status_code_value:
-            status_text = f"{status_code_value}"
+            # Extract just the numeric status code, removing redundant text like "OK"
+            if isinstance(status_code_value, str) and " " in status_code_value:
+                # Take first part (e.g., "404" from "404 Not Found")
+                status_text = status_code_value.split()[0]
+            else:
+                status_text = str(status_code_value)
             response_time_ms = (
                 result.get("response_time_ms")
                 if isinstance(result, dict)

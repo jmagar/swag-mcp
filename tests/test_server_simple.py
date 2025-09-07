@@ -68,7 +68,7 @@ class TestServerFunctions:
             mock_app.add_resource = Mock()
 
             # Should not raise an exception
-            await register_resources(mock_app, mock_service)
+            await register_resources(mock_app)  # type: ignore[func-returns-value]
 
     def test_config_access(self):
         """Test that server can access configuration."""

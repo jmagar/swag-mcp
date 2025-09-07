@@ -20,8 +20,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12"]
+        exclude:
+          # Python 3.12 only on Ubuntu for now
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
     - name: Checkout code
@@ -66,7 +72,6 @@ jobs:
     - name: Type check with mypy
       run: |
         uv run mypy swag_mcp --ignore-missing-imports
-      continue-on-error: true  # Don't fail CI on type errors yet
 
     - name: Run tests with pytest
       env:
@@ -125,9 +130,17 @@ jobs:
         uv run bandit -r swag_mcp/ || true
       continue-on-error: true
 
+    - name: Run dependency vulnerability scan with pip-audit
+      run: |
+        uv run pip-audit --format=json --output=pip-audit-report.json || true
+        uv run pip-audit || true
+      continue-on-error: true
+
     - name: Upload security scan results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: security-scan-results
-        path: bandit-report.json
+        path: |
+          bandit-report.json
+          pip-audit-report.json

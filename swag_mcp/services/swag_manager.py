@@ -16,7 +16,9 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFo
 from jinja2.sandbox import SandboxedEnvironment
 
 from swag_mcp.core.config import config
+from swag_mcp.core.constants import LIST_FILTERS
 from swag_mcp.models.config import (
+    ListFilterType,
     SwagConfigRequest,
     SwagConfigResult,
     SwagEditRequest,
@@ -38,7 +40,7 @@ from swag_mcp.utils.validators import (
     normalize_unicode_text,
     validate_config_filename,
     validate_domain_format,
-    validate_file_content_safety,
+    validate_file_content_safety_async,
     validate_mcp_path,
     validate_service_name,
     validate_upstream_port,
@@ -56,8 +58,12 @@ class SwagManagerService:
         template_path: Path | None = None,
     ) -> None:
         """Initialize the SWAG manager service."""
-        self.config_path: Path = config_path or config.proxy_confs_path
-        self.template_path: Path = template_path or config.template_path
+        self.config_path: Path = (
+            Path(config_path) if config_path is not None else Path(config.proxy_confs_path)
+        )
+        self.template_path: Path = (
+            Path(template_path) if template_path is not None else Path(config.template_path)
+        )
         self._directory_checked: bool = False
 
         # Initialize secure Jinja2 environment with sandboxing
@@ -117,6 +123,77 @@ class SwagManagerService:
         self._pre_render_hook = None
         self._post_render_hook = None
         self._template_vars_hook = None
+
+    def _get_template_path(self) -> Path:
+        """Return the root path for Jinja templates (testable hook)."""
+        return self.template_path
+
+    def _validate_template_variables(self, variables: dict[str, Any]) -> dict[str, Any]:
+        """Validate and sanitize template variables before rendering.
+
+        Args:
+            variables: Template variables to validate
+
+        Returns:
+            Sanitized variables dictionary
+
+        """
+        # Apply template_vars_hook if set (for testing)
+        if self._template_vars_hook:
+            variables = self._template_vars_hook(variables)
+
+        # Basic validation - ensure all values are safe for template rendering
+        safe_vars: dict[str, Any] = {}
+        for key, value in variables.items():
+            # Convert Path objects to strings for template compatibility
+            if isinstance(value, Path):
+                safe_vars[key] = str(value)
+            # Ensure string values are safe
+            elif isinstance(value, str | int | bool | float):
+                safe_vars[key] = value
+            # Skip None values
+            elif value is None:
+                continue
+            else:
+                # Convert other types to string representation
+                safe_vars[key] = str(value)
+
+        return safe_vars
+
+    async def _render_template(self, template_name: str, variables: dict[str, Any]) -> str:
+        """Render a template with validated variables (testable hook).
+
+        Args:
+            template_name: Name of the template file to render
+            variables: Variables to pass to the template
+
+        Returns:
+            Rendered template content
+
+        Raises:
+            ValueError: If template not found or rendering fails
+
+        """
+        # Validate/sanitize variables before rendering
+        safe_vars = self._validate_template_variables(variables)
+
+        # Call pre-render hook if set (for testing)
+        if self._pre_render_hook:
+            self._pre_render_hook(template_name, safe_vars)
+
+        try:
+            template = self.template_env.get_template(template_name)
+            content = template.render(**safe_vars)
+
+            # Call post-render hook if set (for testing)
+            if self._post_render_hook:
+                self._post_render_hook(template_name, safe_vars, content)
+
+            return content
+        except TemplateNotFound as e:
+            raise ValueError(f"Template {template_name} not found") from e
+        except Exception as e:
+            raise ValueError(f"Failed to render template: {str(e)}") from e
 
     async def _get_file_lock(self, file_path: Path) -> asyncio.Lock:
         """Get or create a per-file lock for fine-grained concurrency control.
@@ -214,7 +291,7 @@ class SwagManagerService:
                 logger.debug(f"nginx syntax validation passed for {config_path}")
                 return True
             else:
-                logger.warning(
+                logger.error(
                     f"nginx syntax validation failed for {config_path}: "
                     f"{stderr.decode('utf-8', errors='ignore')}"
                 )
@@ -490,86 +567,6 @@ class SwagManagerService:
         logger.debug("Created secure sandboxed template environment")
         return env
 
-    def _validate_template_variables(self, template_vars: dict) -> dict:
-        """Validate and sanitize template variables to prevent injection attacks.
-
-        Args:
-            template_vars: Dictionary of variables to pass to template
-
-        Returns:
-            Sanitized dictionary safe for template rendering
-
-        Raises:
-            ValueError: If any template variable contains dangerous content
-
-        """
-        sanitized_vars = {}
-
-        # Patterns that should never appear in template variables
-        dangerous_patterns = [
-            # Template injection patterns
-            r"\{\{.*?\}\}",  # Jinja2 expressions
-            r"\{%.*?%\}",  # Jinja2 statements
-            r"\{#.*?#\}",  # Jinja2 comments
-            r"\$\{.*?\}",  # Other template syntax
-            # Python code execution patterns
-            r"__[a-zA-Z_]+__",  # Dunder methods
-            r"eval\s*\(",  # eval calls
-            r"exec\s*\(",  # exec calls
-            r"import\s+\w+",  # import statements
-            r"from\s+\w+\s+import",  # from...import
-            r"subprocess",  # subprocess module
-            r"os\.system",  # os.system calls
-            # File system access patterns
-            r"open\s*\(",  # file open calls
-            r"file\s*\(",  # file constructor
-            r"\.read\s*\(",  # read methods
-            r"\.write\s*\(",  # write methods
-            # Network/URL patterns that might be dangerous
-            r"file://",  # file:// URLs
-            r"ftp://",  # FTP URLs (might be used for exfiltration)
-            # Script injection patterns
-            r"<script.*?>",  # Script tags
-            r"javascript:",  # JavaScript URLs
-            r"data:.*base64",  # Data URLs with base64
-            # Shell command patterns
-            r"[;&|`$]",  # Shell metacharacters
-        ]
-
-        for key, value in template_vars.items():
-            # Ensure key is safe (only allow alphanumeric and underscores)
-            if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", key):
-                raise ValueError(f"Invalid template variable name: {key}")
-
-            # Convert value to string for pattern checking
-            str_value = str(value)
-
-            # Check for dangerous patterns
-            for pattern in dangerous_patterns:
-                if re.search(pattern, str_value, re.IGNORECASE):
-                    logger.warning(
-                        f"Blocked dangerous content in template variable '{key}': {pattern}"
-                    )
-                    raise ValueError(
-                        f"Template variable '{key}' contains potentially dangerous content"
-                    )
-
-            # Additional validation for specific variable types
-            if key in ["service_name", "server_name", "upstream_app"]:
-                # Ensure these don't contain path traversal
-                if ".." in str_value or "/" in str_value or "\\" in str_value:
-                    raise ValueError(f"Template variable '{key}' contains invalid path characters")
-
-                # Ensure reasonable length
-                if len(str_value) > 1000:
-                    raise ValueError(f"Template variable '{key}' is too long")
-
-            # Store sanitized value
-            sanitized_vars[key] = value
-
-        logger.debug(f"Validated {len(sanitized_vars)} template variables")
-        return sanitized_vars
-
     def _validate_config_content(self, content: str, config_name: str) -> str:
         """Validate configuration file content for security.
 
@@ -796,14 +793,11 @@ class SwagManagerService:
             self.config_path.mkdir(parents=True, exist_ok=True)
             self._directory_checked = True
 
-    async def list_configs(
-        self, list_filter: Literal["all", "active", "samples"] = "all"
-    ) -> SwagListResult:
+    async def list_configs(self, list_filter: ListFilterType = "all") -> SwagListResult:
         """List configuration files based on type."""
         # Validate filter parameter
-        valid_filters = {"all", "active", "samples"}
-        if list_filter not in valid_filters:
-            valid_options = ", ".join(sorted(valid_filters))
+        if list_filter not in LIST_FILTERS:
+            valid_options = ", ".join(sorted(LIST_FILTERS))
             raise ValueError(
                 f"Invalid list filter '{list_filter}'. Must be one of: {valid_options}"
             )
@@ -843,7 +837,7 @@ class SwagManagerService:
         config_file = self.config_path / validated_name
 
         # Security validation: ensure file is safe to read as text
-        if not validate_file_content_safety(config_file):
+        if not await validate_file_content_safety_async(config_file):
             raise ValueError(
                 f"Configuration file {validated_name} contains binary content or is unsafe to read"
             )
@@ -923,28 +917,11 @@ class SwagManagerService:
                     "enable_quic": request.enable_quic,
                 }
 
-                # Validate all template variables for security
-                safe_template_vars = self._validate_template_variables(template_vars)
-
-                # Apply template variables hook if set (for testing)
-                if self._template_vars_hook:
-                    safe_template_vars = self._template_vars_hook(safe_template_vars)
-
-                # Call pre-render hook if set (for testing)
-                if self._pre_render_hook:
-                    self._pre_render_hook(template_name, safe_template_vars)
-
                 # Render template with validated variables
-                template = self.template_env.get_template(template_name)
-                content = template.render(**safe_template_vars)
-
-                # Call post-render hook if set (for testing)
-                if self._post_render_hook:
-                    self._post_render_hook(template_name, safe_template_vars, content)
-            except TemplateNotFound as e:
-                raise ValueError(f"Template {template_name} not found") from e
-            except Exception as e:
-                raise ValueError(f"Failed to render template: {str(e)}") from e
+                content = await self._render_template(template_name, template_vars)
+            except ValueError as e:
+                # _render_template already handles TemplateNotFound and other exceptions
+                raise e
 
             # Write configuration safely with proper error handling (no additional lock needed)
             await self._safe_write_file(
@@ -1001,31 +978,56 @@ class SwagManagerService:
             backup_name = await self._create_backup(update_request.config_name)
 
         # Apply targeted replacements based on field type
+        updated_content = content  # Start with original content
+        changes_made = False  # Track if any changes were actually made
+
         if update_request.update_field == "port":
-            # Update both upstream_port locations
-            pattern = r'set \$upstream_port "[^"]*";'
-            replacement = f'set $upstream_port "{update_request.update_value}";'
-            updated_content = re.sub(pattern, replacement, content)
+            # Update upstream_port (handles both quoted and unquoted values)
+            pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
+            replacement = f"set $upstream_port {update_request.update_value};"
+            new_content, port_replacements = re.subn(pattern, replacement, updated_content)
+
+            if port_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(
+                    f"Updated {port_replacements} port references to {update_request.update_value}"
+                )
 
             # Update upstream comment to reflect new port
             upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
             upstream_comment_replacement = rf"\g<1>{update_request.update_value}"
-            updated_content = re.sub(
+            new_content, comment_replacements = re.subn(
                 upstream_comment_pattern, upstream_comment_replacement, updated_content
             )
 
+            if comment_replacements > 0:
+                updated_content = new_content
+                logger.debug(f"Updated {comment_replacements} upstream comments")
+
         elif update_request.update_field == "upstream":
-            # Update upstream_app
-            pattern = r'set \$upstream_app "[^"]*";'
-            replacement = f'set $upstream_app "{update_request.update_value}";'
-            updated_content = re.sub(pattern, replacement, content)
+            # Update upstream_app (handles both quoted and unquoted values)
+            pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
+            replacement = f"set $upstream_app {update_request.update_value};"
+            new_content, app_replacements = re.subn(pattern, replacement, updated_content)
+
+            if app_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(
+                    f"Updated {app_replacements} app references to {update_request.update_value}"
+                )
 
             # Update upstream comment to reflect new app
             upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
             upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
-            updated_content = re.sub(
+            new_content, comment_replacements = re.subn(
                 upstream_comment_pattern, upstream_comment_replacement, updated_content
             )
+
+            if comment_replacements > 0:
+                updated_content = new_content
+                logger.debug(f"Updated {comment_replacements} upstream comments")
 
         elif update_request.update_field == "app":
             # Update both app and port (format: "app:port")
@@ -1033,22 +1035,36 @@ class SwagManagerService:
                 raise ValueError("app field requires format 'app:port'")
             app, port = update_request.update_value.split(":", 1)
 
-            # Update app
-            pattern = r'set \$upstream_app "[^"]*";'
-            replacement = f'set $upstream_app "{app}";'
-            updated_content = re.sub(pattern, replacement, content)
+            # Update app (handles both quoted and unquoted values)
+            pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
+            replacement = f"set $upstream_app {app};"
+            new_content, app_replacements = re.subn(pattern, replacement, updated_content)
 
-            # Update port
-            pattern = r'set \$upstream_port "[^"]*";'
-            replacement = f'set $upstream_port "{port}";'
-            updated_content = re.sub(pattern, replacement, updated_content)
+            if app_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(f"Updated {app_replacements} app references to {app}")
+
+            # Update port (handles both quoted and unquoted values)
+            pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
+            replacement = f"set $upstream_port {port};"
+            new_content, port_replacements = re.subn(pattern, replacement, updated_content)
+
+            if port_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(f"Updated {port_replacements} port references to {port}")
 
             # Update upstream comment to reflect both new app and port
             upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
             upstream_comment_replacement = f"# Upstream: http://{app}:{port}"
-            updated_content = re.sub(
+            new_content, comment_replacements = re.subn(
                 upstream_comment_pattern, upstream_comment_replacement, updated_content
             )
+
+            if comment_replacements > 0:
+                updated_content = new_content
+                logger.debug(f"Updated {comment_replacements} upstream comments")
 
         elif update_request.update_field == "add_mcp":
             # Add MCP location block - delegate to the dedicated method
@@ -1076,6 +1092,19 @@ class SwagManagerService:
 
         else:
             raise ValueError(f"Unsupported update field: {update_request.update_field}")
+
+        # For standard field updates (not add_mcp), validate that changes were actually made
+        if update_request.update_field in ["port", "upstream", "app"] and not changes_made:
+            field = update_request.update_field
+            config_name = update_request.config_name
+            error_msg = (
+                f"No changes made to {config_name}. "
+                f"The configuration file doesn't contain the expected template format "
+                f"for '{field}' updates. Expected: 'set $upstream_{field}' variables."
+                f" This update operation only works with template-generated configuration files."
+            )
+            logger.warning(error_msg)
+            raise ValueError(error_msg)
 
         # Write updated content
         config_file = self.config_path / update_request.config_name
@@ -1209,7 +1238,7 @@ class SwagManagerService:
         config_file = self.config_path / validated_name
 
         # Security validation: ensure file is safe to read as text
-        if not validate_file_content_safety(config_file):
+        if not await validate_file_content_safety_async(config_file):
             raise ValueError(
                 f"Configuration file {validated_name} contains binary content or is unsafe to read"
             )
@@ -1656,7 +1685,7 @@ class SwagManagerService:
 
                 if upstream_proto_raw not in ("http", "https"):
                     upstream_proto_raw = "http"  # Default to safe value
-                upstream_proto = cast(Literal["http", "https"], upstream_proto_raw)
+                upstream_proto = cast("Literal['http', 'https']", upstream_proto_raw)
                 auth_method = self._extract_auth_method(content)
 
                 # Render MCP location block
@@ -1679,7 +1708,8 @@ class SwagManagerService:
                 )
 
                 # Validate nginx syntax before committing (abort on failure)
-                await self._validate_nginx_syntax(config_file)
+                if not await self._validate_nginx_syntax(config_file):
+                    raise ValueError("Generated configuration contains invalid nginx syntax")
 
                 logger.info(f"Successfully added MCP location block to {config_name}")
                 await txn.commit()
@@ -1735,10 +1765,6 @@ class SwagManagerService:
     ) -> str:
         """Render MCP location block template with provided variables."""
         try:
-            # Get the template
-            template_name = "mcp_location_block.j2"
-            template = self.template_env.get_template(template_name)
-
             # Prepare template variables
             template_vars = {
                 "mcp_path": mcp_path,
@@ -1748,23 +1774,14 @@ class SwagManagerService:
                 "auth_method": auth_method,
             }
 
-            # Apply template variables hook if set (for testing)
-            if self._template_vars_hook:
-                template_vars = self._template_vars_hook(template_vars)
-
-            # Call pre-render hook if set (for testing)
-            if self._pre_render_hook:
-                self._pre_render_hook(template_name, template_vars)
-
-            # Render with variables
-            rendered = template.render(**template_vars)
-
-            # Call post-render hook if set (for testing)
-            if self._post_render_hook:
-                self._post_render_hook(template_name, template_vars, rendered)
-
+            # Render template with validated variables using the new hook
+            template_name = "mcp_location_block.j2"
+            rendered = await self._render_template(template_name, template_vars)
             return rendered
 
+        except ValueError as e:
+            # _render_template already provides detailed error messages
+            raise e
         except Exception as e:
             raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
 

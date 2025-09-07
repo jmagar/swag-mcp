@@ -8,11 +8,12 @@ Based on the Docker MCP token-efficient formatting system.
 """
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
+from swag_mcp.models.config import ListFilterType
 from swag_mcp.models.enums import BackupSubAction
 
 
@@ -56,7 +57,7 @@ class TokenEfficientFormatter:
         return timestamp.strftime("%m-%d %H:%M")
 
     def format_list_result(
-        self, result: dict[str, Any], list_filter: Literal["all", "active", "samples"] = "all"
+        self, result: dict[str, Any], list_filter: ListFilterType = "all"
     ) -> ToolResult:
         """Format configuration list with token-efficient display.
 
@@ -104,6 +105,50 @@ class TokenEfficientFormatter:
             content=[TextContent(type="text", text=formatted_content)], structured_content=result
         )
 
+    def format_config_list_details(
+        self, result: dict[str, Any], list_filter: ListFilterType = "all"
+    ) -> ToolResult:
+        """Format configuration list with detailed file information.
+
+        Token Efficiency Strategy: Compact file details with size and timestamp info.
+        """
+        configs = result.get("configs", [])
+        total_count = result.get("total_count", len(configs))
+
+        if not configs:
+            formatted_content = f"No configurations found (filter: {list_filter})"
+            return ToolResult(
+                content=[TextContent(type="text", text=formatted_content)],
+                structured_content=result,
+            )
+
+        lines = [f"SWAG configurations ({total_count} total, filter: {list_filter})"]
+
+        for config in configs:
+            name = config.get("name", "unknown")
+            size_bytes = config.get("size_bytes", 0)
+            modified_time = config.get("modified_time", "unknown")
+            is_sample = config.get("is_sample", False)
+
+            # Format file size compactly
+            size_str = self.format_file_size(size_bytes)
+
+            # Format timestamp compactly
+            if hasattr(modified_time, "strftime"):
+                time_str = self.format_timestamp(modified_time)
+            else:
+                time_str = str(modified_time)[:10]  # Truncate if string
+
+            # Choose icon and format line
+            icon = "📝" if is_sample else "📄"
+            lines.append(f"  {icon} {name} ({size_str}, {time_str})")
+
+        formatted_content = "\n".join(lines)
+
+        return ToolResult(
+            content=[TextContent(type="text", text=formatted_content)], structured_content=result
+        )
+
     def format_create_result(
         self, result: dict[str, Any], filename: str, health_check: str | None = None
     ) -> ToolResult:
@@ -143,9 +188,10 @@ class TokenEfficientFormatter:
         )
 
     def format_view_result(self, result: dict[str, Any], config_name: str) -> ToolResult:
-        """Format view result with content preview and metadata.
+        """Format view result showing the entire file with line numbers.
 
-        Token Efficiency Strategy: Metadata summary with content preview.
+        Rationale: For configuration inspection, eliding lines is harmful.
+        Always render the full file content so users can review every line.
         """
         content = result.get("content", "")
         character_count = result.get("character_count", len(content))
@@ -157,21 +203,11 @@ class TokenEfficientFormatter:
         size_info = self.format_file_size(character_count)
         header = f"📄 {config_name} ({size_info}, {line_count} lines)"
 
-        # Show preview of first 5 and last 5 lines for context
-        preview_lines = [header, ""]
+        # Always show the full file with line numbers
+        output_lines = [header, ""]
+        output_lines.extend([f"  {i+1:2d}│ {line}" for i, line in enumerate(lines)])
 
-        if line_count <= 10:
-            # Show all lines if 10 or fewer
-            preview_lines.extend([f"  {i+1:2d}│ {line}" for i, line in enumerate(lines)])
-        else:
-            # Show first 5 and last 5 with separator
-            preview_lines.extend([f"  {i+1:2d}│ {line}" for i, line in enumerate(lines[:5])])
-            preview_lines.append(f"  ⋮ │ ... ({line_count - 10} lines omitted)")
-            preview_lines.extend(
-                [f"  {i+line_count-4:2d}│ {line}" for i, line in enumerate(lines[-5:])]
-            )
-
-        formatted_content = "\n".join(preview_lines)
+        formatted_content = "\n".join(output_lines)
 
         return ToolResult(
             content=[TextContent(type="text", text=formatted_content)], structured_content=result

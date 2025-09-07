@@ -19,20 +19,12 @@ server {
 
     include /config/nginx/ssl.conf;
 
-{% if enable_quic %}
-    # QUIC/HTTP3 Alt-Svc headers
-    add_header Alt-Svc 'h3-29=":443"; ma=86400' always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
-{% endif %}
-
     client_max_body_size 0;
 
-    # Security headers
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options SAMEORIGIN always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Upstream target
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
 
 {% if auth_method != "none" %}
     # enable for {{ auth_method }} (requires {{ auth_method }}-location.conf in the location block)
@@ -40,17 +32,12 @@ server {
 {% endif %}
 
     # Main MCP endpoint for streamable-http transport
-    location {{ mcp_path | default('/mcp') }} {
+    location /mcp {
 {% if auth_method != "none" %}
         # enable for {{ auth_method }} (requires {{ auth_method }}-server.conf in the server block)
         include /config/nginx/{{ auth_method }}-location.conf;
 {% endif %}
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         # Essential settings for MCP streamable-http
         proxy_http_version 1.1;
@@ -58,15 +45,10 @@ server {
         proxy_cache off;
         proxy_request_buffering off;
         proxy_max_temp_file_size 0;
-        chunked_transfer_encoding on;
+        chunked_transfer_encoding off;
 
         # Connection management for SSE/streaming
         proxy_set_header Connection '';
-
-        # Cache control headers for streaming responses
-        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
-        add_header Pragma "no-cache" always;
-        add_header Expires "0" always;
 
         # Standard reverse proxy headers
         proxy_set_header Host $host;
@@ -88,14 +70,9 @@ server {
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth discovery endpoints (no auth)
+    # OAuth discovery endpoints
     location = /.well-known/oauth-authorization-server {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -105,12 +82,7 @@ server {
     }
 
     location = /.well-known/openid-configuration {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -121,12 +93,7 @@ server {
 
     # OAuth endpoints (no auth)
     location = /register {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -136,12 +103,7 @@ server {
     }
 
     location = /authorize {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -151,12 +113,7 @@ server {
     }
 
     location = /token {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -166,12 +123,7 @@ server {
     }
 
     location = /revoke {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -182,12 +134,7 @@ server {
 
     # OAuth callback and other auth-related paths (no auth)
     location /auth/ {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -198,17 +145,7 @@ server {
 
     # Health check endpoint (no auth required)
     location /health {
-        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
-
-        # Disable buffering for immediate health check responses
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_request_buffering off;
-
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

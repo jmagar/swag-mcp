@@ -200,10 +200,5 @@ class TestErrorHandlingUtils:
         ]
 
         for test_input in problematic_inputs:
-            try:
-                result = sanitize_error_message(f"Error: {test_input}")
-                assert isinstance(result, str)
-                # Should complete in reasonable time and not crash
-            except Exception:
-                # Even if it fails, should not hang
-                pass
+            result = sanitize_error_message(f"Error: {test_input}")
+            assert isinstance(result, str)

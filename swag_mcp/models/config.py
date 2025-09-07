@@ -18,6 +18,9 @@ from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 # Type alias for authentication methods (synced with AUTH_METHODS in constants.py)
 AuthMethodType = Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"]
 
+# Type alias for list filter options (synced with LIST_FILTERS in constants.py)
+ListFilterType = Literal["all", "active", "samples"]
+
 # Compiled regex patterns for efficient validation (source of truth in constants)
 _UPSTREAM_PATTERN = re.compile(VALID_UPSTREAM_PATTERN)
 
@@ -137,9 +140,7 @@ class SwagListResult(BaseModel):
 
     total_count: int = Field(..., description="Total number of configurations found")
 
-    list_filter: Literal["all", "active", "samples"] = Field(
-        ..., description="Type of configurations listed"
-    )
+    list_filter: ListFilterType = Field(..., description="Type of configurations listed")
 
 
 class SwagEditRequest(SwagBaseRequest):

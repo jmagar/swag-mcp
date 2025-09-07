@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from pydantic import ValidationError
 from swag_mcp.middleware.error_handling import (
     SecurityErrorMiddleware,
@@ -36,17 +37,16 @@ class TestErrorHandling:
 
     def test_create_user_friendly_error(self):
         """Test creation of user-friendly error messages."""
-        # ValidationError - create directly without try-except
-        error_data = [
-            {
-                "type": "greater_than",
-                "loc": ("port",),
-                "msg": "Input should be greater than 0",
-                "input": 0,
-                "ctx": {"gt": 0},
-            }
-        ]
-        validation_error = ValidationError.from_exception_data("ValidationError", error_data)
+        # ValidationError - create directly without complex try-except
+        from pydantic import BaseModel, Field
+
+        class TestModel(BaseModel):
+            port: int = Field(gt=0)
+
+        with pytest.raises(ValidationError) as exc_info:
+            TestModel(port=0)  # This will raise ValidationError
+
+        validation_error = exc_info.value
         result = create_user_friendly_error(validation_error)
         assert "Port number must be between" in result or "Invalid" in result
 

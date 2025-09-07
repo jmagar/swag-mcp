@@ -2,8 +2,8 @@
 
 > **Intelligent reverse proxy management for SWAG (Secure Web Application Gateway) with Model Context Protocol support**
 
-[![Test Suite](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
-[![Docker Build](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
+[![Test Suite](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
+[![Docker Build](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
@@ -281,7 +281,6 @@ Creates a new reverse proxy configuration with automatic health check verificati
 
 **Key Options:**
 
-
 - **Config Type**: Automatically inferred from filename (service.subdomain.conf or service.subfolder.conf)
 - **MCP Support**: Add `mcp_enabled=true` for streaming/SSE features
 - **Authentication**: none, basic, ldap, authelia, authentik, tinyauth (default: authelia)
@@ -347,12 +346,14 @@ View SWAG container logs for debugging.
 The template system automatically selects the appropriate template based on the configuration filename format and the `mcp_enabled` parameter:
 
 ### Standard Templates
+
 Perfect for traditional web applications:
 
 - **`subdomain`** - `service.subdomain.conf` → `app.example.com` → `container:port`
 - **`subfolder`** - `service.subfolder.conf` → `example.com/app` → `container:port`
 
 ### MCP Templates
+
 Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true`):
 
 - **`mcp-subdomain`** - `service.subdomain.conf` + MCP features → Streamable-HTTP/SSE support

@@ -1,9 +1,0 @@
-# Jellyfin sample configuration
-server {
-    listen 443 ssl;
-    server_name jellyfin.*;
-
-    location / {
-        proxy_pass http://jellyfin:8096;
-    }
-}

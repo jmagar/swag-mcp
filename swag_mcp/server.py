@@ -22,12 +22,9 @@ from swag_mcp.core.constants import (
     CONFIG_TYPE_SUBFOLDER,
     HEALTH_ENDPOINT,
     HTTP_METHOD_GET,
-    SAMPLE_EXTENSION,
-    SAMPLE_PATTERN,
     SERVICE_NAME,
     STATUS_HEALTHY,
     SWAG_URI_BASE,
-    SWAG_URI_SAMPLES,
 )
 from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
@@ -93,20 +90,6 @@ def register_resources(mcp: FastMCP) -> None:
         )
     )
 
-    # Register DirectoryResource for listing sample configs
-    mcp.add_resource(
-        DirectoryResource(
-            uri=SWAG_URI_SAMPLES,  # type: ignore[arg-type]
-            name="SWAG Sample Configurations",
-            description=(
-                f"List of available SWAG sample configurations ({SAMPLE_EXTENSION} files) "
-                "that can be used as templates"
-            ),
-            path=config_path,
-            pattern=SAMPLE_PATTERN,
-        )
-    )
-
 
 def _extract_service_name(filename: str) -> str:
     """Extract service name from config filename."""
@@ -139,7 +122,11 @@ async def create_mcp_server() -> FastMCP:
         """Health check endpoint for Docker."""
         version = get_package_version()
         payload = {"status": STATUS_HEALTHY, "service": SERVICE_NAME, "version": version}
-        return JSONResponse(content=payload, status_code=200)
+        return JSONResponse(
+            content=payload,
+            status_code=200,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     logger.info("SWAG MCP Server initialized")
     _v = get_package_version()

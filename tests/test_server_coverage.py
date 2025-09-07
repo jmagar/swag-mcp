@@ -14,7 +14,6 @@ from swag_mcp.server import (
     register_tools,
     setup_middleware,
 )
-from swag_mcp.services.swag_manager import SwagManagerService
 
 
 class TestServerSetup:
@@ -74,10 +73,9 @@ class TestServerSetup:
     async def test_register_resources(self, temp_config):
         """Test resource registration."""
         app = await create_mcp_server()
-        swag_service = SwagManagerService(config_path=temp_config.proxy_confs_path)
 
         with patch("swag_mcp.server.SwagConfig", return_value=temp_config):
-            await register_resources(app, swag_service)
+            await register_resources(app)  # type: ignore[func-returns-value]
 
             # Verify resources were registered
             assert hasattr(app, "_resources") or hasattr(app, "resources")
@@ -91,12 +89,11 @@ class TestServerSetup:
                 template_path=Path("templates"),
             )
             (Path(temp_dir) / "empty").mkdir()
-            swag_service = SwagManagerService(config_path=empty_config.proxy_confs_path)
 
             app = await create_mcp_server()
 
             with patch("swag_mcp.server.SwagConfig", return_value=empty_config):
-                await register_resources(app, swag_service)
+                await register_resources(app)  # type: ignore[func-returns-value]
 
                 # Should complete without error
 
@@ -108,13 +105,12 @@ class TestServerSetup:
                 log_directory=Path(temp_dir) / "logs",
                 template_path=Path("templates"),
             )
-            swag_service = SwagManagerService(config_path=bad_config.proxy_confs_path)
 
             app = await create_mcp_server()
 
             with patch("swag_mcp.server.SwagConfig", return_value=bad_config):
                 # Should handle gracefully
-                await register_resources(app, swag_service)
+                await register_resources(app)  # type: ignore[func-returns-value]
 
     def test_server_main_import(self):
         """Test that main function can be imported."""
@@ -272,12 +268,11 @@ class TestResourceDiscovery:
                 log_directory=Path(temp_dir) / "logs",
                 template_path=Path("templates"),
             )
-            swag_service = SwagManagerService(config_path=config.proxy_confs_path)
 
             app = await create_mcp_server()
 
             with patch("swag_mcp.server.SwagConfig", return_value=config):
-                await register_resources(app, swag_service)
+                await register_resources(app)  # type: ignore[func-returns-value]
 
                 # Should complete without error
 
@@ -297,13 +292,12 @@ class TestResourceDiscovery:
                 log_directory=Path(temp_dir) / "logs",
                 template_path=Path("templates"),
             )
-            swag_service = SwagManagerService(config_path=config.proxy_confs_path)
 
             app = await create_mcp_server()
 
             try:
                 with patch("swag_mcp.server.SwagConfig", return_value=config):
-                    await register_resources(app, swag_service)
+                    await register_resources(app)  # type: ignore[func-returns-value]
                     # Should handle permission errors gracefully
 
             finally:
@@ -323,16 +317,15 @@ class TestErrorScenarios:
         # Create a dummy service for the call
         from swag_mcp.core.config import SwagConfig
 
-        dummy_config = SwagConfig(
+        SwagConfig(
             proxy_confs_path=Path("/tmp"),
             log_directory=Path("/tmp"),
             template_path=Path("templates"),
         )
-        swag_service = SwagManagerService(config_path=dummy_config.proxy_confs_path)
 
         # Should handle config creation errors gracefully
         with contextlib.suppress(Exception):
-            await register_resources(app, swag_service)
+            await register_resources(app)  # type: ignore[func-returns-value]
 
     async def test_middleware_setup_error(self):
         """Test handling of middleware setup errors."""
