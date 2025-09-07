@@ -87,17 +87,13 @@ class TokenEfficientFormatter:
 
         if active_configs:
             lines.append(f"\n📄 Active Configs ({len(active_configs)}):")
-            for config in active_configs[:10]:  # Show first 10
+            for config in active_configs:
                 lines.append(f"  {config}")
-            if len(active_configs) > 10:
-                lines.append(f"  ... +{len(active_configs) - 10} more")
 
         if sample_configs:
             lines.append(f"\n📝 Sample Configs ({len(sample_configs)}):")
-            for config in sample_configs[:5]:  # Show first 5 samples
+            for config in sample_configs:
                 lines.append(f"  {config}")
-            if len(sample_configs) > 5:
-                lines.append(f"  ... +{len(sample_configs) - 5} more")
 
         formatted_content = "\n".join(lines)
 
@@ -308,17 +304,10 @@ class TokenEfficientFormatter:
 
         if actual_lines == 0:
             formatted_content = f"{header}\n  (no logs found)"
-        elif actual_lines <= 10:
-            # Show all lines if 10 or fewer
+        else:
+            # Show all lines
             preview_lines = [header, ""]
             preview_lines.extend([f"  {line}" for line in log_lines])
-            formatted_content = "\n".join(preview_lines)
-        else:
-            # Show first 3 and last 3 lines with separator
-            preview_lines = [header, ""]
-            preview_lines.extend([f"  {line}" for line in log_lines[:3]])
-            preview_lines.append(f"  ⋮ ... ({actual_lines - 6} lines omitted)")
-            preview_lines.extend([f"  {line}" for line in log_lines[-3:]])
             formatted_content = "\n".join(preview_lines)
 
         return ToolResult(
@@ -359,9 +348,10 @@ class TokenEfficientFormatter:
 
                 for backup_file in backup_files:
                     # Simple heuristic based on filename timestamp if available
-                    if "today" in backup_file.lower() or str(now.day) in backup_file:
+                    backup_name = backup_file.get("name", "")
+                    if "today" in backup_name.lower() or str(now.day) in backup_name:
                         today_count += 1
-                    elif "week" in backup_file.lower():
+                    elif "week" in backup_name.lower():
                         week_count += 1
                     else:
                         older_count += 1
