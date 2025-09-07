@@ -16,7 +16,7 @@
         chunked_transfer_encoding off;
 
         # Connection management for SSE/streaming
-        proxy_set_header Connection "";
+        proxy_set_header Connection '';
 
         # Standard reverse proxy headers
         proxy_set_header Host $host;
@@ -35,13 +35,10 @@
         proxy_send_timeout 86400s;
         proxy_read_timeout 86400s;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth discovery endpoints (no auth)
+    # OAuth discovery endpoints
     location = /.well-known/oauth-authorization-server {
         include /config/nginx/resolver.conf;
 
@@ -49,9 +46,6 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -62,13 +56,10 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth endpoints (no auth)
+    # OAuth endpoints (no Authelia here)
     location = /register {
         include /config/nginx/resolver.conf;
 
@@ -76,9 +67,6 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -89,9 +77,6 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -102,9 +87,6 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -115,13 +97,10 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth callback and other auth-related paths (no auth)
+    # Google → server callback (and any /auth/* paths)
     location /auth/ {
         include /config/nginx/resolver.conf;
 
@@ -129,9 +108,6 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -143,8 +119,5 @@
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        set $upstream_app "{{ upstream_app }}";
-        set $upstream_port "{{ upstream_port }}";
-        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }

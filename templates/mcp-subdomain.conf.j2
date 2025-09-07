@@ -21,6 +21,9 @@ server {
 
     client_max_body_size 0;
 
+    # Authelia disabled for OAuth - remove these lines:
+    # include /config/nginx/authelia-server.conf;
+
     # Upstream target
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
@@ -33,6 +36,8 @@ server {
 
     # Main MCP endpoint for streamable-http transport
     location /mcp {
+        # Authelia disabled for OAuth - remove this line:
+        # include /config/nginx/authelia-location.conf;
 {% if auth_method != "none" %}
         # enable for {{ auth_method }} (requires {{ auth_method }}-server.conf in the server block)
         include /config/nginx/{{ auth_method }}-location.conf;
@@ -91,7 +96,7 @@ server {
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth endpoints (no auth)
+    # OAuth endpoints (no Authelia here)
     location = /register {
         include /config/nginx/resolver.conf;
 
@@ -132,7 +137,7 @@ server {
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
-    # OAuth callback and other auth-related paths (no auth)
+    # Google → server callback (and any /auth/* paths)
     location /auth/ {
         include /config/nginx/resolver.conf;
 
