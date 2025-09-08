@@ -1,6 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
+import re
 from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
@@ -52,7 +53,6 @@ async def _extract_server_name_from_config(
     """
     try:
         config_content = await swag_service.read_config(config_name)
-        import re
 
         # Extract server_name from nginx config
         match = re.search(r"server_name\s+([^;]+);", config_content)

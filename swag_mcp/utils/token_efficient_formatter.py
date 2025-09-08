@@ -7,6 +7,7 @@ This module implements the dual content strategy where every tool response inclu
 Based on the Docker MCP token-efficient formatting system.
 """
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -155,8 +156,6 @@ class TokenEfficientFormatter:
                 if "accessible" in health_check.lower():
                     if "200" in health_check:
                         # Extract response time
-                        import re
-
                         time_match = re.search(r"\((\d+)ms\)", health_check)
                         time_str = f" ({time_match.group(1)}ms)" if time_match else ""
                         message += f" → accessible{time_str}"
@@ -365,7 +364,8 @@ class TokenEfficientFormatter:
 
         Token Efficiency Strategy: Concise error with action context.
         """
-        formatted_content = f"❌ {action.title()} failed: {error_message}"
+        pretty_action = action.replace("_", " ").title()
+        formatted_content = f"❌ {pretty_action} failed: {error_message}"
 
         structured_data = {"success": False, "error": error_message, "action": action}
         if additional_data:

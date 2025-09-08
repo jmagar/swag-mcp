@@ -164,8 +164,6 @@ def create_user_friendly_error(error: Exception) -> str:
     # Handle ToolError specifically (FastMCP wraps many errors in ToolError)
     if "ToolError" in error_type and "Error calling tool" in error_str:
         # Extract the inner error message after "Error calling tool 'tool_name': "
-        import re
-
         match = re.search(r"Error calling tool '[^']+': (.+)", error_str)
         if match:
             inner_error = match.group(1)

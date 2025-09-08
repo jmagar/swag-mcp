@@ -639,10 +639,16 @@ class SwagManagerService:
                     f"Configuration '{config_name}' doesn't appear to contain server blocks"
                 )
 
+        # Normalize Unicode and remove BOM for consistent processing
+        try:
+            normalized_content = normalize_unicode_text(content, remove_bom=True)
+        except ValueError as e:
+            raise ValueError(f"Invalid Unicode content in configuration '{config_name}': {str(e)}") from e
+
         logger.debug(
-            f"Validated configuration content for '{config_name}' ({len(content)} characters)"
+            f"Validated configuration content for '{config_name}' ({len(normalized_content)} characters)"
         )
-        return content
+        return normalized_content
 
     async def _safe_write_file(
         self,
@@ -835,6 +841,10 @@ class SwagManagerService:
         validated_name = validate_config_filename(config_name)
 
         config_file = self.config_path / validated_name
+
+        # Check if file exists first
+        if not config_file.exists():
+            raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
         # Security validation: ensure file is safe to read as text
         if not await validate_file_content_safety_async(config_file):
@@ -1660,6 +1670,9 @@ class SwagManagerService:
         # Read existing config
         try:
             content = await self.read_config(config_name)
+        except FileNotFoundError:
+            # Re-raise FileNotFoundError unchanged
+            raise
         except OSError as e:
             handle_os_error(e, "reading configuration file", config_name)
 

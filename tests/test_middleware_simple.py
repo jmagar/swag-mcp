@@ -56,10 +56,18 @@ class TestErrorHandlingUtils:
 
     def test_create_user_friendly_error_validation(self):
         """Test user-friendly error creation for validation errors."""
-        # Create a simple validation-like error
-        error = ValueError("string_pattern_mismatch in service_name")
+        # Test with a ValidationError-like error (the function checks for "ValidationError" in type name)
+        class ValidationError(Exception):
+            pass
+        
+        error = ValidationError("string_pattern_mismatch in service_name")
         result = create_user_friendly_error(error)
-        assert "Invalid" in result or "service name" in result
+        assert "Invalid service name" in result
+        
+        # Test with a generic ValueError - should just sanitize the message
+        error2 = ValueError("some generic error")
+        result2 = create_user_friendly_error(error2)
+        assert result2 == "some generic error"
 
     def test_create_user_friendly_error_file_errors(self):
         """Test user-friendly error creation for file errors."""
@@ -175,20 +183,21 @@ class TestErrorHandlingUtils:
             if result != "Invalid request parameters":
                 assert pattern not in result
 
-    def test_sql_injection_patterns(self):
-        """Test sanitization of SQL-like patterns."""
-        sql_patterns = [
-            "SELECT * FROM users",
-            "DROP TABLE important",
-            "UNION SELECT password FROM admin",
+    def test_sql_connection_string_sanitization(self):
+        """Test sanitization of database connection strings."""
+        patterns = [
+            "mysql://user:pass@host/db",
+            "postgres://user:password@localhost/mydb",
+            "Connection failed: mysql://admin:secret@192.168.1.100/production",
         ]
-
-        for pattern in sql_patterns:
+        
+        for pattern in patterns:
             result = sanitize_error_message(f"Database error: {pattern}")
-            # SQL patterns should be sanitized
-            if result != "Invalid request parameters":
-                # Pattern might be partially sanitized
-                assert not all(word in result for word in pattern.split())
+            # Connection strings should be sanitized
+            assert "[REDACTED]" in result
+            # Should not contain the original connection string
+            assert "mysql://" not in result
+            assert "postgres://" not in result
 
     def test_regex_pattern_safety(self):
         """Test that regex patterns don't cause ReDoS."""

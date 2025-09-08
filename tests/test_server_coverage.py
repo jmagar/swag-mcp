@@ -32,10 +32,12 @@ class TestServerSetup:
 
         # Mock the middleware functions to avoid actual setup
         with (
-            patch("swag_mcp.server.error_handling_middleware"),
-            patch("swag_mcp.server.timing_middleware"),
-            patch("swag_mcp.server.rate_limiting_middleware"),
-            patch("swag_mcp.server.request_logging_middleware"),
+            patch("swag_mcp.middleware.get_error_handling_middleware", return_value=lambda x: x),
+            patch("swag_mcp.middleware.get_timing_middleware", return_value=lambda x: x),
+            patch("swag_mcp.middleware.get_rate_limiting_middleware", return_value=None),
+            patch("swag_mcp.middleware.get_logging_middleware", return_value=lambda x: x),
+            patch("swag_mcp.middleware.get_security_error_middleware", return_value=lambda x: x),
+            patch("swag_mcp.middleware.get_retry_middleware", return_value=None),
         ):
             setup_middleware(app)
 
@@ -236,7 +238,7 @@ class TestConfigurationIntegration:
             config = SwagConfig()
 
             # Test defaults
-            assert config.host == "0.0.0.0"
+            assert config.host == "0.0.0.0"  # From .env file (overrides code default)
             assert config.port == 8000
             assert config.default_auth_method == "authelia"
             assert config.log_level == "INFO"
@@ -334,7 +336,7 @@ class TestErrorScenarios:
         # Test with invalid middleware
         with (
             patch(
-                "swag_mcp.server.error_handling_middleware",
+                "swag_mcp.middleware.get_error_handling_middleware",
                 side_effect=Exception("Middleware error"),
             ),
             contextlib.suppress(Exception),
@@ -347,7 +349,7 @@ class TestErrorScenarios:
 
         # Test with tool registration failure
         with (
-            patch("swag_mcp.server.swag", side_effect=Exception("Tool registration error")),
+            patch("swag_mcp.tools.swag.register_tools", side_effect=Exception("Tool registration error")),
             contextlib.suppress(Exception),
         ):
             register_tools(app)

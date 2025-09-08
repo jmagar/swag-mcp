@@ -1,12 +1,15 @@
 """Pydantic models for SWAG configuration management."""
 
 import re
+import typing
+import unicodedata
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from swag_mcp.core.constants import (
     AUTH_METHODS,
+    LIST_FILTERS,
     VALID_CONFIG_NAME_FORMAT,
     VALID_CONFIG_NAME_PATTERN,
     VALID_CONFIG_ONLY_PATTERN,
@@ -16,10 +19,25 @@ from swag_mcp.models.enums import BackupSubAction, SwagAction
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
 # Type alias for authentication methods (synced with AUTH_METHODS in constants.py)
-AuthMethodType = Literal["none", "basic", "ldap", "authelia", "authentik", "tinyauth"]
+# To maintain sync: AUTH_METHODS = ('none', 'basic', 'authelia', 'ldap', 'authentik', 'tinyauth')
+AuthMethodType = Literal["none", "basic", "authelia", "ldap", "authentik", "tinyauth"]
+
+# Runtime validation to ensure AuthMethodType stays in sync with AUTH_METHODS
+if set(AUTH_METHODS) != set(typing.get_args(AuthMethodType)):
+    raise ValueError(
+        f"AuthMethodType {typing.get_args(AuthMethodType)} is out of sync with "
+        f"AUTH_METHODS {AUTH_METHODS}. Please update both to match."
+    )
 
 # Type alias for list filter options (synced with LIST_FILTERS in constants.py)
 ListFilterType = Literal["all", "active", "samples"]
+
+# Runtime validation to ensure ListFilterType stays in sync with LIST_FILTERS
+if set(LIST_FILTERS) != set(typing.get_args(ListFilterType)):
+    raise ValueError(
+        f"ListFilterType {typing.get_args(ListFilterType)} is out of sync with "
+        f"LIST_FILTERS {LIST_FILTERS}. Please update both to match."
+    )
 
 # Compiled regex patterns for efficient validation (source of truth in constants)
 _UPSTREAM_PATTERN = re.compile(VALID_UPSTREAM_PATTERN)
@@ -78,18 +96,14 @@ class SwagConfigRequest(SwagBaseRequest):
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = unicodedata.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
     @field_validator("config_name", mode="before")
     @classmethod
     def validate_config_name(cls, v: str) -> str:
         """Validate config name format."""
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip()
+        v = unicodedata.normalize("NFKC", v).strip()
         if not v or ".." in v or "/" in v or "\\" in v:
             raise ValueError("Config name contains invalid characters")
         if v.startswith("-") or v.endswith("-"):
@@ -100,9 +114,7 @@ class SwagConfigRequest(SwagBaseRequest):
     @classmethod
     def validate_upstream_app(cls, v: str) -> str:
         """Validate upstream app name format."""
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip()
+        v = unicodedata.normalize("NFKC", v).strip()
         if not v:
             raise ValueError("Upstream app name cannot be empty")
         if ".." in v or "/" in v or "\\" in v:
@@ -192,9 +204,7 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate server name format for edit requests."""
         if v is None:
             return v
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = unicodedata.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
     @field_validator("upstream_app", mode="before")
@@ -203,9 +213,7 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate upstream app name format for edit requests."""
         if v is None:
             return v
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip()
+        v = unicodedata.normalize("NFKC", v).strip()
         if not v:
             raise ValueError("Upstream app name cannot be empty")
         if ".." in v or "/" in v or "\\" in v:
@@ -264,9 +272,7 @@ class SwagHealthCheckRequest(SwagBaseRequest):
     @classmethod
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
-        import unicodedata as _ud
-
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = unicodedata.normalize("NFKC", v).strip().lower()
         return validate_domain_format(v)
 
 

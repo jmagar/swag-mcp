@@ -1,5 +1,6 @@
 """Formatting utilities for SWAG MCP server."""
 
+from datetime import datetime
 from typing import Any, Literal
 
 from swag_mcp.core.constants import (
@@ -7,6 +8,53 @@ from swag_mcp.core.constants import (
     CONFIG_TYPE_SUBFOLDER,
     SAMPLE_EXTENSION,
 )
+
+
+def format_file_size(size_bytes: int) -> str:
+    """Format file size in human-readable format.
+    
+    Args:
+        size_bytes: File size in bytes
+        
+    Returns:
+        Formatted file size string (e.g., "1.5 KB", "2.3 MB")
+        
+    Examples:
+        format_file_size(0) -> "0 B"
+        format_file_size(1024) -> "1.0 KB"
+        format_file_size(1536) -> "1.5 KB"
+        format_file_size(2097152) -> "2.0 MB"
+    """
+    if size_bytes == 0:
+        return "0 B"
+        
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit_index = 0
+    size = float(size_bytes)
+    
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    
+    if unit_index == 0:
+        return f"{int(size)} {units[unit_index]}"
+    else:
+        return f"{size:.1f} {units[unit_index]}"
+
+
+def format_timestamp(timestamp: datetime) -> str:
+    """Format timestamp for user display.
+    
+    Args:
+        timestamp: Datetime object to format
+        
+    Returns:
+        Formatted timestamp string in YYYY-MM-DD HH:MM:SS format
+        
+    Examples:
+        format_timestamp(datetime(2025, 1, 15, 14, 30, 0)) -> "2025-01-15 14:30:00"
+    """
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_duration(milliseconds: float) -> str:
@@ -249,22 +297,15 @@ def format_config_list_details(
         modified_time = config.get("modified_time", "unknown")
         is_sample = config.get("is_sample", False)
 
-        # Format file size
+        # Format file size using utility function
         if isinstance(size_bytes, int):
-            if size_bytes == 0:
-                size_str = "0 B"
-            elif size_bytes < 1024:
-                size_str = f"{size_bytes} B"
-            elif size_bytes < 1024 * 1024:
-                size_str = f"{size_bytes / 1024:.1f} KB"
-            else:
-                size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+            size_str = format_file_size(size_bytes)
         else:
             size_str = "unknown size"
 
-        # Format timestamp
+        # Format timestamp using utility function
         if hasattr(modified_time, "strftime"):
-            time_str = modified_time.strftime("%Y-%m-%d %H:%M:%S")
+            time_str = format_timestamp(modified_time)
         else:
             time_str = str(modified_time)
 

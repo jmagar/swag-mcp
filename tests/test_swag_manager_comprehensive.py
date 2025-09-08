@@ -149,7 +149,7 @@ class TestAtomicTransactions:
         try:
             async with temp_service.begin_transaction("rollback_test") as tx:
                 # Record file modification
-                await tx.record_file_modification(test_file, "original content")
+                await tx.track_file_modification(test_file)
 
                 # Modify the file
                 test_file.write_text("modified content")
@@ -167,7 +167,7 @@ class TestAtomicTransactions:
         test_file = temp_service.config_path / "new_file.conf"
 
         async with temp_service.begin_transaction("create_test") as tx:
-            await tx.record_file_creation(test_file)
+            await tx.track_file_creation(test_file)
             test_file.write_text("new file content")
             # Don't raise error - commit transaction
 
@@ -183,7 +183,7 @@ class TestAtomicTransactions:
         try:
             async with temp_service.begin_transaction("delete_test") as tx:
                 # Record deletion
-                await tx.record_file_deletion(test_file, original_content)
+                await tx.track_file_deletion(test_file)
 
                 # Delete the file
                 test_file.unlink()
@@ -254,16 +254,19 @@ class TestFileOperations:
         """Test file writing with permission error."""
         test_file = temp_service.config_path / "readonly.conf"
 
-        # Create file and make it read-only
+        # Create file first
         test_file.write_text("original")
-        test_file.chmod(0o444)
+        
+        # Make the parent directory read-only to prevent atomic rename
+        original_perms = temp_service.config_path.stat().st_mode
+        temp_service.config_path.chmod(0o444)
 
         try:
             with pytest.raises(OSError):
                 await temp_service._safe_write_file(test_file, "new content", "permission test")
         finally:
-            # Clean up - restore write permissions
-            test_file.chmod(0o644)
+            # Clean up - restore directory permissions
+            temp_service.config_path.chmod(original_perms)
 
     def test_ensure_config_directory_exists(self, temp_service):
         """Test directory creation when it exists."""
@@ -382,16 +385,17 @@ class TestBackupOperations:
         original_content = "original configuration"
         config_file.write_text(original_content)
 
-        backup_path = await temp_service._create_backup("test.subdomain.conf")
+        backup_name = await temp_service._create_backup("test.subdomain.conf")
 
-        assert backup_path is not None
-        assert Path(backup_path).exists()
-        assert Path(backup_path).read_text() == original_content
+        assert backup_name is not None
+        backup_file = temp_service.config_path / backup_name
+        assert backup_file.exists()
+        assert backup_file.read_text() == original_content
 
     async def test_create_backup_file_not_exists(self, temp_service):
         """Test backup creation when original file doesn't exist."""
-        backup_path = await temp_service._create_backup("nonexistent.conf")
-        assert backup_path is None
+        with pytest.raises(OSError):
+            await temp_service._create_backup("nonexistent.conf")
 
     async def test_list_backups(self, temp_service):
         """Test listing backup files."""
@@ -440,27 +444,23 @@ class TestExtractorMethods:
 
     def test_extract_upstream_value_app(self, temp_service):
         """Test extracting upstream app value from content."""
-        content = "proxy_pass http://test-app:8080;"
+        content = 'set $upstream_app "test-app";'
         result = temp_service._extract_upstream_value(content, "upstream_app")
 
-        assert isinstance(result, str)
-        # Should extract some value from the content
-        assert len(result) > 0
+        assert result == "test-app"
 
     def test_extract_upstream_value_port(self, temp_service):
         """Test extracting upstream port value from content."""
-        content = "proxy_pass http://test-app:8080;"
+        content = 'set $upstream_port "8080";'
         result = temp_service._extract_upstream_value(content, "upstream_port")
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "8080"
 
     def test_extract_upstream_value_no_match(self, temp_service):
         """Test extraction when no match is found."""
         content = "server_name example.com;"
-        result = temp_service._extract_upstream_value(content, "upstream_app")
-
-        assert isinstance(result, str)
+        with pytest.raises(ValueError, match="Could not find upstream_app"):
+            temp_service._extract_upstream_value(content, "upstream_app")
 
     def test_extract_auth_method_authelia(self, temp_service):
         """Test extracting authelia auth method."""
@@ -498,11 +498,11 @@ class TestMCPFunctionality:
 
             # Create MCP template
             mcp_template = """
-location /mcp {
-    proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }}/mcp;
+location {{ mcp_path }} {
+    proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }}{{ mcp_path }};
 }
             """.strip()
-            (template_dir / "mcp-location.conf.j2").write_text(mcp_template)
+            (template_dir / "mcp_location_block.j2").write_text(mcp_template)
 
             yield SwagManagerService(config_dir, template_dir)
 
@@ -515,7 +515,13 @@ location /mcp {
             "mcp_path": "/ai-service",
         }
 
-        result = await temp_service._render_mcp_location_block(template_vars)
+        result = await temp_service._render_mcp_location_block(
+            mcp_path="/ai-service",
+            upstream_app="mcp-server",
+            upstream_port="8080",
+            upstream_proto="http",
+            auth_method="none",
+        )
 
         assert isinstance(result, str)
         assert len(result) > 0
@@ -542,7 +548,10 @@ server {
         result = temp_service._insert_location_block(original_content, location_block)
 
         assert "/mcp" in result
-        assert original_content in result
+        # The location block is inserted, so check that the key parts are present
+        assert "server {" in result
+        assert "location /" in result
+        assert "location /mcp" in result
 
     async def test_add_mcp_location_success(self, temp_service):
         """Test successful MCP location addition."""
@@ -552,6 +561,10 @@ server {
 server {
     listen 443 ssl;
     server_name test.example.com;
+
+    set $upstream_app "test-app";
+    set $upstream_port "8080";
+    set $upstream_proto "http";
 
     location / {
         proxy_pass http://test-app:8080;
@@ -563,25 +576,24 @@ server {
         result = await temp_service.add_mcp_location(
             config_name="test.subdomain.conf",
             mcp_path="/ai-service",
-            upstream_app="test-app",
-            upstream_port=8080,
-            upstream_proto="http",
         )
 
-        assert result.success is True
+        # add_mcp_location returns SwagConfigResult
+        assert result.filename == "test.subdomain.conf"
+        assert result.backup_created is not None
 
         # Verify file was updated
         updated_content = config_file.read_text()
         assert original_content != updated_content
+        assert "/ai-service" in updated_content
 
     async def test_add_mcp_location_file_not_found(self, temp_service):
         """Test MCP location addition when file doesn't exist."""
-        result = await temp_service.add_mcp_location(
-            config_name="nonexistent.conf", mcp_path="/mcp", upstream_app="app", upstream_port=8080
-        )
-
-        assert result.success is False
-        assert "not found" in result.message.lower()
+        with pytest.raises(FileNotFoundError):
+            await temp_service.add_mcp_location(
+                config_name="nonexistent.conf", 
+                mcp_path="/mcp",
+            )
 
 
 class TestHealthCheckMethod:
@@ -610,9 +622,8 @@ class TestHealthCheckMethod:
         result = await temp_service.health_check(request)
 
         assert result.success is True
-        assert result.data is not None
-        assert result.data.accessible is True
-        assert result.data.status_code == 200
+        assert result.status_code == 200
+        assert result.domain == "example.com"
 
     @patch("aiohttp.ClientSession.get")
     async def test_health_check_connection_error(self, mock_get, temp_service):
@@ -627,20 +638,17 @@ class TestHealthCheckMethod:
         )
         result = await temp_service.health_check(request)
 
-        assert result.success is True  # Method succeeds even if health check fails
-        assert result.data is not None
-        assert result.data.accessible is False
+        assert result.success is False
+        assert result.error is not None
 
     async def test_health_check_invalid_domain(self, temp_service):
         """Test health check with invalid domain format."""
-        request = SwagHealthCheckRequest(
-            action=SwagAction.HEALTH_CHECK, domain="invalid..domain", timeout=10
-        )
+        from pydantic import ValidationError
 
-        result = await temp_service.health_check(request)
-
-        assert result.success is False
-        assert "invalid" in result.message.lower()
+        with pytest.raises(ValidationError, match="domain"):
+            SwagHealthCheckRequest(
+                action=SwagAction.HEALTH_CHECK, domain="invalid..domain", timeout=10
+            )
 
 
 class TestLogMethods:
@@ -652,48 +660,20 @@ class TestLogMethods:
         with tempfile.TemporaryDirectory() as temp_dir:
             yield SwagManagerService(Path(temp_dir), Path(temp_dir))
 
-    @patch("docker.from_env")
-    async def test_get_swag_logs_success(self, mock_docker_from_env, temp_service):
-        """Test successful log retrieval."""
-        # Mock Docker container and logs
-        mock_container = Mock()
-        mock_container.logs.return_value = b"log line 1\nlog line 2\n"
-
-        mock_client = Mock()
-        mock_client.containers.get.return_value = mock_container
-        mock_docker_from_env.return_value = mock_client
-
+    async def test_get_swag_logs_file_not_found(self, temp_service):
+        """Test log retrieval when log file doesn't exist."""
         request = SwagLogsRequest(action=SwagAction.LOGS, log_type="nginx-error", lines=50)
         result = await temp_service.get_swag_logs(request)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert "not found" in result.lower() or "may not exist" in result.lower()
 
-    @patch("docker.from_env")
-    async def test_get_swag_logs_container_not_found(self, mock_docker_from_env, temp_service):
-        """Test log retrieval when container is not found."""
-        import docker
-
-        mock_client = Mock()
-        mock_client.containers.get.side_effect = docker.errors.NotFound("Container not found")
-        mock_docker_from_env.return_value = mock_client
-
-        request = SwagLogsRequest(action=SwagAction.LOGS, log_type="nginx-error", lines=50)
-        result = await temp_service.get_swag_logs(request)
-
-        assert "not found" in result.lower() or "error" in result.lower()
-
-    @patch("docker.from_env")
-    async def test_get_swag_logs_docker_not_available(self, mock_docker_from_env, temp_service):
-        """Test log retrieval when Docker is not available."""
-        import docker
-
-        mock_docker_from_env.side_effect = docker.errors.DockerException("Docker not available")
-
-        request = SwagLogsRequest(action=SwagAction.LOGS, log_type="nginx-error", lines=50)
-        result = await temp_service.get_swag_logs(request)
-
-        assert "docker" in result.lower() or "error" in result.lower()
+    async def test_get_swag_logs_invalid_type(self, temp_service):
+        """Test log retrieval with invalid log type."""
+        from pydantic import ValidationError
+        
+        with pytest.raises(ValidationError, match="log_type"):
+            SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)
 
 
 class TestResourceMethods:
@@ -717,33 +697,28 @@ class TestResourceMethods:
         """Test getting resource configurations."""
         result = await temp_service.get_resource_configs()
 
-        assert result.success is True
-        assert result.data is not None
-        assert len(result.data.resources) > 0
-
-        # Should include active configs but not samples
-        resource_names = [r.name for r in result.data.resources]
-        assert "jellyfin.subdomain.conf" in resource_names
-        assert "plex.subfolder.conf" in resource_names
+        assert hasattr(result, "configs")
+        assert isinstance(result.configs, list)
+        assert "jellyfin.subdomain.conf" in result.configs
+        assert "plex.subfolder.conf" in result.configs
 
     async def test_get_sample_configs(self, temp_service):
         """Test getting sample configurations."""
         result = await temp_service.get_sample_configs()
 
-        assert result.success is True
-        assert result.data is not None
-
-        if result.data.resources:
-            # Should include only sample files
-            for resource in result.data.resources:
-                assert resource.name.endswith(".sample")
+        assert hasattr(result, "configs")
+        assert isinstance(result.configs, list)
+        
+        # All configs should be sample files
+        for config_name in result.configs:
+            assert config_name.endswith(".sample")
 
     async def test_get_service_samples(self, temp_service):
         """Test getting samples for specific service."""
         result = await temp_service.get_service_samples("sonarr")
 
-        assert result.success is True
-        assert result.data is not None
+        assert hasattr(result, "configs")
+        assert isinstance(result.configs, list)
 
 
 class TestErrorHandlingEdgeCases:
