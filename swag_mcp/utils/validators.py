@@ -13,6 +13,23 @@ from swag_mcp.core.constants import DOMAIN_PATTERN, VALID_NAME_PATTERN
 logger = logging.getLogger(__name__)
 
 
+def _validate_dangerous_characters(text: str, context: str) -> None:
+    """Check for dangerous characters in text.
+
+    Args:
+        text: Text to validate
+        context: Context for error message (e.g., "configuration name", "MCP path")
+
+    Raises:
+        ValueError: If dangerous characters are found
+
+    """
+    dangerous_chars = ["\0", "\n", "\r", "\t"]
+    for char in dangerous_chars:
+        if char in text:
+            raise ValueError(f"Invalid character in {context}: {repr(char)}")
+
+
 def validate_domain_format(domain: str) -> str:
     """Validate domain name format.
 
@@ -49,7 +66,7 @@ def validate_domain_format(domain: str) -> str:
         raise ValueError("Domain name cannot start with a dot")
 
     # Validate using canonical DOMAIN_PATTERN
-    if not re.match(DOMAIN_PATTERN, normalized_domain):
+    if not re.fullmatch(DOMAIN_PATTERN, normalized_domain):
         raise ValueError("Domain name format is invalid. Must be a valid hostname.")
 
     return normalized_domain.lower()
@@ -77,7 +94,8 @@ def validate_config_filename(filename: str) -> str:
     Accepts a full filename or a bare name; if no extension is present, '.conf' is appended.
 
     Args:
-        filename: Configuration filename or bare name (e.g., "jellyfin" or "jellyfin.subdomain.conf")
+        filename: Configuration filename or bare name
+            (e.g., "jellyfin" or "jellyfin.subdomain.conf")
 
     Returns:
         Validated filename if safe
@@ -111,10 +129,7 @@ def validate_config_filename(filename: str) -> str:
         raise ValueError("Hidden files (starting with '.') not allowed")
 
     # Check for null bytes and other dangerous characters
-    dangerous_chars = ["\0", "\n", "\r", "\t"]
-    for char in dangerous_chars:
-        if char in normalized_filename:
-            raise ValueError(f"Invalid character in configuration name: {repr(char)}")
+    _validate_dangerous_characters(normalized_filename, "configuration name")
 
     # Use normalized filename for all subsequent validation
     filename = normalized_filename
@@ -529,17 +544,23 @@ def detect_and_handle_encoding(content: bytes) -> str:
     except UnicodeDecodeError:
         pass
 
-    # Try UTF-16 (handles BOM automatically)
+    # Try UTF-32 first (handles BOM automatically)
+    # UTF-32 should be tried before UTF-16 because UTF-32 data can
+    # sometimes be decoded as UTF-16 but with embedded null bytes
     try:
-        text = content.decode("utf-16")
-        return normalize_unicode_text(text, remove_bom=True, strict=False)
+        text = content.decode("utf-32")
+        # Validate that UTF-32 result looks reasonable
+        if _is_reasonable_text(text, "UTF-32"):
+            return normalize_unicode_text(text, remove_bom=True, strict=False)
     except UnicodeDecodeError:
         pass
 
-    # Try UTF-32 (handles BOM automatically)
+    # Try UTF-16 (handles BOM automatically)
     try:
-        text = content.decode("utf-32")
-        return normalize_unicode_text(text, remove_bom=True, strict=False)
+        text = content.decode("utf-16")
+        # Validate that UTF-16 result looks reasonable
+        if _is_reasonable_text(text, "UTF-16"):
+            return normalize_unicode_text(text, remove_bom=True, strict=False)
     except UnicodeDecodeError:
         pass
 
@@ -553,6 +574,50 @@ def detect_and_handle_encoding(content: bytes) -> str:
             continue
 
     raise ValueError("Unable to decode content as text - may be binary data")
+
+
+def _is_reasonable_text(text: str, encoding_name: str) -> bool:
+    """Check if decoded text looks reasonable for the given encoding.
+    
+    This helps prevent false positives where UTF-16/UTF-32 decoders
+    succeed on non-Unicode data but produce garbage results.
+    
+    Args:
+        text: The decoded text to validate
+        encoding_name: Name of encoding used (for debugging)
+        
+    Returns:
+        True if text looks reasonable, False otherwise
+    """
+    if not text:
+        return True  # Empty string is always reasonable
+        
+    # For short strings, be more suspicious of unusual characters
+    if len(text) <= 10:
+        # Check for high percentage of non-ASCII characters in short strings
+        non_ascii_count = sum(1 for c in text if ord(c) > 127)
+        if non_ascii_count / len(text) > 0.5:
+            # More than 50% non-ASCII in a short string is suspicious
+            # unless it's clearly from a Unicode encoding with BOM
+            if encoding_name in ("UTF-16", "UTF-32") and not (
+                text.startswith('\ufeff') or '\ufeff' in text
+            ):
+                return False
+    
+    # Check for null bytes (common in misinterpreted binary data)
+    if '\x00' in text:
+        return False
+        
+    # Check for private use characters (often indicates misinterpretation)
+    for char in text:
+        code_point = ord(char)
+        # Private Use Areas
+        if (0xE000 <= code_point <= 0xF8FF or  # Basic Multilingual Plane
+            0xF0000 <= code_point <= 0xFFFFD or  # Plane 15
+            0x100000 <= code_point <= 0x10FFFD):  # Plane 16
+            return False
+    
+    return True
 
 
 async def validate_file_content_safety_async(file_path: Path) -> bool:
@@ -689,11 +754,18 @@ def validate_upstream_port(port: int) -> int:
 def validate_mcp_path(mcp_path: str) -> str:
     """Validate MCP path format for security and correctness.
 
+    Performs validation and normalization including:
+    - Unicode normalization to NFC form
+    - Path traversal prevention (no '..' allowed)
+    - Character safety validation (only letters, digits, '/', '-', '_', '.')
+    - Consecutive slash prevention (no '//' allowed)
+    - Trailing slash normalization (strips trailing '/' except for root path '/')
+
     Args:
         mcp_path: MCP path to validate
 
     Returns:
-        Validated MCP path
+        Validated and normalized MCP path (trailing slashes removed except for root)
 
     Raises:
         ValueError: If MCP path is invalid
@@ -721,10 +793,7 @@ def validate_mcp_path(mcp_path: str) -> str:
         raise ValueError("Path traversal not allowed in MCP paths")
 
     # Check for null bytes and other dangerous characters
-    dangerous_chars = ["\0", "\n", "\r", "\t"]
-    for char in dangerous_chars:
-        if char in normalized_path:
-            raise ValueError(f"Invalid character in MCP path: {repr(char)}")
+    _validate_dangerous_characters(normalized_path, "MCP path")
 
     # Allow only safe characters: letters, digits, '/', '-', '_', '.'
     if not re.match(r"^[a-zA-Z0-9/_.-]+$", normalized_path):

@@ -34,6 +34,7 @@ location ^~ /{{ service_name }}/ {
 }
 
 location ^~ /{{ service_name }}/health {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";

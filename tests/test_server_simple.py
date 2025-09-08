@@ -1,6 +1,6 @@
 """Simple tests for server.py to improve coverage."""
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 from swag_mcp.core.config import config
 from swag_mcp.server import (
@@ -57,18 +57,11 @@ class TestServerFunctions:
 
     async def test_register_resources(self):
         """Test resource registration function."""
-        with patch("swag_mcp.server.SwagManagerService") as mock_service_class:
-            mock_service = Mock()
-            mock_service_class.return_value = mock_service
-            mock_service.get_resource_configs.return_value = AsyncMock(
-                return_value=Mock(success=True, resources=[])
-            )()
+        mock_app = Mock()
+        mock_app.add_resource = Mock()
 
-            mock_app = Mock()
-            mock_app.add_resource = Mock()
-
-            # Should not raise an exception
-            await register_resources(mock_app)  # type: ignore[func-returns-value]
+        # Should not raise an exception
+        register_resources(mock_app)
 
     def test_config_access(self):
         """Test that server can access configuration."""

@@ -6,7 +6,9 @@ import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as metadata_version
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from pydantic import AnyUrl
 
 from fastmcp import FastMCP
 from fastmcp.resources import DirectoryResource
@@ -30,6 +32,7 @@ from swag_mcp.core.logging_config import setup_logging
 from swag_mcp.middleware import setup_middleware
 
 # Re-exports for testing
+from swag_mcp.middleware.error_handling import get_error_handling_middleware
 from swag_mcp.middleware.rate_limiting import get_rate_limiting_middleware
 from swag_mcp.middleware.request_logging import get_logging_middleware
 from swag_mcp.middleware.timing import get_timing_middleware
@@ -38,16 +41,20 @@ from swag_mcp.tools.swag import register_tools
 from swag_mcp.utils.formatters import build_template_filename
 
 # Aliases for test compatibility (tests expect these specific names)
+error_handling_middleware = get_error_handling_middleware
 timing_middleware = get_timing_middleware
 request_logging_middleware = get_logging_middleware
 rate_limiting_middleware = get_rate_limiting_middleware
 
 
-# Dummy swag function reference for test compatibility
-# The actual tool is defined inside register_tools() function
-def swag(*args: Any, **kwargs: Any) -> None:
-    """Provide swag function for test mocking compatibility."""
-    pass
+# Dummy function for test compatibility (does not register a tool)
+def swag_dummy(*args: Any, **kwargs: Any) -> None:
+    """No-op placeholder used by tests."""
+    return None
+
+
+# Alias for test compatibility
+swag = swag_dummy
 
 
 # Explicit re-exports expected by tests
@@ -96,7 +103,7 @@ def register_resources(mcp: FastMCP) -> None:
     # Register DirectoryResource for listing active configs
     mcp.add_resource(
         DirectoryResource(
-            uri=SWAG_URI_BASE,  # type: ignore[arg-type]
+            uri=AnyUrl(SWAG_URI_BASE),
             name="Active SWAG Configurations",
             description=(
                 "List of all active SWAG reverse proxy configurations "
@@ -165,8 +172,7 @@ async def create_mcp_server() -> FastMCP:
         )
 
     logger.info("SWAG MCP Server initialized")
-    _v = get_package_version()
-    logger.info(f"Version: {_v}")
+    logger.info(f"Version: {get_package_version()}")
     logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
     logger.info(f"SWAG Proxy Confs Path: {config.proxy_confs_path}")
     logger.info(f"Template path: {config.template_path}")
@@ -209,7 +215,7 @@ async def cleanup_old_backups() -> None:
         else:
             logger.debug("Startup cleanup: no old backup files to remove")
     except Exception as e:
-        logger.error(f"Failed to cleanup old backups on startup: {e}")
+        logger.error(f"Failed to cleanup old backups on startup: {e}", exc_info=True)
 
 
 async def main() -> None:
@@ -226,7 +232,8 @@ async def main() -> None:
 
     # Use run_async() with streamable-http transport configuration
     # This is the correct method for existing event loops and Claude Desktop
-    await mcp_server.run_async(transport="streamable-http", host=config.host, port=config.port)
+    _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
+    await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
 
 def main_sync() -> None:
@@ -244,7 +251,8 @@ def main_sync() -> None:
 
         # Use run() with streamable-http transport configuration
         # Creates its own event loop for synchronous context
-        await mcp_server.run_async(transport="streamable-http", host=config.host, port=config.port)
+        _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
+        await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
     # Run with asyncio for sync context
     asyncio.run(_setup_and_run())

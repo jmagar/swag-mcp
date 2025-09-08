@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
 
 import pytest
 from swag_mcp.models.config import (
@@ -42,18 +41,37 @@ class TestSwagManagerServiceBasic:
         return SwagManagerService(config_path=temp_config_dir, template_path=temp_template_dir)
 
     def test_service_init(self, service):
-        """Test service initialization."""
-        assert service.config_path is not None
-        assert service.template_path is not None
-        assert service.template_env is not None
+        """Test service initialization with comprehensive validation."""
+        assert service.config_path is not None, "Service config_path should be set"
+        assert service.template_path is not None, "Service template_path should be set"
+        assert service.template_env is not None, "Service template_env should be initialized"
+
+        # Validate types and properties
+        assert hasattr(service.config_path, 'exists'), "config_path should be a Path object"
+        assert hasattr(service.template_path, 'exists'), "template_path should be a Path object"
+        assert hasattr(service.template_env, 'get_template'), (
+            "template_env should be a Jinja2 Environment"
+        )
 
     async def test_list_configs_empty(self, service):
-        """Test listing configs in empty directory."""
+        """Test listing configs in empty directory with detailed validation."""
         result = await service.list_configs()
-        assert hasattr(result, 'configs')
-        assert hasattr(result, 'total_count')
-        assert len(result.configs) == 0
-        assert result.total_count == 0
+
+        # Validate result structure
+        assert hasattr(result, 'configs'), "Result should have 'configs' attribute"
+        assert hasattr(result, 'total_count'), "Result should have 'total_count' attribute"
+
+        # Validate empty state
+        assert isinstance(result.configs, list), (
+            f"configs should be a list, got {type(result.configs)}"
+        )
+        assert len(result.configs) == 0, (
+            f"Expected empty config list, got {len(result.configs)} items"
+        )
+        assert result.total_count == 0, f"Expected total_count 0, got {result.total_count}"
+        assert result.total_count == len(result.configs), (
+            "total_count should match configs list length"
+        )
 
     async def test_list_configs_with_files(self, service, temp_config_dir):
         """Test listing configs with actual files."""
@@ -89,16 +107,20 @@ class TestSwagManagerServiceBasic:
 
     async def test_read_config_not_found(self, service):
         """Test reading non-existent config."""
-        with pytest.raises(ValueError, match="contains binary content or is unsafe to read"):
+        with pytest.raises(FileNotFoundError):
             await service.read_config("nonexistent.conf")
 
     async def test_validate_template_exists(self, service):
-        """Test template existence validation."""
+        """Test template existence validation with specific assertions."""
+        # Test existing template
         result = await service.validate_template_exists("subdomain")
-        assert result is True
+        assert result is True, "Expected 'subdomain' template to exist in test setup"
+        assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
+        # Test non-existent template
         result = await service.validate_template_exists("nonexistent")
-        assert result is False
+        assert result is False, "Expected 'nonexistent' template to not exist"
+        assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
     async def test_validate_all_templates(self, service):
         """Test validating all templates."""
@@ -135,10 +157,16 @@ class TestSwagManagerServiceBasic:
         assert isinstance(result, list)
 
     async def test_cleanup_old_backups(self, service):
-        """Test cleaning up old backups."""
-        result = await service.cleanup_old_backups(retention_days=7)
-        assert isinstance(result, int)
-        assert result >= 0
+        """Test cleaning up old backups with comprehensive validation."""
+        retention_days = 7
+        result = await service.cleanup_old_backups(retention_days=retention_days)
+
+        # Validate return type and value range
+        assert isinstance(result, int), f"Expected integer cleanup count, got {type(result)}"
+        assert result >= 0, f"Cleanup count should be non-negative, got {result}"
+
+        # For empty test environment, expect 0 cleanups
+        assert result == 0, f"Expected 0 cleanups in empty test environment, got {result}"
 
     async def test_health_check_invalid_domain(self, service):
         """Test health check with invalid domain."""
@@ -183,7 +211,7 @@ class TestSwagManagerServiceBasic:
         result = await service.update_config(request)
         assert result.filename == "nonexistent.conf"
         assert result.content == "# new content"
-        
+
         # Verify file was created
         created_file = temp_config_dir / "nonexistent.conf"
         assert created_file.exists()
@@ -199,7 +227,7 @@ class TestSwagManagerServiceBasic:
             create_backup=False,
         )
 
-        with pytest.raises(ValueError, match="contains binary content or is unsafe to read"):
+        with pytest.raises(FileNotFoundError, match="not found"):
             await service.update_config_field(request)
 
     async def test_get_swag_logs_docker_error(self, service):
@@ -235,10 +263,19 @@ class TestSwagManagerServiceBasic:
         # This should not raise an exception for basic content
         try:
             result = service._validate_config_content(content, "test.conf")
-            assert isinstance(result, str)
+            assert isinstance(result, str), (
+                f"Expected string result from validation, got {type(result)}"
+            )
+            assert len(result) >= len(content), "Validated content should not be shorter than input"
         except Exception as e:
-            # If validation fails, it should still be a controlled failure
-            assert "invalid" in str(e).lower() or "error" in str(e).lower()
+            # If validation fails, it should be a controlled failure with descriptive message
+            error_msg = str(e).lower()
+            expected_error_terms = ["invalid", "error", "validation", "syntax"]
+            found_terms = [term for term in expected_error_terms if term in error_msg]
+            assert len(found_terms) > 0, (
+                f"Expected validation error to contain descriptive terms "
+                f"{expected_error_terms}, got: {error_msg}"
+            )
 
     def test_validate_template_variables(self, service):
         """Test template variable validation."""

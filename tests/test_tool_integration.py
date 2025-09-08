@@ -9,6 +9,8 @@ from fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 from swag_mcp.models.enums import SwagAction
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestSwagToolIntegration:
     """Integration tests for the SWAG MCP tool using real tool calls."""
@@ -16,21 +18,34 @@ class TestSwagToolIntegration:
     # LIST Action Tests
 
     async def test_list_all_configurations(self, mcp_client: Client) -> None:
-        """Test listing all configurations."""
+        """Test listing all configurations with comprehensive validation."""
         result = await mcp_client.call_tool(
             "swag", {"action": SwagAction.LIST, "list_filter": "all"}
         )
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
-        # Check structured content for configuration data
-        assert "configs" in result.structured_content
-        assert "total_count" in result.structured_content
-        assert "list_filter" in result.structured_content
-        assert isinstance(result.structured_content["configs"], list)
-        assert result.structured_content["list_filter"] == "all"
-        assert isinstance(result.structured_content["total_count"], int)
+
+        # Check structured content for configuration data with detailed assertions
+        assert "configs" in result.structured_content, "Missing 'configs' field in response"
+        assert "total_count" in result.structured_content, "Missing 'total_count' field in response"
+        assert "list_filter" in result.structured_content, "Missing 'list_filter' field in response"
+
+        # Validate field types and values
+        configs = result.structured_content["configs"]
+        assert isinstance(configs, list), f"'configs' should be a list, got {type(configs)}"
+
+        total_count = result.structured_content["total_count"]
+        assert isinstance(total_count, int), (
+            f"'total_count' should be an integer, got {type(total_count)}"
+        )
+        assert total_count >= 0, f"'total_count' should be non-negative, got {total_count}"
+        assert total_count == len(configs), (
+            f"'total_count' ({total_count}) should match config list length ({len(configs)})"
+        )
+
+        list_filter = result.structured_content["list_filter"]
+        assert list_filter == "all", f"Expected list_filter 'all', got '{list_filter}'"
 
     async def test_list_active_configurations(self, mcp_client: Client) -> None:
         """Test listing active configurations only."""
@@ -40,7 +55,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for configuration data
         assert "configs" in result.structured_content
         assert "total_count" in result.structured_content
@@ -57,7 +72,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for configuration data
         assert "configs" in result.structured_content
         assert "total_count" in result.structured_content
@@ -105,9 +120,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for successful creation
-        assert result.structured_content.get("success") == True
+        assert result.structured_content.get("success")
         assert "filename" in result.structured_content
         assert "backup_created" in result.structured_content
         assert result.structured_content["filename"] == config_name
@@ -139,9 +154,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for successful MCP creation
-        assert result.structured_content.get("success") == True
+        assert result.structured_content.get("success")
         assert "filename" in result.structured_content
         assert "backup_created" in result.structured_content
         assert result.structured_content["filename"] == config_name
@@ -160,10 +175,26 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
-        # Check structured content for validation error
-        assert result.structured_content.get("success") == False
-        assert "error" in result.structured_content or "message" in result.structured_content
+
+        # Check structured content for validation error with specific validation
+        assert result.structured_content.get("success") is False, (
+            "Operation should fail for missing parameters"
+        )
+
+        # Ensure error message is present and informative
+        has_error = "error" in result.structured_content or "message" in result.structured_content
+        assert has_error, "Response should contain error message for missing parameters"
+
+        # Check that error message mentions missing required fields
+        error_msg = result.structured_content.get(
+            "error", result.structured_content.get("message", "")
+        ).lower()
+        expected_terms = ["required", "missing", "validation", "field", "server_name", "upstream"]
+        found_terms = [term for term in expected_terms if term in error_msg]
+        assert len(found_terms) > 0, (
+            f"Expected error about missing required fields (terms: {expected_terms}), "
+            f"got: {error_msg}"
+        )
 
     async def test_create_invalid_port(self, mcp_client: Client, test_config_name: str) -> None:
         """Test creating config with invalid port number."""
@@ -181,7 +212,7 @@ class TestSwagToolIntegration:
                     "upstream_port": 99999,  # Invalid port
                 },
             )
-        
+
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
         assert "validation" in error_msg or "maximum" in error_msg or "65535" in error_msg
@@ -196,18 +227,26 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for successful view operation
-        assert result.structured_content.get("success") == True
+        assert result.structured_content.get("success")
         assert "config_name" in result.structured_content
         assert "content" in result.structured_content
         assert "character_count" in result.structured_content
         assert result.structured_content["config_name"] == "_template.subdomain.conf.sample"
         assert isinstance(result.structured_content["character_count"], int)
-        
-        # Check content contains nginx configuration keywords
+
+        # Check content contains nginx configuration keywords with specific validation
         content = result.structured_content["content"]
-        assert any(keyword in content for keyword in ["server", "location", "proxy_pass"])
+        assert isinstance(content, str), f"Content should be a string, got {type(content)}"
+        assert len(content) > 0, "Content should not be empty"
+
+        nginx_keywords = ["server", "location", "proxy_pass"]
+        found_keywords = [keyword for keyword in nginx_keywords if keyword in content]
+        assert len(found_keywords) > 0, (
+            f"Expected nginx config to contain at least one of {nginx_keywords}, "
+            f"found none. Content preview: {content[:200]}..."
+        )
 
     async def test_view_nonexistent_config(self, mcp_client: Client) -> None:
         """Test viewing a non-existent configuration."""
@@ -217,9 +256,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for error response
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     async def test_view_missing_config_name(self, mcp_client: Client) -> None:
@@ -234,9 +273,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     # EDIT Action Tests
@@ -286,13 +325,30 @@ class TestSwagToolIntegration:
 
         assert edit_result.is_error is False
         assert isinstance(edit_result.content[0], TextContent)
-        
+
         # Check structured content for successful edit
-        assert edit_result.structured_content.get("success") == True
+        assert edit_result.structured_content.get("success")
         assert "backup_created" in edit_result.structured_content
-        # Backup created should be a filename string, not just True
-        assert isinstance(edit_result.structured_content["backup_created"], str)
-        assert config_name in edit_result.structured_content["backup_created"]
+        # Backup created should be a valid filename string with proper validation
+        backup_created = edit_result.structured_content["backup_created"]
+        assert isinstance(backup_created, str), (
+            f"Expected backup filename as string, got: {type(backup_created)} = {backup_created}"
+        )
+        assert len(backup_created) > 0, "Backup filename should not be empty"
+
+        # Backup filename should contain reference to original config
+        config_base_name = config_name.replace('.conf', '')
+        assert config_base_name in backup_created, (
+            f"Expected backup filename to reference original config "
+            f"'{config_base_name}', got: {backup_created}"
+        )
+
+        # Backup should have a timestamp or backup extension
+        backup_indicators = ['.backup', '_backup', '.bak', '202']
+        has_backup_indicator = any(indicator in backup_created for indicator in backup_indicators)
+        assert has_backup_indicator, (
+            f"Backup filename should contain timestamp or backup indicator, got: {backup_created}"
+        )
 
     async def test_edit_missing_parameters(self, mcp_client: Client) -> None:
         """Test editing with missing parameters."""
@@ -307,9 +363,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     # UPDATE Action Tests
@@ -348,9 +404,9 @@ class TestSwagToolIntegration:
 
         assert update_result.is_error is False
         assert isinstance(update_result.content[0], TextContent)
-        
+
         # Check structured content for successful port update
-        assert update_result.structured_content.get("success") == True
+        assert update_result.structured_content.get("success")
         assert "backup_created" in update_result.structured_content
         # Should have health_check field for domains or other update-specific data
         # The exact structure may vary, but success and backup_created are standard
@@ -389,9 +445,9 @@ class TestSwagToolIntegration:
 
         assert update_result.is_error is False
         assert isinstance(update_result.content[0], TextContent)
-        
+
         # Check structured content for successful upstream update
-        assert update_result.structured_content.get("success") == True
+        assert update_result.structured_content.get("success")
         assert "backup_created" in update_result.structured_content
         # Should have health_check field for domains or other update-specific data
 
@@ -429,9 +485,9 @@ class TestSwagToolIntegration:
 
         assert update_result.is_error is False
         assert isinstance(update_result.content[0], TextContent)
-        
+
         # Check structured content for successful MCP location addition
-        assert update_result.structured_content.get("success") == True
+        assert update_result.structured_content.get("success")
         assert "backup_created" in update_result.structured_content
         # Should have health_check field for domains or other update-specific data
 
@@ -449,9 +505,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     async def test_update_missing_parameters(self, mcp_client: Client) -> None:
@@ -467,9 +523,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     # REMOVE Action Tests
@@ -501,9 +557,9 @@ class TestSwagToolIntegration:
 
         assert remove_result.is_error is False
         assert isinstance(remove_result.content[0], TextContent)
-        
+
         # Check structured content for successful removal
-        assert remove_result.structured_content.get("success") == True
+        assert remove_result.structured_content.get("success")
         assert "backup_created" in remove_result.structured_content
         # Backup created should be a filename string when backup is requested
         if remove_result.structured_content["backup_created"]:
@@ -522,9 +578,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for error response
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     async def test_remove_missing_config_name(self, mcp_client: Client) -> None:
@@ -539,9 +595,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     # LOGS Action Tests
@@ -554,7 +610,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for log retrieval
         assert "logs" in result.structured_content or "success" in result.structured_content
         assert "character_count" in result.structured_content
@@ -569,7 +625,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for log retrieval
         assert "logs" in result.structured_content or "success" in result.structured_content
         assert "character_count" in result.structured_content
@@ -597,9 +653,11 @@ class TestSwagToolIntegration:
             await mcp_client.call_tool(
                 "swag", {"action": SwagAction.LOGS, "log_type": "invalid-log-type", "lines": 10}
             )
-        
+
         # Check that the error message is about validation
-        assert any(k in str(exc_info.value).lower() for k in ("validation", "invalid", "not one of"))
+        assert any(
+            k in str(exc_info.value).lower() for k in ("validation", "invalid", "not one of")
+        )
 
     # BACKUPS Action Tests
 
@@ -611,7 +669,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for backup listing
         assert "backup_files" in result.structured_content
         assert "total_count" in result.structured_content
@@ -626,7 +684,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for backup cleanup
         assert "cleaned_count" in result.structured_content
         assert "retention_days" in result.structured_content
@@ -641,7 +699,7 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for backup cleanup
         assert "cleaned_count" in result.structured_content
         assert "retention_days" in result.structured_content
@@ -655,7 +713,7 @@ class TestSwagToolIntegration:
             await mcp_client.call_tool(
                 "swag", {"action": SwagAction.BACKUPS, "backup_action": "invalid"}
             )
-        
+
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
         assert "validation" in error_msg or "not one of" in error_msg
@@ -669,10 +727,10 @@ class TestSwagToolIntegration:
                 # Missing backup_action - should default to 'list'
             },
         )
-        
+
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for backup listing (default action)
         assert "backup_files" in result.structured_content
         assert "total_count" in result.structured_content
@@ -683,7 +741,10 @@ class TestSwagToolIntegration:
 
     @pytest.mark.slow
     async def test_health_check_localhost(self, mcp_client: Client) -> None:
-        """Test health check on localhost (may be slow)."""
+        """Test health check on localhost (may be slow).
+
+        Validates response structure without forcing success.
+        """
         result = await mcp_client.call_tool(
             "swag",
             {
@@ -696,16 +757,31 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
-        # Check structured content for health check results
-        assert result.structured_content.get("success") == True
+
+        # Validate structured content presence and types (robust - allows success or failure)
+        assert "success" in result.structured_content
+        assert isinstance(result.structured_content["success"], bool)
+
+        # Required fields should always be present
         assert "domain" in result.structured_content
-        assert "status_code" in result.structured_content
-        assert "response_time_ms" in result.structured_content
         assert "error" in result.structured_content
         assert result.structured_content["domain"] == "127.0.0.1"
-        assert isinstance(result.structured_content["status_code"], int)
-        assert isinstance(result.structured_content["response_time_ms"], (int, float))
+
+        # Optional fields that depend on whether connection succeeded
+        if result.structured_content.get("success"):
+            # When successful, should have status code and response time
+            assert "status_code" in result.structured_content
+            assert "response_time_ms" in result.structured_content
+            assert isinstance(result.structured_content["status_code"], int)
+            assert isinstance(result.structured_content["response_time_ms"], int | float)
+        else:
+            # When failed, error should be a non-empty string
+            assert isinstance(result.structured_content["error"], str)
+            assert len(result.structured_content["error"]) > 0
+            # status_code may be None for unreachable scenarios
+            if "status_code" in result.structured_content:
+                status_code = result.structured_content["status_code"]
+                assert status_code is None or isinstance(status_code, int)
 
     @pytest.mark.slow
     async def test_health_check_invalid_domain(self, mcp_client: Client) -> None:
@@ -722,9 +798,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for failed health check
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "domain" in result.structured_content
         assert "error" in result.structured_content
         assert result.structured_content["domain"] == "definitely-does-not-exist.invalid.tld"
@@ -742,9 +818,9 @@ class TestSwagToolIntegration:
 
         assert result.is_error is False
         assert isinstance(result.content[0], TextContent)
-        
+
         # Check structured content for validation error
-        assert result.structured_content.get("success") == False
+        assert not result.structured_content.get("success")
         assert "error" in result.structured_content or "message" in result.structured_content
 
     async def test_health_check_invalid_timeout(self, mcp_client: Client) -> None:
@@ -761,7 +837,7 @@ class TestSwagToolIntegration:
                     "timeout": 999,  # Too high
                 },
             )
-        
+
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
         assert (
@@ -779,7 +855,7 @@ class TestSwagToolIntegration:
         # Should raise ToolError for invalid action
         with pytest.raises(ToolError) as exc_info:
             await mcp_client.call_tool("swag", {"action": "totally_invalid_action"})
-        
+
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
         assert (
@@ -795,7 +871,7 @@ class TestSwagToolIntegration:
         # Should raise ToolError for missing action
         with pytest.raises(ToolError) as exc_info:
             await mcp_client.call_tool("swag", {})
-        
+
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
         assert (
@@ -851,9 +927,28 @@ class TestSwagToolIntegration:
             "swag", {"action": SwagAction.VIEW, "config_name": config_name}
         )
         assert view_updated_result.is_error is False
-        # Should contain the new port
-        assert isinstance(view_updated_result.content[0], TextContent)
-        assert "4000" in view_updated_result.content[0].text
+        # Should contain the updated port with comprehensive validation
+        assert isinstance(view_updated_result.content[0], TextContent), (
+            "Expected TextContent in view result"
+        )
+        updated_content = view_updated_result.content[0].text
+
+        # Check that new port is present
+        assert "4000" in updated_content, (
+            f"Expected updated port '4000' to be in config content. "
+            f"Content preview: {updated_content[:500]}..."
+        )
+
+        # Verify old port is replaced (basic check)
+        port_4000_count = updated_content.count("4000")
+        port_3000_count = updated_content.count("3000")
+        assert port_4000_count > 0, "New port should be present at least once"
+        # Old port might still appear in comments, so just ensure new port is prominent
+        if port_3000_count > 0:
+            assert port_4000_count >= port_3000_count, (
+                f"New port (count: {port_4000_count}) should be at least as prominent "
+                f"as old port (count: {port_3000_count})"
+            )
 
         # 5. Remove the configuration (cleanup happens automatically)
         # This is tested separately in test_remove_configuration

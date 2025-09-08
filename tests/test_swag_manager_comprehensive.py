@@ -256,7 +256,7 @@ class TestFileOperations:
 
         # Create file first
         test_file.write_text("original")
-        
+
         # Make the parent directory read-only to prevent atomic rename
         original_perms = temp_service.config_path.stat().st_mode
         temp_service.config_path.chmod(0o444)
@@ -467,14 +467,14 @@ class TestExtractorMethods:
         content = "include /config/nginx/authelia-server.conf;"
         result = temp_service._extract_auth_method(content)
 
-        assert result in ["authelia", "none", "ldap", "authentik", "tinyauth", "basic"]
+        assert result == "authelia"
 
     def test_extract_auth_method_ldap(self, temp_service):
         """Test extracting LDAP auth method."""
         content = "include /config/nginx/ldap.conf;"
         result = temp_service._extract_auth_method(content)
 
-        assert result in ["authelia", "none", "ldap", "authentik", "tinyauth", "basic"]
+        assert result == "ldap"
 
     def test_extract_auth_method_none(self, temp_service):
         """Test extracting no auth method."""
@@ -508,12 +508,6 @@ location {{ mcp_path }} {
 
     async def test_render_mcp_location_block(self, temp_service):
         """Test rendering MCP location block."""
-        template_vars = {
-            "upstream_proto": "http",
-            "upstream_app": "mcp-server",
-            "upstream_port": 8080,
-            "mcp_path": "/ai-service",
-        }
 
         result = await temp_service._render_mcp_location_block(
             mcp_path="/ai-service",
@@ -591,7 +585,7 @@ server {
         """Test MCP location addition when file doesn't exist."""
         with pytest.raises(FileNotFoundError):
             await temp_service.add_mcp_location(
-                config_name="nonexistent.conf", 
+                config_name="nonexistent.conf",
                 mcp_path="/mcp",
             )
 
@@ -628,10 +622,12 @@ class TestHealthCheckMethod:
     @patch("aiohttp.ClientSession.get")
     async def test_health_check_connection_error(self, mock_get, temp_service):
         """Test health check with connection error."""
+        from unittest.mock import Mock
+
         import aiohttp
 
         # Mock connection error
-        mock_get.side_effect = aiohttp.ClientConnectionError("Connection failed")
+        mock_get.side_effect = aiohttp.ClientConnectorError(Mock(), OSError("Connection failed"))
 
         request = SwagHealthCheckRequest(
             action=SwagAction.HEALTH_CHECK, domain="unreachable.com", timeout=10
@@ -671,7 +667,7 @@ class TestLogMethods:
     async def test_get_swag_logs_invalid_type(self, temp_service):
         """Test log retrieval with invalid log type."""
         from pydantic import ValidationError
-        
+
         with pytest.raises(ValidationError, match="log_type"):
             SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)
 
@@ -708,7 +704,7 @@ class TestResourceMethods:
 
         assert hasattr(result, "configs")
         assert isinstance(result.configs, list)
-        
+
         # All configs should be sample files
         for config_name in result.configs:
             assert config_name.endswith(".sample")

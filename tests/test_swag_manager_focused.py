@@ -242,13 +242,13 @@ class TestSwagManagerConcurrency:
         # Write files concurrently
         write_tasks = [
             temp_service._safe_write_file(file, content, f"op {i}")
-            for i, (file, content) in enumerate(zip(files, contents))
+            for i, (file, content) in enumerate(zip(files, contents, strict=False))
         ]
 
         await asyncio.gather(*write_tasks)
 
         # Verify all files written correctly
-        for file, content in zip(files, contents):
+        for file, content in zip(files, contents, strict=False):
             assert file.exists()
             assert file.read_text() == content
 
@@ -318,7 +318,7 @@ class TestSwagManagerBackupOperations:
     async def test_create_backup_existing_file(self, temp_service_with_files):
         """Test backup creation for existing file."""
         backup_name = await temp_service_with_files._create_backup("test1.conf")
-        
+
         assert isinstance(backup_name, str)
         backup_file = temp_service_with_files.config_path / backup_name
         assert backup_file.exists()

@@ -63,7 +63,7 @@ AUTH_METHODS = (
 )
 
 # List filter options
-LIST_FILTERS = ["all", "active", "samples"]
+LIST_FILTERS = ("all", "active", "samples")  # Tuple for immutability
 DEFAULT_LIST_FILTER = "all"
 
 # Default values
@@ -77,7 +77,8 @@ DEFAULT_MCP_STREAM_TIMEOUT = 86400  # 24 hours in seconds for long-running AI op
 DEFAULT_MCP_SESSION_TIMEOUT = 3600  # 1 hour in seconds for session management
 
 # Path validation regex - prevents traversal attacks while allowing valid paths
-LOCATION_PATH_REGEX = r"^[a-zA-Z0-9/_.-]+$"  # Alphanumerics, slashes, underscores, hyphens, dots
+# Requires absolute path with safe segments
+LOCATION_PATH_REGEX = r"^/(?:[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)$"
 
 # Domain validation pattern (RFC compliant)
 DOMAIN_PATTERN = (

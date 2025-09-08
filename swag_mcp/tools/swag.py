@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools.tool import ToolResult
@@ -246,7 +246,7 @@ def register_tools(mcp: FastMCP) -> None:
         ] = True,
         # Update parameters
         update_field: Annotated[
-            str,
+            UpdateFieldType | str,
             Field(
                 default="",
                 description="Field to update: 'port' | 'upstream' | 'app' | 'add_mcp'",
@@ -376,7 +376,7 @@ def register_tools(mcp: FastMCP) -> None:
                     upstream_port=upstream_port,
                     upstream_proto=upstream_proto,
                     mcp_enabled=mcp_enabled,
-                    auth_method=auth_method_final,  # type: ignore[arg-type]
+                    auth_method=auth_method_final,
                     enable_quic=enable_quic_final,
                 )
 
@@ -616,12 +616,13 @@ def register_tools(mcp: FastMCP) -> None:
                 valid_update_fields: set[UpdateFieldType] = {"port", "upstream", "app", "add_mcp"}
                 if update_field not in valid_update_fields:
                     return formatter.format_error_result(
-                        f"Invalid update_field: '{update_field}'. Must be one of: {', '.join(valid_update_fields)}",
+                        f"Invalid update_field: '{update_field}'. "
+                        f"Must be one of: {', '.join(valid_update_fields)}",
                         "update",
                     )
 
                 # Now we know update_field is a valid UpdateFieldType
-                validated_update_field: UpdateFieldType = update_field  # type: ignore[assignment]
+                validated_update_field: UpdateFieldType = cast("UpdateFieldType", update_field)
 
                 update_request = SwagUpdateRequest(
                     action=action,

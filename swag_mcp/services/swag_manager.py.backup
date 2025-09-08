@@ -5,11 +5,11 @@ import errno
 import logging
 import os
 import re
-from collections import deque
 from collections.abc import Callable
+from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import aiofiles
 import aiohttp
@@ -396,51 +396,40 @@ class SwagManagerService:
             self._completed = True
 
         async def _rollback(self) -> None:
-            """Rollback all changes made in this transaction with per-file locking for safety."""
+            """Rollback all changes made in this transaction."""
             rollback_errors = []
 
-            # Remove created files with per-file locking
+            # Remove created files
             for file_path in reversed(self.created_files):  # Reverse order for safety
                 try:
-                    # Acquire per-file lock for atomic rollback operation
-                    file_lock = await self.manager._get_file_lock(file_path)
-                    async with file_lock:
-                        if file_path.exists():
-                            file_path.unlink()
-                            logger.debug(f"Rollback: removed created file {file_path}")
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"Rollback: removed created file {file_path}")
                 except Exception as e:
                     rollback_errors.append(f"Failed to remove created file {file_path}: {e}")
 
-            # Restore modified files with per-file locking
+            # Restore modified files
             for file_path, original_content in reversed(self.modified_files):
                 try:
-                    # Acquire per-file lock for atomic rollback operation
-                    file_lock = await self.manager._get_file_lock(file_path)
-                    async with file_lock:
-                        # Use the manager's safe write with no additional lock
-                        # (we already have the file lock)
-                        await self.manager._safe_write_file(
-                            file_path, original_content, f"rollback of {file_path}", use_lock=False
-                        )
-                        logger.debug(f"Rollback: restored modified file {file_path}")
+                    # Use the manager's safe write with no lock (we're in transaction context)
+                    await self.manager._safe_write_file(
+                        file_path, original_content, f"rollback of {file_path}", use_lock=False
+                    )
+                    logger.debug(f"Rollback: restored modified file {file_path}")
                 except Exception as e:
                     rollback_errors.append(f"Failed to restore modified file {file_path}: {e}")
 
-            # Restore deleted files with per-file locking
+            # Restore deleted files
             for file_path, original_content in self.deleted_files:
                 try:
-                    # Acquire per-file lock for atomic rollback operation
-                    file_lock = await self.manager._get_file_lock(file_path)
-                    async with file_lock:
-                        # Use the manager's safe write with no additional lock
-                        # (we already have the file lock)
-                        await self.manager._safe_write_file(
-                            file_path,
-                            original_content,
-                            f"rollback restore of {file_path}",
-                            use_lock=False,
-                        )
-                        logger.debug(f"Rollback: restored deleted file {file_path}")
+                    # Use the manager's safe write with no lock
+                    await self.manager._safe_write_file(
+                        file_path,
+                        original_content,
+                        f"rollback restore of {file_path}",
+                        use_lock=False,
+                    )
+                    logger.debug(f"Rollback: restored deleted file {file_path}")
                 except Exception as e:
                     rollback_errors.append(f"Failed to restore deleted file {file_path}: {e}")
 
@@ -450,6 +439,7 @@ class SwagManagerService:
                     f"Rollback of transaction {self.transaction_id} had errors: "
                     f"{'; '.join(rollback_errors)}"
                 )
+
     def begin_transaction(self, transaction_id: str | None = None) -> AtomicTransaction:
         """Begin an atomic transaction for multi-file operations.
 
@@ -561,8 +551,6 @@ class SwagManagerService:
             return not (fs_access and not safe_type)
 
         # Override the sandboxed environment's security checks
-        # Note: is_safe_attribute signature doesn't perfectly match Jinja2 expectations
-        # but this works for our security model
         env.is_safe_attribute = is_safe_attribute  # type: ignore[method-assign]
 
         # Disable dangerous template features
@@ -923,9 +911,6 @@ class SwagManagerService:
         validated_service_name = validate_service_name(service_name)
         validated_server_name = validate_domain_format(request.server_name)
         validated_port = validate_upstream_port(request.upstream_port)
-        # Validate upstream_app with regex pattern
-        if not re.match(r'^[A-Za-z0-9_.-]+$', request.upstream_app):
-            raise ValueError(f"Invalid upstream app name: {request.upstream_app}")
 
         # Determine template and filename
         template_name = build_template_filename(template_type)
@@ -1024,36 +1009,17 @@ class SwagManagerService:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid port value: {update_request.update_value}") from e
 
-            # Try template format first: set $upstream_port
+            # Update upstream_port (handles both quoted and unquoted values)
             pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_port \"{port_value}\";"
+            replacement = f"set $upstream_port {port_value};"
             new_content, port_replacements = re.subn(pattern, replacement, updated_content)
 
             if port_replacements > 0:
                 updated_content = new_content
                 changes_made = True
                 logger.debug(
-                    f"Updated {port_replacements} template port references to {update_request.update_value}"
+                    f"Updated {port_replacements} port references to {update_request.update_value}"
                 )
-            else:
-                # Try simple nginx format: proxy_pass http://app:port
-                pattern = r'proxy_pass\s+https?://([^/:]+):(\d+)([^;]*);'
-                
-                def replace_proxy_port(match):
-                    app = match.group(1)
-                    old_port = match.group(2)
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{app}:{port_value}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_port, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass port references to {update_request.update_value}"
-                    )
 
             # Update upstream comment to reflect new port
             upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
@@ -1071,36 +1037,17 @@ class SwagManagerService:
             if not re.match(r'^[A-Za-z0-9_.-]+$', update_request.update_value):
                 raise ValueError(f"Invalid upstream app name: {update_request.update_value}")
 
-            # Try template format first: set $upstream_app
+            # Update upstream_app (handles both quoted and unquoted values)
             pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_app \"{update_request.update_value}\";"
+            replacement = f"set $upstream_app {update_request.update_value};"
             new_content, app_replacements = re.subn(pattern, replacement, updated_content)
 
             if app_replacements > 0:
                 updated_content = new_content
                 changes_made = True
                 logger.debug(
-                    f"Updated {app_replacements} template app references to {update_request.update_value}"
+                    f"Updated {app_replacements} app references to {update_request.update_value}"
                 )
-            else:
-                # Try simple nginx format: proxy_pass http://app:port
-                pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
-                
-                def replace_proxy_pass(match):
-                    old_app = match.group(1)
-                    port = match.group(2) or ''
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{update_request.update_value}{port}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_pass, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass app references to {update_request.update_value}"
-                    )
 
             # Update upstream comment to reflect new app
             upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
@@ -1131,44 +1078,25 @@ class SwagManagerService:
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid port value: {port}") from e
 
-            # Try template format first: set $upstream_app and $upstream_port
+            # Update app (handles both quoted and unquoted values)
             pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_app \"{app}\";"
+            replacement = f"set $upstream_app {app};"
             new_content, app_replacements = re.subn(pattern, replacement, updated_content)
 
             if app_replacements > 0:
                 updated_content = new_content
                 changes_made = True
-                logger.debug(f"Updated {app_replacements} template app references to {app}")
+                logger.debug(f"Updated {app_replacements} app references to {app}")
 
+            # Update port (handles both quoted and unquoted values)
             pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_port \"{port_value}\";"
+            replacement = f"set $upstream_port {port_value};"
             new_content, port_replacements = re.subn(pattern, replacement, updated_content)
 
             if port_replacements > 0:
                 updated_content = new_content
                 changes_made = True
-                logger.debug(f"Updated {port_replacements} template port references to {port_value}")
-                
-            # If template format didn't work, try simple nginx format
-            if not changes_made:
-                pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
-                
-                def replace_proxy_app_port(match):
-                    old_app = match.group(1)
-                    old_port = match.group(2) or ''
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{app}:{port_value}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_app_port, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass app:port references to {app}:{port_value}"
-                    )
+                logger.debug(f"Updated {port_replacements} port references to {port_value}")
 
             # Update upstream comment to reflect both new app and port
             upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
@@ -1212,38 +1140,15 @@ class SwagManagerService:
         if update_request.update_field in ["port", "upstream", "app"] and not changes_made:
             field = update_request.update_field
             config_name = update_request.config_name
-            if field == "upstream":
-                expected_format = "'set $upstream_app' variables or 'proxy_pass' directives"
-            elif field == "port":
-                expected_format = "'set $upstream_port' variables or 'proxy_pass' directives with ports"
-            elif field == "app":
-                expected_format = "'set $upstream_app' and 'set $upstream_port' variables or 'proxy_pass' directives"
-            else:
-                expected_format = "template format"
-                
             error_msg = (
                 f"No changes made to {config_name}. "
-                f"The configuration file doesn't contain the expected format "
-                f"for '{field}' updates. Expected: {expected_format}. "
-                f"This operation supports both template-generated and standard nginx configurations."
+                f"The configuration file doesn't contain the expected template format "
+                f"for '{field}' updates. Expected: 'set $upstream_{field}' variables."
+                f" This update operation only works with template-generated configuration files."
             )
             logger.warning(error_msg)
             raise ValueError(error_msg)
 
-
-        # Write updated content to a temporary file for validation
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as temp_file:
-            temp_file.write(updated_content)
-            temp_path = Path(temp_file.name)
-
-        # Validate nginx syntax before committing changes
-        if not await self._validate_nginx_syntax(temp_path):
-            temp_path.unlink()  # Clean up temp file
-            raise ValueError("Updated configuration contains invalid nginx syntax")
-
-        # Clean up temp file after validation
-        temp_path.unlink()
         # Write updated content
         config_file = self.config_path / update_request.config_name
         await self._safe_write_file(
@@ -1431,10 +1336,7 @@ class SwagManagerService:
         )
 
     async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
-        """Get SWAG logs by reading log files directly from mounted volume.
-
-        Uses memory-efficient streaming to handle large log files.
-        """
+        """Get SWAG logs by reading log files directly from mounted volume."""
         logger.info(f"Getting SWAG logs: {logs_request.log_type}, {logs_request.lines} lines")
 
         # Map log types to file paths (using /swag mount point)
@@ -1459,34 +1361,20 @@ class SwagManagerService:
                     "The log file may not exist yet or SWAG may not be running."
                 )
 
-            # Memory-efficient streaming approach using deque
-            # Read file in chunks and maintain only the requested number of lines in memory
-            max_lines = logs_request.lines
-
-            # Use deque with maxlen to automatically maintain only the last N lines
-            line_buffer: deque[str] = deque(maxlen=max_lines)
-
-            # Read file in streaming fashion
+            # Read last N lines from the file efficiently
             async with aiofiles.open(log_file_path, encoding="utf-8", errors="ignore") as f:
-                # For large files, we need to be memory-efficient
-                # Read the file line by line to avoid loading everything into memory
-                async for line in f:
-                    line_buffer.append(line)
+                lines = await f.readlines()
+                # Get last N lines
+                result_lines = (
+                    lines[-logs_request.lines :] if len(lines) > logs_request.lines else lines
+                )
 
-                    # Optional: If file is extremely large, we could add periodic yielding
-                    # This prevents blocking the event loop for too long
-                    # Every 1000 lines, yield control back to the event loop
-                    if len(line_buffer) == max_lines and len(line_buffer) % 1000 == 0:
-                        await asyncio.sleep(0)  # Yield control
-
-            if not line_buffer:
+            if not result_lines:
                 return f"No log entries found in {logs_request.log_type} log."
 
-            # Convert deque to string efficiently
-            result = "".join(line_buffer)
+            result = "".join(result_lines)
             logger.info(
-                f"Successfully retrieved {len(line_buffer)} lines from {logs_request.log_type} "
-                f"(memory-efficient streaming)"
+                f"Successfully retrieved {len(result_lines)} lines from {logs_request.log_type}"
             )
             return result
 
@@ -1895,11 +1783,6 @@ class SwagManagerService:
         # Look for auth method includes like: include /config/nginx/authelia-server.conf;
         pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
         matches = re.findall(pattern, content)
-        
-        # Also check for simple auth method includes like: include /config/nginx/ldap.conf;
-        if not matches:
-            simple_pattern = r"include\s+/config/nginx/(\w+)\.conf;"
-            matches = re.findall(simple_pattern, content)
 
         # Also check for basic auth
         if "auth_basic" in content and "auth_basic_user_file" in content:

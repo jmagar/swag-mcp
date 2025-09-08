@@ -27,10 +27,11 @@ location ^~ /{{ service_name }}/ {
     proxy_cache off;
     proxy_request_buffering off;
     proxy_max_temp_file_size 0;
-    chunked_transfer_encoding off;
+    chunked_transfer_encoding on;
 
     # Connection management for SSE/streaming support
     proxy_set_header Connection '';
+    add_header Cache-Control "no-cache, no-store, must-revalidate" always;
 
     # Standard reverse proxy headers
     proxy_set_header Host $host;
@@ -68,8 +69,11 @@ location = /{{ service_name }}/.well-known/oauth-authorization-server {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     # Remove subfolder prefix for discovery endpoint
     rewrite ^/{{ service_name }}/\.well-known/oauth-authorization-server /.well-known/oauth-authorization-server break;
@@ -85,8 +89,11 @@ location = /{{ service_name }}/.well-known/openid-configuration {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     # Remove subfolder prefix for discovery endpoint
     rewrite ^/{{ service_name }}/\.well-known/openid-configuration /.well-known/openid-configuration break;
@@ -103,8 +110,11 @@ location = /{{ service_name }}/register {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     rewrite ^/{{ service_name }}/register /register break;
 
@@ -119,8 +129,11 @@ location = /{{ service_name }}/authorize {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     rewrite ^/{{ service_name }}/authorize /authorize break;
 
@@ -135,8 +148,16 @@ location = /{{ service_name }}/token {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+
+    # No-cache headers for token endpoint
+    add_header Cache-Control "no-store" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
 
     rewrite ^/{{ service_name }}/token /token break;
 
@@ -151,8 +172,16 @@ location = /{{ service_name }}/revoke {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+
+    # No-cache headers for revoke endpoint
+    add_header Cache-Control "no-store" always;
+    add_header Pragma "no-cache" always;
+    add_header Expires "0" always;
 
     rewrite ^/{{ service_name }}/revoke /revoke break;
 
@@ -168,8 +197,11 @@ location ^~ /{{ service_name }}/auth/ {
     set $upstream_proto "{{ upstream_proto }}";
 
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
 
     # Remove subfolder prefix for auth paths
     rewrite ^/{{ service_name }}/auth/(.*) /auth/$1 break;
@@ -179,11 +211,19 @@ location ^~ /{{ service_name }}/auth/ {
 
 # Health check endpoint (no auth required)
 location ^~ /{{ service_name }}/health {
+    include /config/nginx/proxy.conf;
     include /config/nginx/resolver.conf;
 
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
     set $upstream_proto "{{ upstream_proto }}";
+
+    # Disable buffering for health checks
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_request_buffering off;
+    proxy_max_temp_file_size 0;
 
     # Basic headers for health checks
     proxy_set_header Host $host;

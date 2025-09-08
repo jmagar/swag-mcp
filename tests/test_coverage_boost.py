@@ -118,11 +118,20 @@ class TestValidators:
         assert normalize_unicode_text("café") == "café"
         assert normalize_unicode_text("\ufeffHello", remove_bom=True) == "Hello"
         assert normalize_unicode_text("") == ""
+        # Disallowed characters should raise
+        import pytest
+        with pytest.raises(ValueError):
+            normalize_unicode_text("\u202E")  # RLO (Right-to-Left Override)
 
     def test_detect_and_handle_encoding(self):
         """Test encoding detection."""
         assert detect_and_handle_encoding(b"Hello") == "Hello"
         assert detect_and_handle_encoding(b"") == ""
+        # UTF encodings with BOMs
+        assert detect_and_handle_encoding("Hello".encode("utf-16")) == "Hello"
+        assert detect_and_handle_encoding("Hello".encode("utf-32")) == "Hello"
+        # cp1252 example ("é")
+        assert detect_and_handle_encoding("caf\xe9".encode("cp1252")) == "café"
 
 
 class TestFormatters:
@@ -151,8 +160,7 @@ class TestFormatters:
     def test_get_possible_sample_filenames(self):
         """Test sample filename generation."""
         filenames = get_possible_sample_filenames("test")
-        assert isinstance(filenames, list)
-        assert len(filenames) > 0
+        assert filenames == ["test.subdomain.conf.sample", "test.subfolder.conf.sample"]
 
     def test_format_config_list(self):
         """Test config list formatting."""
@@ -175,6 +183,16 @@ class TestErrorHandlers:
         permission_error = OSError(errno.EACCES, "Permission denied", "test.conf")
         with pytest.raises(OSError):
             handle_os_error(permission_error, "testing")
+
+        disk_full = OSError(errno.ENOSPC, "No space left on device", "test.conf")
+        with pytest.raises(OSError) as e1:
+            handle_os_error(disk_full, "writing", "test.conf")
+        assert e1.value.errno == errno.ENOSPC
+
+        read_only = OSError(errno.EROFS, "Read-only file system", "test.conf")
+        with pytest.raises(OSError) as e2:
+            handle_os_error(read_only, "writing", "test.conf")
+        assert e2.value.errno == errno.EROFS
 
 
 class TestConstants:
@@ -279,7 +297,7 @@ class TestSwagManagerBasics:
 
         content = "include /config/nginx/authelia-server.conf;"
         result = service._extract_auth_method(content)
-        assert isinstance(result, str)
+        assert result == "authelia"
 
     @pytest.mark.asyncio
     @pytest.mark.asyncio

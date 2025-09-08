@@ -8,21 +8,37 @@ Based on the Docker MCP token-efficient formatting system.
 """
 
 import re
+import unicodedata
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
 
 from swag_mcp.models.config import ListFilterType
 from swag_mcp.models.enums import BackupSubAction
+from swag_mcp.utils.formatters import format_duration, format_file_size, format_health_check_result
 
 
 class TokenEfficientFormatter:
     """Formatter class for creating token-efficient responses with dual content."""
 
+    @staticmethod
+    def _nfkc(text: str) -> str:
+        """Normalize Unicode text using NFKC form for consistent display.
+
+        Args:
+            text: User-provided string to normalize
+
+        Returns:
+            Unicode normalized string safe for display
+
+        """
+        return unicodedata.normalize("NFKC", text)
+
     def _create_tool_result(
-        self, text_content: str, structured_content: dict[str, Any]
+        self, text_content: str, structured_content: Mapping[str, Any] | dict[str, Any]
     ) -> ToolResult:
         """Create ToolResult with consistent structure."""
         return ToolResult(
@@ -32,7 +48,7 @@ class TokenEfficientFormatter:
 
     def _format_success_failure(
         self,
-        result: dict[str, Any],
+        result: Mapping[str, Any],
         success_message: str,
         failure_template: str = "failed",
         show_backup: bool = False,
@@ -53,36 +69,33 @@ class TokenEfficientFormatter:
             error_msg = result.get("message", "Unknown error")
             return f"{status} {failure_template}: {error_msg}"
 
-    @staticmethod
-    def format_file_size(size_bytes: int) -> str:
-        """Format file size in human-readable format."""
-        if size_bytes == 0:
-            return "0B"
+    def format_file_size_compact(self, size_bytes: int) -> str:
+        """Format file size in compact format (no spaces).
 
-        units = ["B", "KB", "MB", "GB"]
-        unit_index = 0
-        size = float(size_bytes)
+        Args:
+            size_bytes: File size in bytes
 
-        while size >= 1024 and unit_index < len(units) - 1:
-            size /= 1024
-            unit_index += 1
+        Returns:
+            Formatted file size string in compact format (e.g., "1.5KB", "2.3MB")
 
-        if unit_index == 0:
-            return f"{int(size)}{units[unit_index]}"
-        else:
-            return f"{size:.1f}{units[unit_index]}"
+        """
+        # Use canonical formatter but remove spaces for compact display
+        canonical_size = format_file_size(size_bytes)
+        return canonical_size.replace(" ", "")
 
-    @staticmethod
-    def format_duration(milliseconds: float) -> str:
-        """Format duration in human-readable format."""
-        if milliseconds < 1000:
-            return f"{milliseconds:.0f}ms"
-        elif milliseconds < 60000:
-            return f"{milliseconds / 1000:.1f}s"
-        else:
-            minutes = int(milliseconds // 60000)
-            seconds = (milliseconds % 60000) / 1000
-            return f"{minutes}m{seconds:.1f}s"
+    def format_duration_compact(self, milliseconds: float | None) -> str:
+        """Format duration in compact format (no spaces).
+
+        Args:
+            milliseconds: Duration in milliseconds, or None for unknown duration
+
+        Returns:
+            Formatted duration string in compact format
+
+        """
+        # Use canonical formatter but remove spaces for compact display
+        canonical_duration = format_duration(milliseconds)
+        return canonical_duration.replace(" ", "")
 
     @staticmethod
     def format_timestamp(timestamp: datetime) -> str:
@@ -90,7 +103,7 @@ class TokenEfficientFormatter:
         return timestamp.strftime("%m-%d %H:%M")
 
     def format_list_result(
-        self, result: dict[str, Any], list_filter: ListFilterType = "all"
+        self, result: Mapping[str, Any], list_filter: ListFilterType = "all"
     ) -> ToolResult:
         """Format configuration list with token-efficient display.
 
@@ -186,9 +199,14 @@ class TokenEfficientFormatter:
         lines = content.splitlines() if content else []
         line_count = len(lines)
 
-        # Build compact header
-        size_info = self.format_file_size(character_count)
-        header = f"📄 {config_name} ({size_info}, {line_count} lines)"
+        # Build compact header with safe size formatting using canonical formatter
+        size_bytes = result.get("size_bytes")
+        size_info = (
+            self.format_file_size_compact(size_bytes)
+            if isinstance(size_bytes, int) and size_bytes >= 0
+            else f"{character_count} chars"
+        )
+        header = f"📄 {self._nfkc(config_name)} ({size_info}, {line_count} lines)"
 
         # Always show the full file with line numbers
         output_lines = [header, ""]
@@ -198,23 +216,17 @@ class TokenEfficientFormatter:
 
         return self._create_tool_result(formatted_content, result)
 
-    def format_health_check_result(self, result: dict[str, Any]) -> ToolResult:
+    def format_health_check_result(self, result: Mapping[str, Any]) -> ToolResult:
         """Format health check result with status and timing.
 
         Token Efficiency Strategy: Single line with status indicator and metrics.
+        Prefers 'success' over 'accessible' attribute for consistency.
         """
-        success = result.get("success", False)
-        domain = result.get("domain", "unknown")
+        self._nfkc(result.get("domain", "unknown"))
 
-        if success:
-            status_code = result.get("status_code", "unknown")
-            response_time = result.get("response_time_ms", 0)
-            time_str = self.format_duration(response_time)
-
-            formatted_content = f"✅ {domain} accessible (HTTP {status_code}, {time_str})"
-        else:
-            error_msg = result.get("error", "Unknown error")
-            formatted_content = f"❌ {domain} unreachable: {error_msg}"
+        # Use canonical health check formatter for consistency
+        formatted_message, _ = format_health_check_result(result)
+        formatted_content = formatted_message
 
         return self._create_tool_result(formatted_content, result)
 
@@ -276,9 +288,13 @@ class TokenEfficientFormatter:
         log_lines = logs.splitlines() if logs else []
         actual_lines = len(log_lines)
 
-        # Build compact header
-        size_info = self.format_file_size(character_count)
-        header = f"📋 {log_type} logs ({actual_lines} lines, {size_info})"
+        # Build compact header with safe size formatting using canonical formatter
+        size_info = (
+            self.format_file_size_compact(character_count)
+            if isinstance(character_count, int) and character_count >= 0
+            else f"{character_count} chars"
+        )
+        header = f"📋 {self._nfkc(log_type)} logs ({actual_lines} lines, {size_info})"
 
         if actual_lines == 0:
             formatted_content = f"{header}\n  (no logs found)"
@@ -290,7 +306,9 @@ class TokenEfficientFormatter:
 
         return self._create_tool_result(formatted_content, result)
 
-    def format_backup_result(self, result: dict[str, Any], backup_action: str) -> ToolResult:
+    def format_backup_result(
+        self, result: dict[str, Any], backup_action: BackupSubAction
+    ) -> ToolResult:
         """Format backup operation result.
 
         Token Efficiency Strategy: Summary with counts and age grouping.
@@ -332,18 +350,19 @@ class TokenEfficientFormatter:
                     else:
                         older_count += 1
 
-                parts = [f"💾 Backups: {total_count} total"]
+                head = f"💾 Backups: {total_count} total"
+                extras: list[str] = []
                 if today_count > 0:
-                    parts.append(f"{today_count} today")
+                    extras.append(f"{today_count} today")
                 if week_count > 0:
-                    parts.append(f"{week_count} this week")
+                    extras.append(f"{week_count} this week")
                 if older_count > 0:
-                    parts.append(f"{older_count} older")
-
-                formatted_content = " (".join(parts) + ")" if len(parts) > 1 else parts[0]
+                    extras.append(f"{older_count} older")
+                formatted_content = f"{head} ({', '.join(extras)})" if extras else head
 
         else:
-            formatted_content = f"❓ Unknown backup action: {backup_action}"
+            # This should not happen with proper typing, but handle gracefully
+            formatted_content = f"❓ Unknown backup action: {backup_action}"  # type: ignore[unreachable]
 
         return self._create_tool_result(formatted_content, result)
 
@@ -364,8 +383,8 @@ class TokenEfficientFormatter:
 
         Token Efficiency Strategy: Concise error with action context.
         """
-        pretty_action = action.replace("_", " ").title()
-        formatted_content = f"❌ {pretty_action} failed: {error_message}"
+        pretty_action = self._nfkc(action).replace("_", " ").replace("-", " ").strip().title()
+        formatted_content = f"❌ {pretty_action} failed: {self._nfkc(error_message)}"
 
         structured_data = {"success": False, "error": error_message, "action": action}
         if additional_data:

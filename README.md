@@ -131,7 +131,7 @@ SWAG_MCP_DEFAULT_AUTH_METHOD=authelia    # Never expose services without auth!
 
 # Server Settings
 SWAG_MCP_HOST=0.0.0.0  # For Docker/external access
-# Note: Container uses port 8000 internally (default), host port mapping configurable via SWAG_MCP_PORT
+# Note: Container listens on port 8000 internally. Host port mapping is configured via SWAG_MCP_PORT in Docker/Compose.
 ```
 
 <details>
@@ -312,6 +312,7 @@ Update specific fields in existing configurations without full rewrites.
 - **`add_mcp`** — Add an MCP streaming-endpoint path (e.g., "/mcp")
 
 **Natural Language Examples:**
+
 - *"Update port for app.subdomain.conf to 8081"*
 - *"Change upstream app for app.subdomain.conf to newapp"*
 - *"Update app.subdomain.conf to use newapp:8081"*
@@ -489,9 +490,11 @@ swag-mcp/
 ## 🔐 Security Best Practices
 
 ### 🛡️ Authentication by Default
+
 **All services are protected with Authelia authentication by default**. This prevents accidental exposure of services to the internet.
 
 ### ⚠️ Disabling Authentication (Not Recommended)
+
 If you absolutely must disable authentication:
 
 1. Set environment variable: `SWAG_MCP_DEFAULT_AUTH_METHOD=none`
@@ -499,6 +502,7 @@ If you absolutely must disable authentication:
 3. **Warning**: Only do this for internal networks!
 
 ### 🤖 MCP Services Security
+
 MCP servers are powerful and must be protected:
 - Always use authentication for MCP endpoints
 - Monitor access logs regularly
@@ -545,18 +549,24 @@ docker compose ps swag-mcp
 ### Common Issues & Solutions
 
 #### Port Already in Use
+
 **Problem**: `bind: address already in use`
+
 **Solution**: Change `SWAG_MCP_PORT` in your `.env` file to an available port
 
 #### Permission Denied Errors
+
 **Problem**: Cannot access SWAG directories
+
 **Solution**:
 - Ensure Docker has access to mounted volumes
 - Check directory permissions: `ls -la /path/to/swag/nginx/proxy-confs`
 - Verify user/group ownership matches Docker container
 
 #### Health Checks Failing
+
 **Problem**: Services appear unreachable
+
 **Solution**:
 - Verify services are running: `docker ps`
 - Check domain DNS resolution
@@ -564,21 +574,27 @@ docker compose ps swag-mcp
 - Test direct access: `curl http://service:port`
 
 #### Logs Not Appearing
+
 **Problem**: Log commands return empty
+
 **Solution**:
 - Check `SWAG_MCP_LOG_DIRECTORY` permissions
 - Verify log directory exists and is writable
 - Ensure container has access to log volume mount
 
 #### Configuration Not Applied
+
 **Problem**: New configs don't take effect
+
 **Solution**:
 - Restart SWAG container: `docker restart swag`
 - Check SWAG logs for configuration errors
 - Verify config file syntax and permissions
 
 #### Connection Timeouts
+
 **Problem**: AI assistant loses connection
+
 **Solution**:
 - Check container status: `docker compose ps swag-mcp`
 - Verify network connectivity: `curl http://localhost:${SWAG_MCP_PORT}/health`

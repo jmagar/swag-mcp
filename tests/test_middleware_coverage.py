@@ -197,15 +197,15 @@ class TestMiddlewareUtilities:
             assert pattern not in result
             # When message is too short after redaction, returns generic error
             assert result == "Invalid request parameters"
-        
+
         # Test eval pattern separately (partial redaction leaves some content)
         eval_msg = "Error: eval('malicious code')"
         result = sanitize_error_message(eval_msg)
         assert "eval(" not in result  # The dangerous part is redacted
         assert "[REDACTED]" in result
-            
+
         # Test with longer message that preserves some content
-        long_msg = f"An unexpected error occurred while processing request: {{{{7*7}}}}"
+        long_msg = "An unexpected error occurred while processing request: {{7*7}}"
         result = sanitize_error_message(long_msg)
         assert "{{7*7}}" not in result
         assert "[REDACTED]" in result

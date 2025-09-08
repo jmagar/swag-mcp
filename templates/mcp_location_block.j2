@@ -13,18 +13,20 @@
         proxy_cache off;
         proxy_request_buffering off;
         proxy_max_temp_file_size 0;
-        chunked_transfer_encoding off;
+        chunked_transfer_encoding on;
 
         # Connection management for SSE/streaming
         proxy_set_header Connection '';
 
         # Standard reverse proxy headers
+        add_header X-Request-Id $request_id always;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Request-Id $request_id;
 
         # MCP-specific headers
         proxy_set_header Accept $http_accept;
@@ -34,6 +36,11 @@
         proxy_connect_timeout 60s;
         proxy_send_timeout 86400s;
         proxy_read_timeout 86400s;
+
+        # Streaming cache control
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
 
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
@@ -87,6 +94,13 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
+        add_header Cache-Control "no-store" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+
+        set $upstream_app "{{ upstream_app }}";
+        set $upstream_port "{{ upstream_port }}";
+        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -97,6 +111,13 @@
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
+        add_header Cache-Control "no-store" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+
+        set $upstream_app "{{ upstream_app }}";
+        set $upstream_port "{{ upstream_port }}";
+        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }
 
@@ -115,9 +136,19 @@
     location /health {
         include /config/nginx/resolver.conf;
 
+        # Disable buffering for health checks
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering off;
+
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        add_header Cache-Control "no-store" always;
 
+        set $upstream_app "{{ upstream_app }}";
+        set $upstream_port "{{ upstream_port }}";
+        set $upstream_proto "{{ upstream_proto }}";
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }

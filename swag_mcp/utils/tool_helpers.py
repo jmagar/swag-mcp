@@ -1,6 +1,7 @@
 """Helper utilities for SWAG MCP tools to reduce code duplication."""
 
 import logging
+import unicodedata
 from typing import Any, Literal
 
 from fastmcp import Context
@@ -131,10 +132,9 @@ def validate_list_filter(list_filter: Literal["all", "active", "samples"]) -> di
         Error dict if invalid, None if valid
 
     """
-    import unicodedata
-
     # Normalize and case-fold the input for consistency
-    normalized = unicodedata.normalize("NFKC", (list_filter or "")).strip().lower()
+    filter_str = list_filter if list_filter is not None else ""
+    normalized = unicodedata.normalize("NFKC", filter_str).strip().lower()
 
     if normalized not in LIST_FILTERS:
         return error_response(

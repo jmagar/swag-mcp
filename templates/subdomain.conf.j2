@@ -20,8 +20,7 @@ server {
 
 {% if enable_quic %}
     # QUIC/HTTP3 Alt-Svc headers
-    add_header Alt-Svc 'h3-29=":443"; ma=86400' always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+    add_header Alt-Svc 'h3=":443"; ma=86400, h3-29=":443"; ma=86400' always;
 {% endif %}
 
     client_max_body_size 0;
@@ -48,6 +47,7 @@ server {
     }
 
     location /health {
+        include /config/nginx/proxy.conf;
         include /config/nginx/resolver.conf;
 
         # Disable buffering for health checks

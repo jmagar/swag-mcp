@@ -1,11 +1,10 @@
 """Pytest configuration and shared fixtures for SWAG MCP tests."""
 
-import asyncio
 import functools
 import logging
 import os
 import time
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -140,18 +139,11 @@ server {
             try:
                 config_file.write_text(content)
             except Exception:
-                logger.exception("Failed to create sample config file %s", filename, exc_info=True)
+                logger.exception("Failed to create sample config file %s", filename)
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        yield loop
-    finally:
-        loop.close()
+# Removed session-scoped event_loop fixture to avoid pytest-asyncio ≥0.22 deprecation
+# pytest-asyncio now handles event loop management automatically
 
 
 @pytest.fixture

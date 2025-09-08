@@ -1,5 +1,6 @@
 """Service-level exception definitions for SWAG MCP."""
 
+import unicodedata
 from collections.abc import Mapping
 from typing import Any, Self
 
@@ -22,8 +23,10 @@ class SwagServiceError(Exception):
             cause: Original exception that caused this error
 
         """
-        super().__init__(message)
-        self.message = message
+        # Normalize message for consistent display
+        normalized_message = unicodedata.normalize("NFKC", message)
+        super().__init__(normalized_message)
+        self.message = normalized_message
         self.context: dict[str, Any] = dict(context or {})
         self.cause = cause
 
@@ -35,7 +38,13 @@ class SwagServiceError(Exception):
         """Return formatted error message with context if available."""
         result = self.message
         if self.context:
-            context_str = ", ".join(f"{k}={v}" for k, v in self.context.items())
+            # Truncate and normalize context values to prevent excessively large error strings
+            context_parts = []
+            for k, v in self.context.items():
+                key = unicodedata.normalize("NFKC", str(k))
+                value = unicodedata.normalize("NFKC", str(v)[:100])
+                context_parts.append(f"{key}={value}")
+            context_str = ", ".join(context_parts)
             result = f"{result} (context: {context_str})"
         return result
 

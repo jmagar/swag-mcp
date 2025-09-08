@@ -31,7 +31,7 @@ The SWAG MCP template system uses **Jinja2** templates to generate nginx reverse
 
 ### Template Architecture
 
-```
+```text
 templates/
 ├── subdomain.conf.j2          # Standard subdomain reverse proxy
 ├── subfolder.conf.j2          # Standard path-based routing

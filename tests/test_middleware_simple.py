@@ -56,14 +56,15 @@ class TestErrorHandlingUtils:
 
     def test_create_user_friendly_error_validation(self):
         """Test user-friendly error creation for validation errors."""
-        # Test with a ValidationError-like error (the function checks for "ValidationError" in type name)
+        # Test with a ValidationError-like error
+        # (the function checks for "ValidationError" in type name)
         class ValidationError(Exception):
             pass
-        
+
         error = ValidationError("string_pattern_mismatch in service_name")
         result = create_user_friendly_error(error)
         assert "Invalid service name" in result
-        
+
         # Test with a generic ValueError - should just sanitize the message
         error2 = ValueError("some generic error")
         result2 = create_user_friendly_error(error2)
@@ -99,6 +100,15 @@ class TestErrorHandlingUtils:
         result = create_user_friendly_error(error)
         assert isinstance(result, str)
         assert len(result) > 0
+
+    def test_create_user_friendly_error_toolerror_inner(self):
+        """ToolError with inner message should be unwrapped and mapped/sanitized."""
+        from fastmcp.exceptions import ToolError
+        err = ToolError("Error calling tool 'swag': ValueError: invalid domain format")
+        result = create_user_friendly_error(err)
+        assert isinstance(result, str)
+        assert "invalid" in result.lower()
+        assert "domain" in result.lower()
 
     def test_security_error_middleware_creation(self):
         """Test SecurityErrorMiddleware creation."""
@@ -190,7 +200,7 @@ class TestErrorHandlingUtils:
             "postgres://user:password@localhost/mydb",
             "Connection failed: mysql://admin:secret@192.168.1.100/production",
         ]
-        
+
         for pattern in patterns:
             result = sanitize_error_message(f"Database error: {pattern}")
             # Connection strings should be sanitized

@@ -114,6 +114,12 @@ class SwagConfig(BaseSettings):
         default=3, description="Maximum number of retries for failed operations"
     )
 
+    # Health check settings
+    health_check_insecure: bool = Field(
+        default=False,
+        description="Disable SSL certificate verification for health checks (not recommended)"
+    )
+
     # Validators to handle empty string values
     handle_empty_auth_method = field_validator("default_auth_method", mode="before")(
         create_empty_string_validator(DEFAULT_AUTH_METHOD)

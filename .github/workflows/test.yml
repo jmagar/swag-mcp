@@ -72,8 +72,10 @@ jobs:
         fi
 
     - name: Type check with mypy
+      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
       run: |
         uv run mypy swag_mcp --ignore-missing-imports
+      continue-on-error: false  # Enforce type checking (fail CI on type errors)
 
     - name: Run tests with pytest
       env:

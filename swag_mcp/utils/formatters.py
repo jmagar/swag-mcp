@@ -2,10 +2,12 @@
 
 from datetime import datetime
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from swag_mcp.core.constants import (
     CONFIG_TYPE_SUBDOMAIN,
     CONFIG_TYPE_SUBFOLDER,
+    CONFIG_TYPES,
     SAMPLE_EXTENSION,
 )
 
@@ -62,11 +64,11 @@ def format_timestamp(timestamp: datetime) -> str:
     return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def format_duration(milliseconds: float) -> str:
+def format_duration(milliseconds: float | None) -> str:
     """Format duration in human-readable format.
 
     Args:
-        milliseconds: Duration in milliseconds
+        milliseconds: Duration in milliseconds, or None for unknown duration
 
     Returns:
         Formatted duration string (e.g., "1.5s", "500.0ms", "1m 0.0s")
@@ -75,9 +77,18 @@ def format_duration(milliseconds: float) -> str:
         format_duration(500) -> "500.0ms"
         format_duration(1500) -> "1.5s"
         format_duration(90000) -> "1m 30.0s"
+        format_duration(None) -> "unknown"
+        format_duration(0) -> "0.0ms"
 
     """
-    if milliseconds < 1000:
+    # Handle None values explicitly as per CodeRabbit suggestion
+    if milliseconds is None:
+        return "unknown"
+
+    # Handle zero or negative values with explicit zero formatting
+    if milliseconds <= 0:
+        return "0.0ms"
+    elif milliseconds < 1000:
         return f"{milliseconds:.1f}ms"
     elif milliseconds < 60000:
         seconds = milliseconds / 1000
@@ -93,7 +104,7 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
 
     Args:
         result: Health check result object with attributes:
-            - success: bool
+            - success: bool (preferred) or accessible: bool (fallback)
             - status_code: int | None
             - response_time_ms: int | None
             - response_body: str | None
@@ -106,7 +117,17 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
 
     """
     # Handle both dict and object formats for backward compatibility
-    success = result.get("accessible") if isinstance(result, dict) else result.success
+    # Prefer 'success' over 'accessible' as per CodeRabbit suggestion
+    if isinstance(result, dict):
+        success = result.get("success")
+        if success is None:
+            success = result.get("accessible")
+    else:
+        success = getattr(result, "success", None)
+        if success is None:
+            success = getattr(result, "accessible", None)
+    success = bool(success)
+
     if success:
         status_icon = "✅"
         status_code_value = (
@@ -121,7 +142,8 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
         response_time_ms = (
             result.get("response_time_ms") if isinstance(result, dict) else result.response_time_ms
         )
-        time_text = f"({format_duration(response_time_ms)})" if response_time_ms else ""
+        # Use improved format_duration that handles None values internally
+        time_text = f"({format_duration(response_time_ms)})" if response_time_ms is not None else ""
 
         response_info = ""
         response_body = (
@@ -141,11 +163,31 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
             else getattr(result, "redirect_url", None)
         )
         url = result.get("url") if isinstance(result, dict) else getattr(result, "url", "unknown")
+        # Ensure url is a string, not bytes
+        if isinstance(url, bytes):
+            url = url.decode('utf-8', errors='replace')
+        domain = urlsplit(url).netloc or url
+        # Ensure domain is a string (urlsplit can return bytes)
+        if isinstance(domain, bytes):
+            domain = domain.decode('utf-8', errors='replace')
         if redirect_url and redirect_url != url:
             redirect_info = f" -> {redirect_url}"
 
-        message = f"{status_icon} {url} - {status_text} {time_text}{redirect_info}{response_info}"
-        status = "successful"
+        message = (
+            f"{status_icon} {domain} - {status_text} {time_text}{redirect_info}{response_info}"
+        )
+        # Check if the status code indicates success (2xx or 3xx)
+        status_code_value = (
+            result.get("status_code")
+            if isinstance(result, dict)
+            else getattr(result, "status_code", None)
+        )
+        if status_code_value and isinstance(status_code_value, int):
+            # 2xx and 3xx are considered successful
+            status = "successful" if 200 <= status_code_value < 400 else "failed"
+        else:
+            # If accessible but no status code, assume success
+            status = "successful"
 
     else:
         status_icon = "❌"
@@ -166,7 +208,10 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
                 if isinstance(result, dict)
                 else getattr(result, "response_time_ms", None)
             )
-            time_text = f"({format_duration(response_time_ms)})" if response_time_ms else ""
+            # Use improved format_duration that handles None values internally
+            time_text = (
+                f"({format_duration(response_time_ms)})" if response_time_ms is not None else ""
+            )
         else:
             status_text = "Failed"
             time_text = ""
@@ -177,8 +222,15 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
         url_value = (
             result.get("url") if isinstance(result, dict) else getattr(result, "url", "unknown")
         )
+        # Ensure url_value is a string, not bytes
+        if isinstance(url_value, bytes):
+            url_value = url_value.decode('utf-8', errors='replace')
+        domain_value = urlsplit(url_value).netloc or url_value
+        # Ensure domain_value is a string (urlsplit can return bytes)
+        if isinstance(domain_value, bytes):
+            domain_value = domain_value.decode('utf-8', errors='replace')
         error_info = f" - {error_value}" if error_value else ""
-        message = f"{status_icon} {url_value} - {status_text} {time_text}{error_info}"
+        message = f"{status_icon} {domain_value} - {status_text} {time_text}{error_info}"
         status = f"failed: {error_value}" if error_value else "failed"
 
     return message, status
@@ -201,12 +253,11 @@ def build_template_filename(config_type: str) -> str:
         ValueError: If config_type is not one of the valid types
 
     """
-    valid_config_types = {"subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"}
-
-    if config_type not in valid_config_types:
+    # Use canonical CONFIG_TYPES constant
+    if config_type not in CONFIG_TYPES:
         raise ValueError(
             f"Invalid config type '{config_type}'. "
-            f"Must be one of: {', '.join(sorted(valid_config_types))}"
+            f"Must be one of: {', '.join(CONFIG_TYPES)}"
         )
 
     return f"{config_type}.conf.j2"
@@ -223,20 +274,20 @@ def get_possible_sample_filenames(service_name: str) -> list[str]:
 
     """
     return [
-        f"{service_name}.{CONFIG_TYPE_SUBDOMAIN}{SAMPLE_EXTENSION}",
-        f"{service_name}.{CONFIG_TYPE_SUBFOLDER}{SAMPLE_EXTENSION}",
+        f"{service_name}.{CONFIG_TYPE_SUBDOMAIN}.conf{SAMPLE_EXTENSION}",
+        f"{service_name}.{CONFIG_TYPE_SUBFOLDER}.conf{SAMPLE_EXTENSION}",
     ]
 
 
 def format_config_list(list_filter: Literal["all", "active", "samples"], total_count: int) -> str:
-    """Format configuration list message for display.
+    """Format configuration list message for display with consistent header format.
 
     Args:
         list_filter: The filter used for listing ('all', 'active', 'samples')
         total_count: Total number of configurations found
 
     Returns:
-        Formatted message string for display
+        Formatted message string for display following guideline specifications
 
     Examples:
         format_config_list("all", 5) -> "Found 5 configurations (all types)"
@@ -244,7 +295,7 @@ def format_config_list(list_filter: Literal["all", "active", "samples"], total_c
         format_config_list("samples", 0) -> "No sample configurations found"
 
     """
-    # Use dictionary lookup for cleaner conditionals
+    # Standardized no-results messages aligned with guidelines
     no_results_messages = {
         "all": "No configurations found",
         "active": "No active configurations found",
@@ -254,10 +305,10 @@ def format_config_list(list_filter: Literal["all", "active", "samples"], total_c
     if total_count == 0:
         return no_results_messages.get(list_filter, f"No {list_filter} configurations found")
 
-    # Handle singular vs plural
+    # Handle singular vs plural with consistent formatting
     config_word = "configuration" if total_count == 1 else "configurations"
 
-    # Use dictionary lookup for found messages
+    # Standardized found messages aligned with header specifications
     found_messages = {
         "all": f"Found {total_count} {config_word} (all types)",
         "active": f"Found {total_count} active {config_word}",
@@ -303,15 +354,11 @@ def format_config_list_details(
         is_sample = config.get("is_sample", False)
 
         # Format file size using shared TokenEfficientFormatter helper
-        if isinstance(size_bytes, int):
-            # Use the existing format_file_size which provides the full format
-            # (e.g., "1.5 KB" vs TokenEfficientFormatter's compact "1.5KB")
-            size_str = format_file_size(size_bytes)
-        else:
-            size_str = "unknown size"
+        # Use ternary for simpler code structure
+        size_str = format_file_size(size_bytes) if isinstance(size_bytes, int) else "unknown size"
 
         # Format timestamp using existing utility function
-        # (keeps full format "YYYY-MM-DD HH:MM:SS" vs TokenEfficientFormatter's compact "MM-DD HH:MM")
+        # (keeps full format "YYYY-MM-DD HH:MM:SS" vs compact "MM-DD HH:MM")
         if hasattr(modified_time, "strftime"):
             time_str = format_timestamp(modified_time)
         else:

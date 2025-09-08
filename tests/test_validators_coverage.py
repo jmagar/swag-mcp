@@ -40,13 +40,14 @@ class TestDomainValidation:
             "",
             ".",
             ".com",
-            # "example.",  # Gets normalized to "example" which is valid  
+            # "example.",  # Gets normalized to "example" which is valid
             "example..com",
             "-example.com",
             "example-.com",
             "example.com-",
             "toolongdomainnamethatshouldnotbeallowedandwillexceedthelimit.com" * 10,
-            # "example.toolongsubdomainnamethatshouldnotbeallowedandwillexceedthelimit",  # Validator doesn't check individual label lengths
+            # "example.toolongsubdomainnamethatshouldnotbeallowedandwillexceedthelimit",
+            # Validator doesn't check individual label lengths
             "ex ample.com",
             # "example.c",  # Allowed by current validator (single-char TLD)
             "*.example.com",
@@ -178,9 +179,11 @@ class TestConfigFilenameValidation:
         # Test service.configtype -> adds .conf
         result = validate_config_filename("app.subdomain")
         assert result == "app.subdomain.conf", "Name with one dot should get .conf extension"
-        
+
         result = validate_config_filename("my-service.subfolder")
-        assert result == "my-service.subfolder.conf", "Name with config type should get .conf extension"
+        assert result == "my-service.subfolder.conf", (
+            "Name with config type should get .conf extension"
+        )
 
         # Test that existing .conf is not duplicated
         result = validate_config_filename("app.subdomain.conf")
@@ -192,14 +195,15 @@ class TestConfigFilenameValidation:
 
     def test_config_filename_requires_proper_extension(self):
         """Test that complex filenames without proper extension are rejected."""
-        # Complex filenames that can't be auto-extended (more than one dot, not ending in .conf/.conf.sample)
+        # Complex filenames that can't be auto-extended
+        # (more than one dot, not ending in .conf/.conf.sample)
         invalid_complex_names = [
             "app.test.txt",  # Wrong extension
             "app.subdomain.json",  # Wrong extension
             "app.multiple.dots",  # Multiple dots without .conf
             "app.subdomain.conf.txt",  # Wrong final extension
         ]
-        
+
         for name in invalid_complex_names:
             with pytest.raises(ValueError, match="Must be a full filename"):
                 validate_config_filename(name)
@@ -318,7 +322,7 @@ class TestFileContentSafety:
 
         # Should handle nonexistent files gracefully
         result = validate_file_content_safety(nonexistent_path)
-        assert isinstance(result, bool)
+        assert result is False
 
     def test_directory_safety(self):
         """Test safety validation for directories."""
@@ -329,7 +333,7 @@ class TestFileContentSafety:
 
             # Should handle directories appropriately
             result = validate_file_content_safety(dir_path)
-            assert isinstance(result, bool)
+            assert result is False
 
 
 class TestUnicodeTextNormalization:
@@ -382,7 +386,7 @@ class TestEncodingDetection:
 
     def test_latin1_detection(self):
         """Test Latin-1 encoding detection."""
-        # Note: "Café" encoded as latin-1 creates bytes that when misinterpreted 
+        # Note: "Café" encoded as latin-1 creates bytes that when misinterpreted
         # as UTF-16 produce Private Use Area characters that fail validation
         # This is expected behavior to prevent encoding confusion attacks
         latin1_bytes = "Café".encode("latin-1")
