@@ -70,12 +70,12 @@ def handle_tool_errors(
             return formatter.format_error_result(error_msg, func.__name__)
         except FileNotFoundError as e:
             error_msg = str(e)
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             formatter = _get_token_formatter()
             return formatter.format_error_result(error_msg, func.__name__)
         except ValueError as e:
             error_msg = str(e)
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             formatter = _get_token_formatter()
             return formatter.format_error_result(error_msg, func.__name__)
         except Exception as e:

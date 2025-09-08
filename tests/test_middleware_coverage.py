@@ -154,7 +154,6 @@ class TestMiddlewareUtilities:
             ("File /etc/passwd not found", "/etc/passwd"),
             ("Connection to 192.168.1.1:8080 failed", "192.168.1.1:8080"),
             ("Template {{config.evil}} failed", "{{config.evil}}"),
-            # SQL patterns are not currently sanitized by the function
         ]
 
         for message, pattern in patterns_to_test:

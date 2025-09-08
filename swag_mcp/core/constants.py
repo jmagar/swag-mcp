@@ -85,10 +85,6 @@ DOMAIN_PATTERN = (
     r"(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$"
 )
 
-# Docker and health check
-DOCKER_CONTAINER_NAME = "swag"
-HEALTH_CHECK_TIMEOUT = 30
-
 # Backup settings
 DEFAULT_BACKUP_RETENTION_DAYS = 7
 

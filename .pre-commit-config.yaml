@@ -31,9 +31,10 @@ repos:
           - aiofiles==24.1.0
           - types-aiofiles
           - pyyaml==6.0.0
+          - types-PyYAML
           - pytest
           - types-requests
-          - regex==2024.11.6
-          - types-regex==2024.11.0
-          - types-jinja2==2.11.2
+          - regex>=2024.5.15
+          - types-regex>=2025.7.34.20250809
+          - types-Jinja2
         args: [--config-file=pyproject.toml]

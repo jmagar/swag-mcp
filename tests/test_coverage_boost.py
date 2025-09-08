@@ -107,6 +107,7 @@ class TestValidators:
     def test_validate_config_filename(self):
         """Test config filename validation."""
         assert validate_config_filename("test.subdomain.conf") == "test.subdomain.conf"
+        # Bare names now get auto-extended with .conf
         assert validate_config_filename("test") == "test.conf"
 
         with pytest.raises(ValueError):
@@ -281,6 +282,7 @@ class TestSwagManagerBasics:
         assert isinstance(result, str)
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_list_backups(self, temp_dirs):
         """Test backup listing."""
         config_dir, template_dir = temp_dirs
@@ -289,6 +291,7 @@ class TestSwagManagerBasics:
         result = await service.list_backups()
         assert isinstance(result, list)
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_cleanup_old_backups_zero(self, temp_dirs):
         """Test backup cleanup."""
@@ -366,6 +369,7 @@ class TestSwagManagerAdvanced:
             yield service, config_path
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_read_config_success(self, service_with_files):
         """Test reading existing config."""
         service, _ = service_with_files
@@ -374,6 +378,7 @@ class TestSwagManagerAdvanced:
         assert "test.example.com" in content
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_validate_template_exists_true(self, service_with_files):
         """Test template existence validation."""
         service, _ = service_with_files
@@ -381,6 +386,7 @@ class TestSwagManagerAdvanced:
         result = await service.validate_template_exists("subdomain")
         assert result is True
 
+    @pytest.mark.asyncio
     @pytest.mark.asyncio
     async def test_validate_template_exists_false(self, service_with_files):
         """Test template non-existence."""

@@ -12,30 +12,34 @@ from swag_mcp.core.constants import (
 
 def format_file_size(size_bytes: int) -> str:
     """Format file size in human-readable format.
-    
+
+    This function provides a spaced format (e.g., "1.5 KB") compared to
+    TokenEfficientFormatter's compact format (e.g., "1.5KB").
+
     Args:
         size_bytes: File size in bytes
-        
+
     Returns:
         Formatted file size string (e.g., "1.5 KB", "2.3 MB")
-        
+
     Examples:
         format_file_size(0) -> "0 B"
         format_file_size(1024) -> "1.0 KB"
         format_file_size(1536) -> "1.5 KB"
         format_file_size(2097152) -> "2.0 MB"
+
     """
     if size_bytes == 0:
         return "0 B"
-        
+
     units = ["B", "KB", "MB", "GB", "TB"]
     unit_index = 0
     size = float(size_bytes)
-    
+
     while size >= 1024 and unit_index < len(units) - 1:
         size /= 1024
         unit_index += 1
-    
+
     if unit_index == 0:
         return f"{int(size)} {units[unit_index]}"
     else:
@@ -44,15 +48,16 @@ def format_file_size(size_bytes: int) -> str:
 
 def format_timestamp(timestamp: datetime) -> str:
     """Format timestamp for user display.
-    
+
     Args:
         timestamp: Datetime object to format
-        
+
     Returns:
         Formatted timestamp string in YYYY-MM-DD HH:MM:SS format
-        
+
     Examples:
         format_timestamp(datetime(2025, 1, 15, 14, 30, 0)) -> "2025-01-15 14:30:00"
+
     """
     return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -297,13 +302,16 @@ def format_config_list_details(
         modified_time = config.get("modified_time", "unknown")
         is_sample = config.get("is_sample", False)
 
-        # Format file size using utility function
+        # Format file size using shared TokenEfficientFormatter helper
         if isinstance(size_bytes, int):
+            # Use the existing format_file_size which provides the full format
+            # (e.g., "1.5 KB" vs TokenEfficientFormatter's compact "1.5KB")
             size_str = format_file_size(size_bytes)
         else:
             size_str = "unknown size"
 
-        # Format timestamp using utility function
+        # Format timestamp using existing utility function
+        # (keeps full format "YYYY-MM-DD HH:MM:SS" vs TokenEfficientFormatter's compact "MM-DD HH:MM")
         if hasattr(modified_time, "strftime"):
             time_str = format_timestamp(modified_time)
         else:

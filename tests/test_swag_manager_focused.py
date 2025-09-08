@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from jinja2 import StrictUndefined
 from swag_mcp.services.swag_manager import SwagManagerService
 
 
@@ -30,7 +31,7 @@ class TestSwagManagerFocused:
 
     async def test_get_file_lock_creation_and_reuse(self, temp_service):
         """Test file lock creation and reuse."""
-        test_file = Path("/test/path")
+        test_file = temp_service.config_path / "test.lock"
 
         lock1 = await temp_service._get_file_lock(test_file)
         lock2 = await temp_service._get_file_lock(test_file)
@@ -57,15 +58,21 @@ class TestSwagManagerFocused:
         """Test secure template environment has restricted globals."""
         env = temp_service.template_env
 
-        # Check safe globals are present
-        assert "range" in env.globals
-        assert "len" in env.globals
+        # Check strict undefined and sandbox features
+        assert env.undefined is StrictUndefined
+        assert hasattr(env, "is_safe_attribute")
+
+        # Check minimal safe globals are present (only type conversions)
         assert "str" in env.globals
+        assert "int" in env.globals
+        assert "bool" in env.globals
 
         # Check dangerous globals are absent
         assert "__import__" not in env.globals
         assert "eval" not in env.globals
         assert "exec" not in env.globals
+        assert "range" not in env.globals  # Even range is not included for security
+        assert "len" not in env.globals    # Even len is not included for security
 
     def test_template_security_attribute_blocking(self, temp_service):
         """Test template security blocks dangerous attributes."""
@@ -142,19 +149,19 @@ class TestSwagManagerFocused:
     def test_extract_upstream_value_patterns(self, temp_service):
         """Test upstream value extraction with different patterns."""
         # Test app extraction
-        content1 = "proxy_pass http://my-app:8080;"
+        content1 = 'set $upstream_app "my-app";'
         result1 = temp_service._extract_upstream_value(content1, "upstream_app")
-        assert isinstance(result1, str)
+        assert result1 == "my-app"
 
         # Test port extraction
-        content2 = "proxy_pass http://test-app:9000;"
+        content2 = 'set $upstream_port "9000";'
         result2 = temp_service._extract_upstream_value(content2, "upstream_port")
-        assert isinstance(result2, str)
+        assert result2 == "9000"
 
-        # Test with no match
+        # Test with no match - should raise ValueError
         content3 = "server_name example.com;"
-        result3 = temp_service._extract_upstream_value(content3, "upstream_app")
-        assert isinstance(result3, str)
+        with pytest.raises(ValueError, match="Could not find upstream_app"):
+            temp_service._extract_upstream_value(content3, "upstream_app")
 
     def test_extract_auth_method_variations(self, temp_service):
         """Test auth method extraction with different configs."""
@@ -206,7 +213,7 @@ class TestSwagManagerConcurrency:
 
     async def test_concurrent_file_lock_access(self, temp_service):
         """Test concurrent access to file locks."""
-        test_file = Path("/concurrent/test")
+        test_file = temp_service.config_path / "concurrent.lock"
 
         # Get locks concurrently
         lock_tasks = [temp_service._get_file_lock(test_file) for _ in range(5)]
@@ -235,13 +242,13 @@ class TestSwagManagerConcurrency:
         # Write files concurrently
         write_tasks = [
             temp_service._safe_write_file(file, content, f"op {i}")
-            for i, (file, content) in enumerate(zip(files, contents, strict=False))
+            for i, (file, content) in enumerate(zip(files, contents))
         ]
 
         await asyncio.gather(*write_tasks)
 
         # Verify all files written correctly
-        for file, content in zip(files, contents, strict=False):
+        for file, content in zip(files, contents):
             assert file.exists()
             assert file.read_text() == content
 
@@ -310,16 +317,18 @@ class TestSwagManagerBackupOperations:
 
     async def test_create_backup_existing_file(self, temp_service_with_files):
         """Test backup creation for existing file."""
-        backup_path = await temp_service_with_files._create_backup("test1.conf")
-
-        if backup_path:  # May return None if backup creation is optional
-            assert Path(backup_path).exists()
-            assert "backup" in backup_path
+        backup_name = await temp_service_with_files._create_backup("test1.conf")
+        
+        assert isinstance(backup_name, str)
+        backup_file = temp_service_with_files.config_path / backup_name
+        assert backup_file.exists()
+        assert ".backup." in backup_name
 
     async def test_create_backup_nonexistent_file(self, temp_service_with_files):
         """Test backup creation for nonexistent file."""
-        backup_path = await temp_service_with_files._create_backup("nonexistent.conf")
-        assert backup_path is None
+        # The method will raise an error for nonexistent files
+        with pytest.raises(FileNotFoundError):
+            await temp_service_with_files._create_backup("nonexistent.conf")
 
     async def test_list_backups(self, temp_service_with_files):
         """Test backup file listing."""

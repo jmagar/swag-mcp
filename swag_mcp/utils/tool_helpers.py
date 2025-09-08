@@ -131,7 +131,13 @@ def validate_list_filter(list_filter: Literal["all", "active", "samples"]) -> di
         Error dict if invalid, None if valid
 
     """
-    if list_filter not in LIST_FILTERS:
-        valid_filters = "', '".join(LIST_FILTERS)
-        return error_response(f"list_filter must be '{valid_filters}'")
+    import unicodedata
+
+    # Normalize and case-fold the input for consistency
+    normalized = unicodedata.normalize("NFKC", (list_filter or "")).strip().lower()
+
+    if normalized not in LIST_FILTERS:
+        return error_response(
+            f"Validation Error: list_filter must be one of: {', '.join(LIST_FILTERS)}"
+        )
     return None

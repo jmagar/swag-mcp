@@ -74,21 +74,19 @@ def validate_empty_string(value: Any, default: str) -> str:
 def validate_config_filename(filename: str) -> str:
     """Validate configuration filename for security.
 
-    This function requires a FULL filename including extension - no service name resolution
-    is performed.
+    Accepts a full filename or a bare name; if no extension is present, '.conf' is appended.
 
     Args:
-        filename: Full configuration filename to validate (e.g., "jellyfin.subdomain.conf")
+        filename: Configuration filename or bare name (e.g., "jellyfin" or "jellyfin.subdomain.conf")
 
     Returns:
         Validated filename if safe
 
     Raises:
-        ValueError: If filename contains dangerous patterns or is not a complete filename
+        ValueError: If filename contains dangerous patterns or invalid extension
 
     Note:
-        Must be a full filename including extension, e.g., 'service.conf' or a sample file
-        'service.conf.sample' — do not pass service names or partial paths
+        Bare names are auto-extended to '.conf'. Only '.conf' or '.conf.sample' are permitted.
 
     """
     if not filename:
@@ -99,10 +97,6 @@ def validate_config_filename(filename: str) -> str:
         normalized_filename = unicodedata.normalize("NFC", filename.strip())
     except (TypeError, ValueError) as e:
         raise ValueError(f"Configuration filename contains invalid Unicode: {str(e)}") from e
-
-    # Basic length check (on normalized filename)
-    if len(normalized_filename) > 255:
-        raise ValueError("Configuration filename too long")
 
     # Check for path separators (reject any path components)
     if "/" in normalized_filename or "\\" in normalized_filename:
@@ -140,6 +134,10 @@ def validate_config_filename(filename: str) -> str:
                 "Must be a full filename including extension, e.g., 'service.conf' or a sample "
                 "file 'service.conf.sample' — do not pass service names or partial paths"
             )
+
+    # Validate length AFTER potential auto-extension
+    if len(filename) > 255:
+        raise ValueError("Configuration filename too long")
 
     # Additional validation: ensure it follows proper naming convention
     # Use semantic suffix checks instead of raw segment counts
@@ -211,7 +209,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     # Validate Unicode characters with proper surrogate pair handling
     try:
         # Use our enhanced Unicode normalization which handles surrogates properly
-        validated_unicode = normalize_unicode_text(normalized_name, remove_bom=True)
+        validated_unicode = normalize_unicode_text(normalized_name, remove_bom=True, strict=True)
     except ValueError as e:
         raise ValueError(f"Service name contains invalid Unicode: {str(e)}") from e
 
@@ -313,8 +311,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         # Using Unicode property classes for proper international support
         if not regex.match(r"^[\p{L}\p{N}_-]+$", normalized_name):
             raise ValueError(
-                "Service name can only contain Unicode letters, numbers, hyphens, "
-                "and underscores"
+                "Service name can only contain Unicode letters, numbers, hyphens, and underscores"
             )
 
     # Must start with letter or number (Unicode-aware)
@@ -404,18 +401,19 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     return normalized_name
 
 
-def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
+def normalize_unicode_text(text: str, remove_bom: bool = True, *, strict: bool = False) -> str:
     """Normalize Unicode text and optionally remove BOM characters.
 
     Args:
         text: Text to normalize
         remove_bom: Whether to remove Byte Order Mark characters
+        strict: If True, raise errors for Private Use and Unassigned characters
 
     Returns:
         Normalized Unicode text
 
     Raises:
-        ValueError: If text contains invalid Unicode
+        ValueError: If text contains invalid Unicode (or problematic chars in strict mode)
 
     """
     if not isinstance(text, str):
@@ -444,7 +442,7 @@ def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
         raise ValueError(f"Invalid Unicode characters in text: {str(e)}") from e
 
     # Check for problematic Unicode characters and handle surrogates properly
-    problematic_chars = []
+    problematic_chars: list[str] = []
     i = 0
     while i < len(normalized):
         char = normalized[i]
@@ -489,11 +487,9 @@ def normalize_unicode_text(text: str, remove_bom: bool = True) -> str:
                 )
 
         # Check for other dangerous categories (but not surrogates now)
-        elif category in [
-            "Co",
-            "Cn",
-        ]:  # Private Use, Unassigned (excluding Cs which we handled above)
-            problematic_chars.append(f"U+{codepoint:04X} at position {i}")
+        elif category in ["Co", "Cn"]:  # Private Use, Unassigned
+            if strict:
+                problematic_chars.append(f"U+{codepoint:04X} at position {i}")
 
         # Check for directional override characters (security risk)
         elif char in "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069":
@@ -529,21 +525,21 @@ def detect_and_handle_encoding(content: bytes) -> str:
     try:
         # Try UTF-8 with BOM detection
         text = content.decode("utf-8-sig")  # Automatically removes UTF-8 BOM
-        return normalize_unicode_text(text, remove_bom=True)
+        return normalize_unicode_text(text, remove_bom=True, strict=False)
     except UnicodeDecodeError:
         pass
 
     # Try UTF-16 (handles BOM automatically)
     try:
         text = content.decode("utf-16")
-        return normalize_unicode_text(text, remove_bom=True)
+        return normalize_unicode_text(text, remove_bom=True, strict=False)
     except UnicodeDecodeError:
         pass
 
     # Try UTF-32 (handles BOM automatically)
     try:
         text = content.decode("utf-32")
-        return normalize_unicode_text(text, remove_bom=True)
+        return normalize_unicode_text(text, remove_bom=True, strict=False)
     except UnicodeDecodeError:
         pass
 
@@ -552,7 +548,7 @@ def detect_and_handle_encoding(content: bytes) -> str:
     for encoding in ["cp1252", "iso-8859-1", "latin-1"]:
         try:
             text = content.decode(encoding)
-            return normalize_unicode_text(text, remove_bom=True)
+            return normalize_unicode_text(text, remove_bom=True, strict=False)
         except UnicodeDecodeError:
             continue
 

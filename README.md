@@ -304,12 +304,12 @@ Intelligently tests service availability through multiple endpoints.
 #### `update` Action
 Update specific fields in existing configurations without full rewrites.
 
-**Supported Update Fields:**
+**Supported update fields:**
 
-- **`port`** — Update upstream port (e.g., "8080")
-- **`upstream`** — Update upstream app name or IP address (e.g., "myapp")
-- **`app`** — Update app name and port (e.g., "myapp:8080")
-- **`add_mcp`** — Add MCP streaming-endpoint path (e.g., "/mcp")
+- **`port`** — Update the upstream port (e.g., "8080")
+- **`upstream`** — Update the upstream app name or IP address (e.g., "myapp")
+- **`app`** — Update both app name and port (e.g., "myapp:8080")
+- **`add_mcp`** — Add an MCP streaming-endpoint path (e.g., "/mcp")
 
 **Natural Language Examples:**
 - *"Update port for app.subdomain.conf to 8081"*

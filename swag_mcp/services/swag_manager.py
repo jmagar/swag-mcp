@@ -641,9 +641,11 @@ class SwagManagerService:
 
         # Normalize Unicode and remove BOM for consistent processing
         try:
-            normalized_content = normalize_unicode_text(content, remove_bom=True)
+            normalized_content = normalize_unicode_text(content, remove_bom=True, strict=False)
         except ValueError as e:
-            raise ValueError(f"Invalid Unicode content in configuration '{config_name}': {str(e)}") from e
+            raise ValueError(
+                f"Invalid Unicode content in configuration '{config_name}': {str(e)}"
+            ) from e
 
         logger.debug(
             f"Validated configuration content for '{config_name}' ({len(normalized_content)} characters)"
@@ -674,7 +676,7 @@ class SwagManagerService:
         """
         # Normalize Unicode content before writing
         try:
-            normalized_content = normalize_unicode_text(content, remove_bom=True)
+            normalized_content = normalize_unicode_text(content, remove_bom=True, strict=False)
         except ValueError as e:
             raise ValueError(f"Invalid Unicode content for {operation_name}: {str(e)}") from e
 

@@ -170,12 +170,39 @@ class TestConfigFilenameValidation:
             assert result  # Should not be empty
 
     def test_config_filename_auto_extension(self):
-        """Test automatic .conf extension."""
+        """Test automatic .conf extension for various input formats."""
+        # Test simple service name -> adds .conf
         result = validate_config_filename("app")
-        assert result.endswith(".conf")
+        assert result == "app.conf", "Simple name should get .conf extension"
 
+        # Test service.configtype -> adds .conf
         result = validate_config_filename("app.subdomain")
-        assert result.endswith(".conf")
+        assert result == "app.subdomain.conf", "Name with one dot should get .conf extension"
+        
+        result = validate_config_filename("my-service.subfolder")
+        assert result == "my-service.subfolder.conf", "Name with config type should get .conf extension"
+
+        # Test that existing .conf is not duplicated
+        result = validate_config_filename("app.subdomain.conf")
+        assert result == "app.subdomain.conf", "Should not duplicate .conf extension"
+
+        # Test that .conf.sample is also accepted without modification
+        result = validate_config_filename("app.subdomain.conf.sample")
+        assert result == "app.subdomain.conf.sample", "Should accept .conf.sample files"
+
+    def test_config_filename_requires_proper_extension(self):
+        """Test that complex filenames without proper extension are rejected."""
+        # Complex filenames that can't be auto-extended (more than one dot, not ending in .conf/.conf.sample)
+        invalid_complex_names = [
+            "app.test.txt",  # Wrong extension
+            "app.subdomain.json",  # Wrong extension
+            "app.multiple.dots",  # Multiple dots without .conf
+            "app.subdomain.conf.txt",  # Wrong final extension
+        ]
+        
+        for name in invalid_complex_names:
+            with pytest.raises(ValueError, match="Must be a full filename"):
+                validate_config_filename(name)
 
     def test_invalid_config_filenames(self):
         """Test invalid configuration filenames."""

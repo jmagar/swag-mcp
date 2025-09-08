@@ -27,7 +27,7 @@ class TokenEfficientFormatter:
         """Create ToolResult with consistent structure."""
         return ToolResult(
             content=[TextContent(type="text", text=text_content)],
-            structured_content=structured_content
+            structured_content=structured_content,
         )
 
     def _format_success_failure(
@@ -35,7 +35,7 @@ class TokenEfficientFormatter:
         result: dict[str, Any],
         success_message: str,
         failure_template: str = "failed",
-        show_backup: bool = False
+        show_backup: bool = False,
     ) -> str:
         """Format common success/failure pattern with optional backup indicator."""
         success = result.get("success", False)
@@ -78,7 +78,7 @@ class TokenEfficientFormatter:
         if milliseconds < 1000:
             return f"{milliseconds:.0f}ms"
         elif milliseconds < 60000:
-            return f"{milliseconds/1000:.1f}s"
+            return f"{milliseconds / 1000:.1f}s"
         else:
             minutes = int(milliseconds // 60000)
             seconds = (milliseconds % 60000) / 1000
@@ -95,13 +95,14 @@ class TokenEfficientFormatter:
         """Format configuration list with token-efficient display.
 
         Token Efficiency Strategy: Grouped display with status indicators and size info.
-        
+
         Args:
             result: Dictionary containing:
                 - configs: List[str] - list of configuration file names
                 - total_count: int - total number of configurations
                 - list_filter: str - filter type used
             list_filter: Type of filter applied ("all", "active", "samples")
+
         """
         configs: list[str] = result.get("configs", [])
         total_count = result.get("total_count", len(configs))
@@ -136,7 +137,6 @@ class TokenEfficientFormatter:
         formatted_content = "\n".join(lines)
 
         return self._create_tool_result(formatted_content, result)
-
 
     def format_create_result(
         self, result: dict[str, Any], filename: str, health_check: str | None = None
@@ -192,7 +192,7 @@ class TokenEfficientFormatter:
 
         # Always show the full file with line numbers
         output_lines = [header, ""]
-        output_lines.extend([f"  {i+1:2d}│ {line}" for i, line in enumerate(lines)])
+        output_lines.extend([f"  {i + 1:2d}│ {line}" for i, line in enumerate(lines)])
 
         formatted_content = "\n".join(output_lines)
 
@@ -301,12 +301,12 @@ class TokenEfficientFormatter:
 
             if cleaned_count > 0:
                 formatted_content = (
-                    f"🧹 Cleaned {cleaned_count} old backups " f"(retention: {retention_days} days)"
+                    f"🧹 Cleaned {cleaned_count} old backups (retention: {retention_days} days)"
                 )
             else:
                 # Include the keyword 'cleanup' to satisfy tests and clarity
                 formatted_content = (
-                    f"🧹 No old backups to cleanup " f"(retention: {retention_days} days)"
+                    f"🧹 No old backups to cleanup (retention: {retention_days} days)"
                 )
 
         elif backup_action == BackupSubAction.LIST:

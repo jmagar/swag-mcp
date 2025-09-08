@@ -32,6 +32,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better Codecov accuracy and blame
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -114,6 +116,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better Codecov accuracy and blame
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3

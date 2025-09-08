@@ -92,7 +92,7 @@ async def _run_health_check(
         if health_result.success:
             status_code = health_result.status_code or "unknown"
             response_time = health_result.response_time_ms or 0
-            health_status = f"✅ Health check passed: {status_code} " f"({response_time}ms)"
+            health_status = f"✅ Health check passed: {status_code} ({response_time}ms)"
             await ctx.info(f"Health check successful for {server_name}")
         else:
             health_status = f"⚠️ Health check failed: {health_result.error or 'Unknown error'}"
@@ -617,9 +617,9 @@ def register_tools(mcp: FastMCP) -> None:
                 if update_field not in valid_update_fields:
                     return formatter.format_error_result(
                         f"Invalid update_field: '{update_field}'. Must be one of: {', '.join(valid_update_fields)}",
-                        "update"
+                        "update",
                     )
-                
+
                 # Now we know update_field is a valid UpdateFieldType
                 validated_update_field: UpdateFieldType = update_field  # type: ignore[assignment]
 

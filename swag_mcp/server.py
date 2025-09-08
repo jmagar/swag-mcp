@@ -50,6 +50,23 @@ def swag(*args: Any, **kwargs: Any) -> None:
     pass
 
 
+# Explicit re-exports expected by tests
+__all__ = [
+    "SwagConfig",
+    "create_mcp_server",
+    "register_resources",
+    "get_package_version",
+    "setup_templates",
+    "cleanup_old_backups",
+    "main",
+    "main_sync",
+    "detect_execution_context",
+    "timing_middleware",
+    "request_logging_middleware",
+    "rate_limiting_middleware",
+    "swag",
+]
+
 # Configure dual logging (console + files)
 setup_logging()
 
@@ -93,31 +110,31 @@ def register_resources(mcp: FastMCP) -> None:
 
 def _extract_service_name(filename: str) -> str:
     """Extract service name from config filename.
-    
+
     Handles:
     - *.conf and *.conf.sample files
     - Optional type suffixes: .subdomain / .subfolder
     - Trailing dot artifacts
     """
     name = filename
-    
+
     # Remove any trailing dots first (handles cases like "file.conf.")
     name = name.rstrip(".")
-    
-    # Strip optional ".sample" 
+
+    # Strip optional ".sample"
     if name.endswith(".sample"):
-        name = name[:-len(".sample")]
-    
+        name = name[: -len(".sample")]
+
     # Strip ".conf" extension
     if name.endswith(CONF_EXTENSION):
-        name = name[:-len(CONF_EXTENSION)]
-    
+        name = name[: -len(CONF_EXTENSION)]
+
     # Strip type suffixes if present
     if name.endswith(f".{CONFIG_TYPE_SUBDOMAIN}"):
-        name = name[:-len(f".{CONFIG_TYPE_SUBDOMAIN}")]
+        name = name[: -len(f".{CONFIG_TYPE_SUBDOMAIN}")]
     elif name.endswith(f".{CONFIG_TYPE_SUBFOLDER}"):
-        name = name[:-len(f".{CONFIG_TYPE_SUBFOLDER}")]
-    
+        name = name[: -len(f".{CONFIG_TYPE_SUBFOLDER}")]
+
     return name
 
 
