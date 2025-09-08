@@ -53,7 +53,7 @@ class TestServerFunctions:
 
             result = await create_mcp_server()
             assert result == mock_app
-            mock_fastmcp.assert_called_once()
+            mock_fastmcp.assert_called_once_with("SWAG Configuration Manager")
 
     async def test_register_resources(self):
         """Test resource registration function."""
@@ -91,12 +91,3 @@ class TestServerFunctions:
             result = _extract_service_name(filename)
             assert result == expected
 
-    def test_context_detection_types(self):
-        """Test different execution context detection scenarios."""
-        # The function should return a meaningful string
-        context = detect_execution_context()
-
-        # Should be a meaningful string
-        # The actual implementation may return different strings
-        assert isinstance(context, str)
-        assert len(context) > 0

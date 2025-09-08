@@ -3,7 +3,7 @@
 > **Intelligent reverse proxy management for SWAG (Secure Web Application Gateway) with Model Context Protocol support**
 
 [![Test Suite](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/jmagar/swag-mcp/actions/workflows/test.yml)
-[![Docker Build](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
+[![Build and Push Docker Image](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/jmagar/swag-mcp/actions/workflows/docker-publish.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-green.svg)](https://github.com/fastmcp/fastmcp)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-blue.svg)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
@@ -261,7 +261,7 @@ The AI assistant will translate your request into the appropriate tool parameter
 | **`create`** | Generate new proxy configuration | `service_name`, `server_name`, `upstream_app`, `upstream_port` |
 | **`view`** | Read configuration content | `config_name` |
 | **`edit`** | Modify configuration safely | `config_name`, `new_content`, `create_backup` |
-| **`update`** | Update specific config fields | `config_name`, `update_field` (port/upstream/app/add_mcp), `update_value` |
+| **`update`** | Update specific config fields | `config_name`, `update_field` (port\|upstream\|app\|add_mcp), `update_value` |
 | **`remove`** | Delete configuration | `config_name`, `create_backup` |
 | **`health_check`** | Verify service accessibility | `domain`, `timeout`, `follow_redirects` |
 | **`logs`** | View SWAG container logs | `log_type`, `lines` |

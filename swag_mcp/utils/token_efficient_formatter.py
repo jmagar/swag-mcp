@@ -20,6 +20,38 @@ from swag_mcp.models.enums import BackupSubAction
 class TokenEfficientFormatter:
     """Formatter class for creating token-efficient responses with dual content."""
 
+    def _create_tool_result(
+        self, text_content: str, structured_content: dict[str, Any]
+    ) -> ToolResult:
+        """Create ToolResult with consistent structure."""
+        return ToolResult(
+            content=[TextContent(type="text", text=text_content)],
+            structured_content=structured_content
+        )
+
+    def _format_success_failure(
+        self,
+        result: dict[str, Any],
+        success_message: str,
+        failure_template: str = "failed",
+        show_backup: bool = False
+    ) -> str:
+        """Format common success/failure pattern with optional backup indicator."""
+        success = result.get("success", False)
+
+        if success:
+            status = "✅"
+            message = f"{status} {success_message}"
+
+            if show_backup and result.get("backup_created", False):
+                message += " 💾"
+
+            return message
+        else:
+            status = "❌"
+            error_msg = result.get("message", "Unknown error")
+            return f"{status} {failure_template}: {error_msg}"
+
     @staticmethod
     def format_file_size(size_bytes: int) -> str:
         """Format file size in human-readable format."""
@@ -62,22 +94,27 @@ class TokenEfficientFormatter:
         """Format configuration list with token-efficient display.
 
         Token Efficiency Strategy: Grouped display with status indicators and size info.
+        
+        Args:
+            result: Dictionary containing:
+                - configs: List[str] - list of configuration file names
+                - total_count: int - total number of configurations
+                - list_filter: str - filter type used
+            list_filter: Type of filter applied ("all", "active", "samples")
         """
-        configs = result.get("configs", [])
+        configs: list[str] = result.get("configs", [])
         total_count = result.get("total_count", len(configs))
 
         if not configs:
             formatted_content = f"No configurations found (filter: {list_filter})"
-            return ToolResult(
-                content=[TextContent(type="text", text=formatted_content)],
-                structured_content=result,
-            )
+            return self._create_tool_result(formatted_content, result)
 
         # Group configs by type for efficient display
-        active_configs = []
-        sample_configs = []
+        active_configs: list[str] = []
+        sample_configs: list[str] = []
 
         for config in configs:
+            # configs is a list of strings (file names)
             if config.endswith(".sample"):
                 sample_configs.append(config)
             else:
@@ -97,53 +134,8 @@ class TokenEfficientFormatter:
 
         formatted_content = "\n".join(lines)
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
+        return self._create_tool_result(formatted_content, result)
 
-    def format_config_list_details(
-        self, result: dict[str, Any], list_filter: ListFilterType = "all"
-    ) -> ToolResult:
-        """Format configuration list with detailed file information.
-
-        Token Efficiency Strategy: Compact file details with size and timestamp info.
-        """
-        configs = result.get("configs", [])
-        total_count = result.get("total_count", len(configs))
-
-        if not configs:
-            formatted_content = f"No configurations found (filter: {list_filter})"
-            return ToolResult(
-                content=[TextContent(type="text", text=formatted_content)],
-                structured_content=result,
-            )
-
-        lines = [f"SWAG configurations ({total_count} total, filter: {list_filter})"]
-
-        for config in configs:
-            name = config.get("name", "unknown")
-            size_bytes = config.get("size_bytes", 0)
-            modified_time = config.get("modified_time", "unknown")
-            is_sample = config.get("is_sample", False)
-
-            # Format file size compactly
-            size_str = self.format_file_size(size_bytes)
-
-            # Format timestamp compactly
-            if hasattr(modified_time, "strftime"):
-                time_str = self.format_timestamp(modified_time)
-            else:
-                time_str = str(modified_time)[:10]  # Truncate if string
-
-            # Choose icon and format line
-            icon = "📝" if is_sample else "📄"
-            lines.append(f"  {icon} {name} ({size_str}, {time_str})")
-
-        formatted_content = "\n".join(lines)
-
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
 
     def format_create_result(
         self, result: dict[str, Any], filename: str, health_check: str | None = None
@@ -205,9 +197,7 @@ class TokenEfficientFormatter:
 
         formatted_content = "\n".join(output_lines)
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
+        return self._create_tool_result(formatted_content, result)
 
     def format_health_check_result(self, result: dict[str, Any]) -> ToolResult:
         """Format health check result with status and timing.
@@ -227,9 +217,7 @@ class TokenEfficientFormatter:
             error_msg = result.get("error", "Unknown error")
             formatted_content = f"❌ {domain} unreachable: {error_msg}"
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
+        return self._create_tool_result(formatted_content, result)
 
     def format_update_result(
         self,
@@ -269,21 +257,12 @@ class TokenEfficientFormatter:
 
         Token Efficiency Strategy: Single line confirmation with backup indicator.
         """
-        success = result.get("success", False)
-        backup_created = result.get("backup_created", False)
+        success_msg = f"Removed {config_name}"
+        if result.get("backup_created", False):
+            success_msg += " (backup created)"
 
-        if success:
-            status = "✅"
-            backup_indicator = " (backup created)" if backup_created else ""
-            message = f"{status} Removed {config_name}{backup_indicator}"
-        else:
-            status = "❌"
-            error_msg = result.get("message", "Unknown error")
-            message = f"{status} Remove failed: {error_msg}"
-
-        return ToolResult(
-            content=[TextContent(type="text", text=message)], structured_content=result
-        )
+        message = self._format_success_failure(result, success_msg, "Remove failed")
+        return self._create_tool_result(message, result)
 
     def format_logs_result(
         self, result: dict[str, Any], log_type: str, lines_requested: int
@@ -310,9 +289,7 @@ class TokenEfficientFormatter:
             preview_lines.extend([f"  {line}" for line in log_lines])
             formatted_content = "\n".join(preview_lines)
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
+        return self._create_tool_result(formatted_content, result)
 
     def format_backup_result(self, result: dict[str, Any], backup_action: str) -> ToolResult:
         """Format backup operation result.
@@ -369,30 +346,17 @@ class TokenEfficientFormatter:
         else:
             formatted_content = f"❓ Unknown backup action: {backup_action}"
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)], structured_content=result
-        )
+        return self._create_tool_result(formatted_content, result)
 
     def format_edit_result(self, result: dict[str, Any], config_name: str) -> ToolResult:
         """Format edit result with backup status.
 
         Token Efficiency Strategy: Simple confirmation with backup indicator.
         """
-        success = result.get("success", False)
-        backup_created = result.get("backup_created", False)
-
-        if success:
-            status = "✅"
-            backup_indicator = " 💾" if backup_created else ""
-            message = f"{status} Edited {config_name}{backup_indicator}"
-        else:
-            status = "❌"
-            error_msg = result.get("message", "Unknown error")
-            message = f"{status} Edit failed: {error_msg}"
-
-        return ToolResult(
-            content=[TextContent(type="text", text=message)], structured_content=result
+        message = self._format_success_failure(
+            result, f"Edited {config_name}", "Edit failed", show_backup=True
         )
+        return self._create_tool_result(message, result)
 
     def format_error_result(
         self, error_message: str, action: str, additional_data: dict[str, Any] | None = None
@@ -404,11 +368,7 @@ class TokenEfficientFormatter:
         formatted_content = f"❌ {action.title()} failed: {error_message}"
 
         structured_data = {"success": False, "error": error_message, "action": action}
-
         if additional_data:
             structured_data.update(additional_data)
 
-        return ToolResult(
-            content=[TextContent(type="text", text=formatted_content)],
-            structured_content=structured_data,
-        )
+        return self._create_tool_result(formatted_content, structured_data)

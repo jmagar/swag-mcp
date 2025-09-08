@@ -22,6 +22,10 @@ class SwagServiceError(Exception):
         self.context = context or {}
         self.cause = cause
 
+        # Set proper Python exception chaining
+        if cause is not None:
+            self.__cause__ = cause
+
     def __str__(self) -> str:
         """Return formatted error message with context if available."""
         result = self.message

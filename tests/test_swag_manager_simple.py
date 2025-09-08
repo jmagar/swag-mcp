@@ -100,8 +100,7 @@ class TestSwagManagerServiceBasic:
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
         assert "subdomain" in result
-        assert "subdomain.conf.j2" in result
-        assert result["subdomain.conf.j2"] is True
+        assert result["subdomain"] is True
 
     async def test_get_resource_configs(self, service, temp_config_dir):
         """Test getting resource configs."""

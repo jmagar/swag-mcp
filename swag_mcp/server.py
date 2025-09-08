@@ -92,13 +92,32 @@ def register_resources(mcp: FastMCP) -> None:
 
 
 def _extract_service_name(filename: str) -> str:
-    """Extract service name from config filename."""
-    # Remove .conf extension and any type suffixes like .subdomain or .subfolder
-    name = filename.replace(CONF_EXTENSION, "")
+    """Extract service name from config filename.
+    
+    Handles:
+    - *.conf and *.conf.sample files
+    - Optional type suffixes: .subdomain / .subfolder
+    - Trailing dot artifacts
+    """
+    name = filename
+    
+    # Remove any trailing dots first (handles cases like "file.conf.")
+    name = name.rstrip(".")
+    
+    # Strip optional ".sample" 
+    if name.endswith(".sample"):
+        name = name[:-len(".sample")]
+    
+    # Strip ".conf" extension
+    if name.endswith(CONF_EXTENSION):
+        name = name[:-len(CONF_EXTENSION)]
+    
+    # Strip type suffixes if present
     if name.endswith(f".{CONFIG_TYPE_SUBDOMAIN}"):
-        return name.replace(f".{CONFIG_TYPE_SUBDOMAIN}", "")
+        name = name[:-len(f".{CONFIG_TYPE_SUBDOMAIN}")]
     elif name.endswith(f".{CONFIG_TYPE_SUBFOLDER}"):
-        return name.replace(f".{CONFIG_TYPE_SUBFOLDER}", "")
+        name = name[:-len(f".{CONFIG_TYPE_SUBFOLDER}")]
+    
     return name
 
 

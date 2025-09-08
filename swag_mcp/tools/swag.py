@@ -1,7 +1,7 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools.tool import ToolResult
@@ -30,6 +30,9 @@ from swag_mcp.utils.tool_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Type alias for update field values
+UpdateFieldType = Literal["port", "upstream", "app", "add_mcp"]
 
 # Service will be instantiated per-invocation for stateless operation
 
@@ -609,12 +612,21 @@ def register_tools(mcp: FastMCP) -> None:
                     ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
                 )
 
+                # Validate update_field is a valid value
+                valid_update_fields: set[UpdateFieldType] = {"port", "upstream", "app", "add_mcp"}
+                if update_field not in valid_update_fields:
+                    return formatter.format_error_result(
+                        f"Invalid update_field: '{update_field}'. Must be one of: {', '.join(valid_update_fields)}",
+                        "update"
+                    )
+                
+                # Now we know update_field is a valid UpdateFieldType
+                validated_update_field: UpdateFieldType = update_field  # type: ignore[assignment]
+
                 update_request = SwagUpdateRequest(
                     action=action,
                     config_name=config_name,
-                    update_field=cast(
-                        "Literal['port', 'upstream', 'app', 'add_mcp']", update_field
-                    ),
+                    update_field=validated_update_field,
                     update_value=update_value,
                     create_backup=create_backup,
                 )
