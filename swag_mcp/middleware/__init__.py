@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 from .error_handling import (
     get_error_handling_middleware,
+    get_mcp_error_enhancement_middleware,
     get_retry_middleware,
     get_security_error_middleware,
 )
@@ -34,29 +35,34 @@ def setup_middleware(mcp: FastMCP) -> None:
     middleware_list.append(security_middleware)
     logger.info("Added security error middleware")
 
-    # 2. Error handling middleware (general error handling)
+    # 2. MCP error enhancement middleware (MCP-specific error handling)
+    mcp_error_middleware = get_mcp_error_enhancement_middleware()
+    middleware_list.append(mcp_error_middleware)
+    logger.info("Added MCP error enhancement middleware")
+
+    # 3. Error handling middleware (general error handling)
     error_middleware = get_error_handling_middleware()
     middleware_list.append(error_middleware)
     logger.info("Added error handling middleware")
 
-    # 3. Retry middleware (if enabled)
+    # 4. Retry middleware (if enabled)
     retry_middleware = get_retry_middleware()
     if retry_middleware:
         middleware_list.append(retry_middleware)
         logger.info("Added retry middleware")
 
-    # 4. Rate limiting middleware (if enabled)
+    # 5. Rate limiting middleware (if enabled)
     rate_limit_middleware = get_rate_limiting_middleware()
     if rate_limit_middleware:
         middleware_list.append(rate_limit_middleware)
         logger.info("Added rate limiting middleware")
 
-    # 5. Timing middleware (performance monitoring)
+    # 6. Timing middleware (performance monitoring)
     timing_middleware = get_timing_middleware()
     middleware_list.append(timing_middleware)
     logger.info("Added timing middleware")
 
-    # 6. Logging middleware (audit trail - should be last)
+    # 7. Logging middleware (audit trail - should be last)
     logging_middleware = get_logging_middleware()
     middleware_list.append(logging_middleware)
     logger.info("Added logging middleware")
@@ -77,4 +83,5 @@ __all__ = [
     "get_error_handling_middleware",
     "get_retry_middleware",
     "get_security_error_middleware",
+    "get_mcp_error_enhancement_middleware",
 ]

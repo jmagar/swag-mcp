@@ -11,7 +11,7 @@ import re
 import unicodedata
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
@@ -19,10 +19,20 @@ from mcp.types import TextContent
 from swag_mcp.models.config import ListFilterType
 from swag_mcp.models.enums import BackupSubAction
 from swag_mcp.utils.formatters import format_duration, format_file_size, format_health_check_result
+from swag_mcp.utils.mcp_token_optimizer import MCPTokenOptimizer
 
 
 class TokenEfficientFormatter:
     """Formatter class for creating token-efficient responses with dual content."""
+
+    def __init__(self, max_tokens: int = 4000):
+        """Initialize the formatter with token optimization.
+
+        Args:
+            max_tokens: Maximum tokens for response optimization
+
+        """
+        self.optimizer = MCPTokenOptimizer(max_tokens)
 
     @staticmethod
     def _nfkc(text: str) -> str:
@@ -40,9 +50,15 @@ class TokenEfficientFormatter:
     def _create_tool_result(
         self, text_content: str, structured_content: Mapping[str, Any] | dict[str, Any]
     ) -> ToolResult:
-        """Create ToolResult with consistent structure."""
+        """Create ToolResult with consistent structure and MCP optimization."""
+        # Apply MCP token optimization to text content
+        action = structured_content.get("action", "unknown")
+        context = {"action": action, **structured_content}
+
+        optimized_content = self.optimizer.optimize_response(text_content, context)
+
         return ToolResult(
-            content=[TextContent(type="text", text=text_content)],
+            content=[TextContent(type="text", text=optimized_content)],
             structured_content=structured_content,
         )
 
@@ -195,6 +211,7 @@ class TokenEfficientFormatter:
         """
         content = result.get("content", "")
         character_count = result.get("character_count", len(content))
+        success = result.get("success", True)  # Default to True for view operations
 
         lines = content.splitlines() if content else []
         line_count = len(lines)
@@ -213,8 +230,17 @@ class TokenEfficientFormatter:
         output_lines.extend([f"  {i + 1:2d}│ {line}" for i, line in enumerate(lines)])
 
         formatted_content = "\n".join(output_lines)
+        
+        # Ensure structured content includes success field
+        structured_data = dict(result)  # Copy existing data
+        structured_data.update({
+            "success": success,
+            "config_name": config_name,
+            "content": content,
+            "character_count": character_count,
+        })
 
-        return self._create_tool_result(formatted_content, result)
+        return self._create_tool_result(formatted_content, structured_data)
 
     def format_health_check_result(self, result: Mapping[str, Any]) -> ToolResult:
         """Format health check result with status and timing.

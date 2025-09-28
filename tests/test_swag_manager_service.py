@@ -18,7 +18,7 @@ from swag_mcp.models.config import (
     SwagUpdateRequest,
 )
 from swag_mcp.models.enums import SwagAction
-from swag_mcp.services.errors import ConfigurationNotFoundError, SwagServiceError
+from swag_mcp.services.errors import SwagServiceError
 from swag_mcp.services.swag_manager import SwagManagerService
 
 
@@ -272,13 +272,13 @@ server {
                 update_field="port",
                 update_value="value",
             )
-            
+
         # Test invalid update field (also caught by Pydantic validation)
         with pytest.raises(ValidationError):
             SwagUpdateRequest(
                 action=SwagAction.UPDATE,
                 config_name="test.subdomain.conf",
-                update_field="invalid_field",
+                update_field="invalid_field",  # type: ignore[arg-type]
                 update_value="some_value",
             )
 
@@ -478,14 +478,14 @@ server {
 
         # Service should return helpful message when log file doesn't exist
         result = await service.get_swag_logs(request)
-        
+
         assert "Log file not found" in result or "No log entries found" in result
 
     def test_get_swag_logs_error(self, service):
         """Test log retrieval with invalid log type at validation level."""
         # Test that invalid log_type is caught by Pydantic validation
         with pytest.raises(ValidationError):
-            SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)
+            SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)  # type: ignore[arg-type]
 
     # Resource Management Tests
 

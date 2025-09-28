@@ -161,12 +161,11 @@ class TestMainModuleExecution:
 
     def test_main_module_execution(self):
         """Test __main__ module has the correct execution structure."""
-        import swag_mcp.__main__
         import inspect
-        
+
         # Verify the module has the expected structure
         assert hasattr(swag_mcp.__main__, 'main'), "__main__ module should import main function"
-        
+
         # Verify the __name__ check exists in the module source
         source = inspect.getsource(swag_mcp.__main__)
         assert 'if __name__ == "__main__":' in source, "Module should have __main__ execution block"
@@ -316,17 +315,17 @@ class TestErrorScenarios:
     async def test_config_creation_error(self):
         """Test handling of configuration creation errors."""
         app = await create_mcp_server()
-        
+
         # Test with mocked SwagConfig that raises exception during resource registration
         with (
             patch("swag_mcp.server.SwagConfig") as mock_config,
             contextlib.suppress(Exception),
         ):
             mock_config.side_effect = Exception("Config creation failed")
-            
+
             # Should handle config creation errors gracefully during resource registration
             register_resources(app)
-            
+
             # Verify the mock was called (indicating error simulation worked)
             mock_config.assert_called()
 

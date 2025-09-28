@@ -10,6 +10,7 @@ from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware, Re
 from mcp import types as mt
 
 from ..core.config import config
+from ..utils.error_codes import ErrorCode, SwagOperationError, SwagValidationError
 
 # Configure logger for error handling
 logger = logging.getLogger("swag_mcp.middleware.error_handling")
@@ -266,12 +267,108 @@ def get_retry_middleware() -> RetryMiddleware | None:
     return RetryMiddleware(max_retries=config.max_retries, retry_exceptions=retry_exceptions)
 
 
+class MCPErrorEnhancementMiddleware(Middleware):
+    """MCP-specific error enhancement middleware for better client experience."""
+
+    async def on_request(
+        self, context: MiddlewareContext[mt.Request], call_next: CallNext[mt.Request, Any]
+    ) -> Any:
+        """Handle request with MCP-specific error enhancements."""
+        try:
+            return await call_next(context)
+        except SwagValidationError as error:
+            # Handle SWAG-specific validation errors with structured responses
+            logger.info(f"SWAG validation error: {error.message}")
+
+            mcp_error = {
+                "error_code": error.code.value,
+                "error_type": "validation_error",
+                "message": error.message,
+                "context": error.context,
+                "suggestions": self._get_validation_suggestions(error),
+            }
+
+            raise ToolError(f"Validation Error: {error.message}", **mcp_error) from error
+
+        except SwagOperationError as error:
+            # Handle SWAG-specific operation errors
+            logger.warning(f"SWAG operation error: {error.message}")
+
+            mcp_error = {
+                "error_code": error.code.value,
+                "error_type": "operation_error",
+                "message": error.message,
+                "context": error.context,
+                "retry_suggested": str(
+                    error.code in [ErrorCode.HTTP_SESSION_ERROR, ErrorCode.CONNECTION_TIMEOUT]
+                ),
+            }
+
+            raise ToolError(f"Operation Error: {error.message}", **mcp_error) from error
+
+        except Exception:
+            # Let other middleware handle unknown errors
+            raise
+
+    def _get_validation_suggestions(self, error: SwagValidationError) -> list[str]:
+        """Get validation suggestions based on error code.
+
+        Args:
+            error: The validation error
+
+        Returns:
+            List of helpful suggestions
+
+        """
+        suggestions_map = {
+            ErrorCode.INVALID_SERVICE_NAME: [
+                "Use format: service.subdomain.conf or service.subfolder.conf",
+                "Only use letters, numbers, hyphens, and underscores",
+                "Ensure the filename ends with .conf"
+            ],
+            ErrorCode.INVALID_DOMAIN_FORMAT: [
+                "Use a valid domain format like 'app.example.com'",
+                "Check for typos in the domain name",
+                "Ensure the domain follows DNS naming conventions"
+            ],
+            ErrorCode.INVALID_PORT_NUMBER: [
+                "Port numbers must be between 1 and 65535",
+                "Common ports: HTTP (80), HTTPS (443), custom apps (8080, 3000, etc.)",
+                "Avoid system ports (1-1023) for custom applications"
+            ],
+            ErrorCode.INVALID_UPSTREAM_APP: [
+                "Use container name or IP address",
+                "Examples: 'jellyfin', 'myapp', '192.168.1.100'",
+                "Avoid special characters except dots and hyphens"
+            ],
+            ErrorCode.INVALID_FILE_CONTENT: [
+                "Check nginx configuration syntax",
+                "Ensure proper server block structure",
+                "Verify all braces and semicolons are balanced"
+            ],
+        }
+
+        return suggestions_map.get(error.code, ["Please review your input and try again"])
+
+
+def get_mcp_error_enhancement_middleware() -> MCPErrorEnhancementMiddleware:
+    """Get MCP error enhancement middleware.
+
+    Returns:
+        MCPErrorEnhancementMiddleware for better error handling
+
+    """
+    return MCPErrorEnhancementMiddleware()
+
+
 __all__ = [
     "get_error_handling_middleware",
     "get_retry_middleware",
     "get_security_error_middleware",
+    "get_mcp_error_enhancement_middleware",
     "swag_error_callback",
     "SecurityErrorMiddleware",
+    "MCPErrorEnhancementMiddleware",
     "sanitize_error_message",
     "create_user_friendly_error",
 ]

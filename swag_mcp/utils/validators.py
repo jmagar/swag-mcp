@@ -578,36 +578,35 @@ def detect_and_handle_encoding(content: bytes) -> str:
 
 def _is_reasonable_text(text: str, encoding_name: str) -> bool:
     """Check if decoded text looks reasonable for the given encoding.
-    
+
     This helps prevent false positives where UTF-16/UTF-32 decoders
     succeed on non-Unicode data but produce garbage results.
-    
+
     Args:
         text: The decoded text to validate
         encoding_name: Name of encoding used (for debugging)
-        
+
     Returns:
         True if text looks reasonable, False otherwise
+
     """
     if not text:
         return True  # Empty string is always reasonable
-        
+
     # For short strings, be more suspicious of unusual characters
     if len(text) <= 10:
         # Check for high percentage of non-ASCII characters in short strings
         non_ascii_count = sum(1 for c in text if ord(c) > 127)
-        if non_ascii_count / len(text) > 0.5:
-            # More than 50% non-ASCII in a short string is suspicious
-            # unless it's clearly from a Unicode encoding with BOM
-            if encoding_name in ("UTF-16", "UTF-32") and not (
+        if (non_ascii_count / len(text) > 0.5 and
+            encoding_name in ("UTF-16", "UTF-32") and not (
                 text.startswith('\ufeff') or '\ufeff' in text
-            ):
-                return False
-    
+            )):
+            return False
+
     # Check for null bytes (common in misinterpreted binary data)
     if '\x00' in text:
         return False
-        
+
     # Check for private use characters (often indicates misinterpretation)
     for char in text:
         code_point = ord(char)
@@ -616,7 +615,7 @@ def _is_reasonable_text(text: str, encoding_name: str) -> bool:
             0xF0000 <= code_point <= 0xFFFFD or  # Plane 15
             0x100000 <= code_point <= 0x10FFFD):  # Plane 16
             return False
-    
+
     return True
 
 

@@ -669,7 +669,7 @@ class TestLogMethods:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="log_type"):
-            SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)
+            SwagLogsRequest(action=SwagAction.LOGS, log_type="invalid-type", lines=50)  # type: ignore[arg-type]
 
 
 class TestResourceMethods:

@@ -2,16 +2,18 @@
 
 import asyncio
 import logging
+import os
 import sys
+from collections.abc import AsyncGenerator
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as metadata_version
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from pydantic import AnyUrl
-
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 from fastmcp.resources import DirectoryResource
+from pydantic import AnyUrl
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -114,6 +116,73 @@ def register_resources(mcp: FastMCP) -> None:
         )
     )
 
+    # Register streaming resources for real-time updates
+    @mcp.resource("swag://configs/live")
+    async def live_config_updates() -> AsyncGenerator[dict[str, str], None]:
+        """Stream configuration changes in real-time."""
+        from swag_mcp.utils.mcp_streaming import ConfigurationWatcher
+
+        watcher = ConfigurationWatcher(config_path)
+        async for change in watcher.watch_config_changes():
+            yield {
+                "uri": f"swag://configs/live/{change.get('config_name', 'unknown')}",
+                "name": f"Config Change: {change.get('type', 'unknown')}",
+                "description": f"Real-time configuration change: {change.get('message', '')}",
+                "mimeType": "application/json",
+                "text": str(change)
+            }
+
+    @mcp.resource("swag://health/stream")
+    async def health_status_stream() -> AsyncGenerator[dict[str, str], None]:
+        """Stream health status updates for monitored services."""
+        from swag_mcp.services.swag_manager import SwagManagerService
+        from swag_mcp.utils.mcp_streaming import create_health_streamer
+
+        # Get active configurations to monitor
+        swag_service = SwagManagerService()
+        try:
+            configs_result = await swag_service.list_configs("active")
+            # Extract domains from config filenames by parsing the configs
+            domains = []
+            for config_file in configs_result.configs:
+                # Extract service name and try to get server_name if available
+                # For now, just use the config filename as identifier
+                domains.append(str(config_file))
+
+            if domains:
+                streamer = create_health_streamer()
+                async for health_update in streamer.stream_health_updates(domains[:5], 60):
+                    yield {
+                        "uri": f"swag://health/stream/{len(domains)}",
+                        "name": f"Health Monitor ({len(domains)} services)",
+                        "description": "Real-time health monitoring for active SWAG services",
+                        "mimeType": "text/plain",
+                        "text": health_update
+                    }
+        except Exception as e:
+            yield {
+                "uri": "swag://health/stream/error",
+                "name": "Health Monitor Error",
+                "description": f"Error starting health monitoring: {str(e)}",
+                "mimeType": "text/plain",
+                "text": f"Health monitoring error: {str(e)}"
+            }
+
+    @mcp.resource("swag://logs/stream")
+    async def log_stream() -> AsyncGenerator[dict[str, str], None]:
+        """Stream SWAG logs in real-time."""
+        from swag_mcp.utils.mcp_streaming import create_log_streamer
+
+        streamer = create_log_streamer(follow=True)
+        async for log_entry in streamer.stream_live_logs("nginx-error", 300):  # 5 minutes
+            yield {
+                "uri": "swag://logs/stream/nginx-error",
+                "name": "SWAG Nginx Error Logs",
+                "description": "Real-time SWAG nginx error log stream",
+                "mimeType": "text/plain",
+                "text": log_entry
+            }
+
 
 def _extract_service_name(filename: str) -> str:
     """Extract service name from config filename.
@@ -147,8 +216,40 @@ def _extract_service_name(filename: str) -> str:
 
 async def create_mcp_server() -> FastMCP:
     """Create and configure the FastMCP server."""
-    # Create FastMCP server instance - only name parameter is supported
-    mcp = FastMCP("SWAG Configuration Manager")
+    # Configure Google OAuth authentication if enabled
+    auth_provider = None
+    if os.getenv("FASTMCP_SERVER_AUTH") == "fastmcp.server.auth.providers.google.GoogleProvider":
+        try:
+            from fastmcp.server.auth.providers.google import GoogleProvider
+            
+            # Configure GoogleProvider with environment variables
+            client_id = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID")
+            base_url = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "http://localhost:8000")
+            scopes_str = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REQUIRED_SCOPES", "")
+            scopes = [scope.strip() for scope in scopes_str.split(",") if scope.strip()]
+            
+            auth_provider = GoogleProvider(
+                client_id=client_id,
+                client_secret=os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET"),
+                base_url=base_url,
+                required_scopes=scopes,
+                redirect_path=os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"),
+            )
+            logger.info("✅ Google OAuth authentication enabled")
+            logger.info(f"📍 OAuth base URL: {base_url}")
+            logger.info(f"🔑 OAuth client ID: {client_id[:20] if client_id else 'NOT_SET'}...")
+            logger.info(f"🔒 OAuth scopes: {scopes}")
+        except ImportError as e:
+            logger.error(f"Failed to import GoogleProvider: {e}")
+            logger.error("Google OAuth authentication disabled")
+        except Exception as e:
+            logger.error(f"Failed to configure Google OAuth: {e}")
+            logger.error("Google OAuth authentication disabled")
+    else:
+        logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
+    
+    # Create FastMCP server instance with or without authentication
+    mcp = FastMCP("SWAG Configuration Manager", auth=auth_provider)
 
     # Configure all middleware using the setup function
     setup_middleware(mcp)
@@ -220,6 +321,9 @@ async def cleanup_old_backups() -> None:
 
 async def main() -> None:
     """Async entry point for when called from within an async context."""
+    # Load environment variables from .env file if present
+    load_dotenv()
+    
     logger.info("Starting SWAG MCP Server with streamable-http transport (async mode)...")
 
     setup_templates()

@@ -1,8 +1,9 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
+import asyncio
 import logging
 import re
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools.tool import ToolResult
@@ -129,7 +130,7 @@ async def _run_post_update_health_check(
 
 
 def register_tools(mcp: FastMCP) -> None:
-    """Register the unified SWAG tool with the FastMCP server."""
+    """Register the unified SWAG tool and streaming tools with the FastMCP server."""
 
     @mcp.tool
     @handle_tool_errors
@@ -320,342 +321,530 @@ def register_tools(mcp: FastMCP) -> None:
         # Create formatter for token-efficient dual content responses
         formatter = TokenEfficientFormatter()
 
-        # Dispatch based on action using if/elif pattern (following Docker-MCP pattern)
+        # Dispatch based on action using pattern matching for better maintainability
         try:
-            if action == SwagAction.LIST:
-                await log_action_start(ctx, "Listing SWAG configurations", list_filter)
-
-                if error := validate_list_filter(list_filter):
-                    return formatter.format_error_result(
-                        error.get("message", "Invalid list filter"), "list"
+            match action:
+                case SwagAction.LIST:
+                    return await _handle_list_action(
+                        ctx, swag_service, formatter, list_filter
                     )
-
-                result = await swag_service.list_configs(list_filter)
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "configs": result.configs,
-                    "total_count": result.total_count,
-                    "list_filter": result.list_filter,
-                }
-
-                await log_action_success(ctx, f"Listed {result.total_count} configurations")
-
-                return formatter.format_list_result(result_data, list_filter)
-
-            elif action == SwagAction.CREATE:
-                # Validate required parameters
-                if error := validate_required_params(
-                    {
-                        "config_name": (config_name, "config_name"),
-                        "server_name": (server_name, "server_name"),
-                        "upstream_app": (upstream_app, "upstream_app"),
-                        "upstream_port": (
-                            upstream_port if upstream_port != 0 else None,
-                            "upstream_port",
-                        ),
-                    },
-                    "create",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing required parameters"), "create"
+                case SwagAction.CREATE:
+                    return await _handle_create_action(
+                        ctx, swag_service, formatter, config_name, server_name,
+                        upstream_app, upstream_port, upstream_proto, auth_method,
+                        enable_quic, mcp_enabled
                     )
-
-                # Use parameters directly
-                auth_method_final = auth_method
-                enable_quic_final = enable_quic
-
-                await log_action_start(ctx, "Creating configuration", config_name)
-
-                # Convert parameters to new request model
-                config_request = SwagConfigRequest(
-                    action=action,
-                    config_name=config_name,
-                    server_name=server_name,
-                    upstream_app=upstream_app,
-                    upstream_port=upstream_port,
-                    upstream_proto=upstream_proto,
-                    mcp_enabled=mcp_enabled,
-                    auth_method=auth_method_final,
-                    enable_quic=enable_quic_final,
-                )
-
-                # Create configuration
-                create_result = await swag_service.create_config(config_request)
-                await log_action_success(ctx, f"Successfully created {create_result.filename}")
-
-                # Run health check and return formatted result
-                health_check_result = await _run_post_create_health_check(
-                    swag_service, ctx, server_name, create_result.filename
-                )
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "success": True,
-                    "filename": create_result.filename,
-                    "backup_created": getattr(create_result, "backup_created", None),
-                }
-
-                return formatter.format_create_result(
-                    result_data, create_result.filename, health_check_result
-                )
-
-            elif action == SwagAction.VIEW:
-                if error := validate_required_params(
-                    {
-                        "config_name": (config_name, "config_name"),
-                    },
-                    "view",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing config_name"), "view"
+                case SwagAction.VIEW:
+                    return await _handle_view_action(
+                        ctx, swag_service, formatter, config_name
                     )
-
-                await log_action_start(ctx, "Reading configuration", config_name)
-
-                try:
-                    content = await swag_service.read_config(config_name)
-                    await log_action_success(
-                        ctx, f"Successfully read {config_name} ({len(content)} characters)"
+                case SwagAction.EDIT:
+                    return await _handle_edit_action(
+                        ctx, swag_service, formatter, config_name, new_content,
+                        create_backup
                     )
-
-                    # Convert service result to dict for formatter
-                    result_data = {
-                        "success": True,
-                        "config_name": config_name,
-                        "content": content,
-                        "character_count": len(content),
-                    }
-
-                    return formatter.format_view_result(result_data, config_name)
-                except FileNotFoundError as e:
-                    return formatter.format_error_result(str(e), "view")
-
-            elif action == SwagAction.EDIT:
-                if error := validate_required_params(
-                    {
-                        "config_name": (config_name, "config_name"),
-                        "new_content": (new_content, "new_content"),
-                    },
-                    "edit",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing required parameters"), "edit"
+                case SwagAction.REMOVE:
+                    return await _handle_remove_action(
+                        ctx, swag_service, formatter, config_name, create_backup
                     )
-
-                await log_action_start(ctx, "Editing configuration", config_name)
-
-                edit_request = SwagEditRequest(
-                    action=action,
-                    config_name=config_name,
-                    new_content=new_content,
-                    create_backup=create_backup,
-                )
-
-                edit_result = await swag_service.update_config(edit_request)
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "success": True,
-                    "backup_created": edit_result.backup_created,
-                }
-
-                return formatter.format_edit_result(result_data, config_name)
-
-            elif action == SwagAction.REMOVE:
-                if error := validate_required_params(
-                    {
-                        "config_name": (config_name, "config_name"),
-                    },
-                    "remove",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing config_name"), "remove"
+                case SwagAction.LOGS:
+                    return await _handle_logs_action(
+                        ctx, swag_service, formatter, log_type, lines
                     )
-
-                await log_action_start(ctx, "Removing configuration", config_name)
-
-                remove_request = SwagRemoveRequest(
-                    action=action, config_name=config_name, create_backup=create_backup
-                )
-
-                remove_result = await swag_service.remove_config(remove_request)
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "success": True,
-                    "backup_created": remove_result.backup_created,
-                }
-
-                return formatter.format_remove_result(result_data, config_name)
-
-            elif action == SwagAction.LOGS:
-                await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
-
-                logs_request = SwagLogsRequest(action=action, log_type=log_type, lines=lines)
-
-                logs_output = await swag_service.get_swag_logs(logs_request)
-                await log_action_success(
-                    ctx,
-                    f"Retrieved {len(logs_output)} characters of {log_type} log output",
-                )
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "logs": logs_output,
-                    "character_count": len(logs_output),
-                }
-
-                return formatter.format_logs_result(result_data, log_type, lines)
-
-            elif action == SwagAction.BACKUPS:
-                # backup_action is now properly typed as BackupSubAction enum
-
-                # Dispatch to appropriate sub-action
-                if backup_action == BackupSubAction.CLEANUP:
-                    retention_msg = (
-                        f"{retention_days} days retention"
-                        if retention_days > 0
-                        else "default retention"
+                case SwagAction.BACKUPS:
+                    return await _handle_backups_action(
+                        ctx, swag_service, formatter, retention_days
                     )
-                    await log_action_start(ctx, "Running backup cleanup", retention_msg)
-
-                    retention_days_param = retention_days if retention_days > 0 else None
-                    cleaned_count = await swag_service.cleanup_old_backups(retention_days_param)
-
-                    if cleaned_count > 0:
-                        message = f"Cleaned up {cleaned_count} old backup files"
-                    else:
-                        message = "No old backup files to clean up"
-
-                    await log_action_success(ctx, message)
-
-                    # Convert service result to dict for formatter
-                    result_data = {
-                        "cleaned_count": cleaned_count,
-                        "retention_days": retention_days_param or 30,  # Default fallback
-                    }
-
-                    return formatter.format_backup_result(result_data, backup_action)
-
-                elif backup_action == BackupSubAction.LIST:
-                    await log_action_start(ctx, "Listing backup files", "all backup files")
-
-                    backup_files = await swag_service.list_backups()
-
-                    if not backup_files:
-                        message = "No backup files found"
-                    else:
-                        message = f"Found {len(backup_files)} backup files"
-
-                    await log_action_success(ctx, message)
-
-                    # Convert service result to dict for formatter
-                    result_data = {
-                        "backup_files": backup_files,
-                        "total_count": len(backup_files),
-                    }
-
-                    return formatter.format_backup_result(result_data, backup_action)
-
-            elif action == SwagAction.HEALTH_CHECK:
-                if error := validate_required_params(
-                    {
-                        "domain": (domain, "domain"),
-                    },
-                    "health_check",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing domain"), "health_check"
+                case SwagAction.HEALTH_CHECK:
+                    return await _handle_health_check_action(
+                        ctx, swag_service, formatter, domain, timeout, follow_redirects
                     )
-
-                await log_action_start(ctx, "Starting health check", domain)
-
-                # Validate and create health check request
-                health_request = SwagHealthCheckRequest(
-                    action=action,
-                    domain=domain,
-                    timeout=timeout,
-                    follow_redirects=follow_redirects,
-                )
-
-                # Perform health check
-                health_result = await swag_service.health_check(health_request)
-
-                await log_action_success(ctx, f"Health check completed for {domain}")
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "success": health_result.success,
-                    "domain": health_result.domain,
-                    "status_code": health_result.status_code,
-                    "response_time_ms": health_result.response_time_ms,
-                    "error": getattr(health_result, "error", None),
-                }
-
-                return formatter.format_health_check_result(result_data)
-
-            elif action == SwagAction.UPDATE:
-                if error := validate_required_params(
-                    {
-                        "config_name": (config_name, "config_name"),
-                        "update_field": (update_field, "update_field"),
-                        "update_value": (update_value, "update_value"),
-                    },
-                    "update",
-                ):
-                    return formatter.format_error_result(
-                        error.get("message", "Missing required parameters"), "update"
+                case SwagAction.UPDATE:
+                    return await _handle_update_action(
+                        ctx, swag_service, formatter, config_name, update_field,
+                        update_value, create_backup
                     )
-
-                await log_action_start(
-                    ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
-                )
-
-                # Validate update_field is a valid value
-                valid_update_fields: set[UpdateFieldType] = {"port", "upstream", "app", "add_mcp"}
-                if update_field not in valid_update_fields:
-                    return formatter.format_error_result(
-                        f"Invalid update_field: '{update_field}'. "
-                        f"Must be one of: {', '.join(valid_update_fields)}",
-                        "update",
-                    )
-
-                # Now we know update_field is a valid UpdateFieldType
-                validated_update_field: UpdateFieldType = cast("UpdateFieldType", update_field)
-
-                update_request = SwagUpdateRequest(
-                    action=action,
-                    config_name=config_name,
-                    update_field=validated_update_field,
-                    update_value=update_value,
-                    create_backup=create_backup,
-                )
-
-                update_result = await swag_service.update_config_field(update_request)
-
-                # Run health check and return formatted result
-                health_check_result = await _run_post_update_health_check(
-                    swag_service, ctx, config_name, update_field, update_value
-                )
-
-                await log_action_success(ctx, f"Updated {update_field} in {config_name}")
-
-                # Convert service result to dict for formatter
-                result_data = {
-                    "success": True,
-                    "backup_created": update_result.backup_created,
-                }
-
-                return formatter.format_update_result(
-                    result_data, config_name, update_field, update_value, health_check_result
-                )
-
-            # This should never be reached as all enum cases are handled above
-            raise ValueError(f"Unhandled action: {action}")
+                case _:
+                    raise ValueError(f"Unhandled action: {action}")
 
         except Exception as e:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
             return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
 
-    # Tool registration complete
+
+async def _handle_list_action(
+    ctx: Context, swag_service: Any, formatter: Any, list_filter: str
+) -> ToolResult:
+    """Handle LIST action."""
+    await log_action_start(ctx, "Listing SWAG configurations", list_filter)
+
+    if error := validate_list_filter(cast("Literal['all', 'active', 'samples']", list_filter)):
+        return cast("ToolResult", formatter.format_error_result(
+            error.get("message", "Invalid list filter"), "list"
+        ))
+
+    result = await swag_service.list_configs(list_filter)
+
+    # Convert service result to dict for formatter
+    result_data = {
+        "configs": result.configs,
+        "total_count": result.total_count,
+        "list_filter": result.list_filter,
+    }
+
+    await log_action_success(ctx, f"Listed {result.total_count} configurations")
+    return cast("ToolResult", formatter.format_list_result(result_data, list_filter))
+
+
+async def _handle_create_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    config_name: str, server_name: str, upstream_app: str, upstream_port: int,
+    upstream_proto: str, auth_method: str, enable_quic: bool, mcp_enabled: bool
+) -> ToolResult:
+    """Handle CREATE action with comprehensive progress reporting."""
+    # Validate required parameters
+    if error := validate_required_params(
+        {
+            "config_name": (config_name, "config_name"),
+            "server_name": (server_name, "server_name"),
+            "upstream_app": (upstream_app, "upstream_app"),
+            "upstream_port": (
+                upstream_port if upstream_port != 0 else None,
+                "upstream_port",
+            ),
+        },
+        "create",
+    ):
+        return formatter.format_error_result(
+            error.get("message", "Missing required parameters"), "create"
+        )
+
+    await log_action_start(ctx, "Creating configuration", config_name)
+
+    try:
+        # Progress reporting for create operation
+        await ctx.info("Validating configuration parameters...")
+
+        # Build the configuration request
+        config_request = SwagConfigRequest(
+            action=SwagAction.CREATE,
+            config_name=config_name,
+            server_name=server_name,
+            upstream_app=upstream_app,
+            upstream_port=upstream_port,
+            upstream_proto=cast("Literal['http', 'https']", upstream_proto),
+            auth_method=auth_method,
+            enable_quic=enable_quic,
+            mcp_enabled=mcp_enabled,
+        )
+
+        await ctx.info("Creating proxy configuration...")
+        result = await asyncio.wait_for(
+            swag_service.create_config(config_request),
+            timeout=180  # 3 minute timeout for creation
+        )
+
+        await ctx.info("Running health verification...")
+        # Run post-create health check
+        health_check_result = await _run_post_create_health_check(
+            swag_service, ctx, server_name, result.filename
+        )
+
+        await log_action_success(ctx, f"Created configuration {config_name}")
+        await ctx.info("Configuration created successfully")
+
+        # Convert to dict for formatter with health check result
+        result_data = {
+            "success": True,
+            "filename": result.filename,
+            "content": result.content,
+            "backup_created": result.backup_created,
+            "health_check": health_check_result,
+        }
+
+        return formatter.format_create_result(result_data, config_name)
+
+    except asyncio.CancelledError:
+        await ctx.info("Configuration creation cancelled by user")
+        raise
+    except TimeoutError:
+        await ctx.info("Configuration creation timed out")
+        return formatter.format_error_result(
+            "Create operation timed out", "create"
+        )
+
+
+async def _handle_view_action(
+    ctx: Context, swag_service: Any, formatter: Any, config_name: str
+) -> ToolResult:
+    """Handle VIEW action."""
+    await log_action_start(ctx, "Viewing configuration", config_name)
+
+    if error := validate_required_params(
+        {"config_name": (config_name, "config_name")}, "view"
+    ):
+        return cast("ToolResult", formatter.format_error_result(
+            error.get("message", "Missing config name"), "view"
+        ))
+
+    try:
+        content = await swag_service.read_config(config_name)
+        await log_action_success(ctx, f"Read configuration {config_name}")
+
+        result_data = {"filename": config_name, "content": content}
+        return cast("ToolResult", formatter.format_view_result(result_data, config_name))
+    except FileNotFoundError:
+        return cast("ToolResult", formatter.format_error_result(
+            f"Configuration '{config_name}' not found", "view"
+        ))
+
+
+async def _handle_edit_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    config_name: str, new_content: str, create_backup: bool
+) -> ToolResult:
+    """Handle EDIT action with progress reporting and cancellation support."""
+    await log_action_start(ctx, "Editing configuration", config_name)
+
+    if error := validate_required_params(
+        {
+            "config_name": (config_name, "config_name"),
+            "new_content": (new_content, "new_content"),
+        },
+        "edit",
+    ):
+        return formatter.format_error_result(
+            error.get("message", "Missing required parameters"), "edit"
+        )
+
+    try:
+        # Progress reporting for long operations
+        await ctx.info("Validating configuration content...")
+
+        edit_request = SwagEditRequest(
+            action=SwagAction.EDIT,
+            config_name=config_name,
+            new_content=new_content,
+            create_backup=create_backup,
+        )
+
+        # Use asyncio.wait_for for cancellation support
+        await ctx.info("Applying configuration changes...")
+        edit_result = await asyncio.wait_for(
+            swag_service.update_config(edit_request),
+            timeout=300  # 5 minute timeout for large configs
+        )
+
+        await log_action_success(ctx, f"Successfully edited {config_name}")
+        await ctx.info("Configuration edit completed successfully")
+
+        # Convert service result to dict for formatter
+        result_data = {
+            "success": True,
+            "backup_created": edit_result.backup_created,
+        }
+
+        return formatter.format_edit_result(result_data, config_name)
+
+    except asyncio.CancelledError:
+        await ctx.info("Configuration edit cancelled by user")
+        raise
+    except TimeoutError:
+        await ctx.info("Configuration edit timed out")
+        return formatter.format_error_result(
+            "Edit operation timed out", "edit"
+        )
+
+
+async def _handle_remove_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    config_name: str, create_backup: bool
+) -> ToolResult:
+    """Handle REMOVE action with progress reporting."""
+    await log_action_start(ctx, "Removing configuration", config_name)
+
+    if error := validate_required_params(
+        {"config_name": (config_name, "config_name")}, "remove"
+    ):
+        return formatter.format_error_result(
+            error.get("message", "Missing config_name"), "remove"
+        )
+
+    try:
+        await ctx.info("Preparing to remove configuration...")
+
+        remove_request = SwagRemoveRequest(
+            action=SwagAction.REMOVE,
+            config_name=config_name,
+            create_backup=create_backup
+        )
+
+        await ctx.info("Removing configuration file...")
+        remove_result = await swag_service.remove_config(remove_request)
+
+        await log_action_success(ctx, f"Successfully removed {config_name}")
+        await ctx.info("Configuration removal completed")
+
+        # Convert service result to dict for formatter
+        result_data = {
+            "success": True,
+            "backup_created": remove_result.backup_created,
+        }
+
+        return formatter.format_remove_result(result_data, config_name)
+
+    except asyncio.CancelledError:
+        await ctx.info("Configuration removal cancelled by user")
+        raise
+
+
+async def _handle_logs_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    log_type: str, lines: int
+) -> ToolResult:
+    """Handle LOGS action with streaming capability for large log files."""
+    await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
+
+    try:
+        await ctx.info("Accessing SWAG container logs...")
+
+        logs_request = SwagLogsRequest(
+            action=SwagAction.LOGS,
+            log_type=cast(
+                "Literal['nginx-access', 'nginx-error', 'fail2ban', 'letsencrypt', 'renewal']",
+                log_type
+            ),
+            lines=lines
+        )
+
+        # Use timeout for log operations
+        logs_output = await asyncio.wait_for(
+            swag_service.get_swag_logs(logs_request),
+            timeout=60  # 1 minute timeout for log retrieval
+        )
+
+        await log_action_success(
+            ctx,
+            f"Retrieved {len(logs_output)} characters of {log_type} log output",
+        )
+        await ctx.info("Log retrieval completed")
+
+        # Convert service result to dict for formatter
+        result_data = {
+            "logs": logs_output,
+            "character_count": len(logs_output),
+        }
+
+        return formatter.format_logs_result(result_data, log_type, lines)
+
+    except asyncio.CancelledError:
+        await ctx.info("Log retrieval cancelled by user")
+        raise
+    except TimeoutError:
+        await ctx.info("Log retrieval timed out")
+        return formatter.format_error_result(
+            "Log retrieval operation timed out", "logs"
+        )
+
+
+async def _handle_backups_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    retention_days: int
+) -> ToolResult:
+    """Handle BACKUPS action with cleanup progress reporting."""
+    backup_action = BackupSubAction.CLEANUP if retention_days > 0 else BackupSubAction.LIST
+
+    try:
+        if backup_action == BackupSubAction.CLEANUP:
+            retention_msg = (
+                f"{retention_days} days retention"
+                if retention_days > 0
+                else "default retention"
+            )
+            await log_action_start(ctx, "Running backup cleanup", retention_msg)
+            await ctx.info("Scanning for old backup files...")
+
+            retention_days_param = retention_days if retention_days > 0 else None
+            cleaned_count = await swag_service.cleanup_old_backups(retention_days_param)
+
+            if cleaned_count > 0:
+                message = f"Cleaned up {cleaned_count} old backup files"
+                await ctx.info(f"Cleanup completed: {cleaned_count} files removed")
+            else:
+                message = "No old backup files to clean up"
+                await ctx.info("Cleanup completed: no files to remove")
+
+            await log_action_success(ctx, message)
+
+            # Convert service result to dict for formatter
+            cleanup_data = {
+                "cleaned_count": cleaned_count,
+                "retention_days": retention_days_param or 30,  # Default fallback
+            }
+
+            return formatter.format_backup_result(cleanup_data, backup_action)
+
+        else:  # LIST
+            await log_action_start(ctx, "Listing backup files", "all backup files")
+            await ctx.info("Scanning backup directory...")
+
+            backup_files = await swag_service.list_backups()
+
+            if not backup_files:
+                message = "No backup files found"
+            else:
+                message = f"Found {len(backup_files)} backup files"
+
+            await log_action_success(ctx, message)
+            await ctx.info(f"Scan completed: {len(backup_files)} backup files found")
+
+            # Convert service result to dict for formatter
+            result_data: dict[str, Any] = {
+                "backup_files": backup_files,
+                "total_count": len(backup_files),
+            }
+
+            return formatter.format_backup_result(result_data, backup_action)
+
+    except asyncio.CancelledError:
+        await ctx.info("Backup operation cancelled by user")
+        raise
+
+
+async def _handle_health_check_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    domain: str, timeout: int, follow_redirects: bool
+) -> ToolResult:
+    """Handle HEALTH_CHECK action with progress reporting."""
+    if error := validate_required_params(
+        {"domain": (domain, "domain")}, "health_check"
+    ):
+        return formatter.format_error_result(
+            error.get("message", "Missing domain"), "health_check"
+        )
+
+    await log_action_start(ctx, "Starting health check", domain)
+
+    try:
+        await ctx.info(f"Testing connectivity to {domain}...")
+
+        # Validate and create health check request
+        health_request = SwagHealthCheckRequest(
+            action=SwagAction.HEALTH_CHECK,
+            domain=domain,
+            timeout=timeout,
+            follow_redirects=follow_redirects,
+        )
+
+        # Perform health check with timeout
+        health_result = await asyncio.wait_for(
+            swag_service.health_check(health_request),
+            timeout=timeout + 10  # Add buffer to service timeout
+        )
+
+        await log_action_success(ctx, f"Health check completed for {domain}")
+
+        if health_result.success:
+            await ctx.info(f"Health check passed: {health_result.status_code}")
+        else:
+            await ctx.info(f"Health check failed: {health_result.error}")
+
+        # Convert service result to dict for formatter
+        result_data = {
+            "success": health_result.success,
+            "domain": health_result.domain,
+            "status_code": health_result.status_code,
+            "response_time_ms": health_result.response_time_ms,
+            "error": getattr(health_result, "error", None),
+        }
+
+        return formatter.format_health_check_result(result_data)
+
+    except asyncio.CancelledError:
+        await ctx.info("Health check cancelled by user")
+        raise
+    except TimeoutError:
+        await ctx.info("Health check timed out")
+        return formatter.format_error_result(
+            f"Health check for {domain} timed out", "health_check"
+        )
+
+
+async def _handle_update_action(
+    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
+    config_name: str, update_field: str, update_value: str, create_backup: bool
+) -> ToolResult:
+    """Handle UPDATE action with progress reporting and health check."""
+    if error := validate_required_params(
+        {
+            "config_name": (config_name, "config_name"),
+            "update_field": (update_field, "update_field"),
+            "update_value": (update_value, "update_value"),
+        },
+        "update",
+    ):
+        return formatter.format_error_result(
+            error.get("message", "Missing required parameters"), "update"
+        )
+
+    await log_action_start(
+        ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
+    )
+
+    try:
+        # Validate update_field is a valid value
+        valid_update_fields: set[UpdateFieldType] = {"port", "upstream", "app", "add_mcp"}
+        if update_field not in valid_update_fields:
+            return formatter.format_error_result(
+                f"Invalid update_field: '{update_field}'. "
+                f"Must be one of: {', '.join(valid_update_fields)}",
+                "update",
+            )
+
+        # Now we know update_field is a valid UpdateFieldType
+        validated_update_field: UpdateFieldType = cast("UpdateFieldType", update_field)
+
+        await ctx.info(f"Preparing to update {update_field} field...")
+
+        update_request = SwagUpdateRequest(
+            action=SwagAction.UPDATE,
+            config_name=config_name,
+            update_field=validated_update_field,
+            update_value=update_value,
+            create_backup=create_backup,
+        )
+
+        await ctx.info(f"Applying {update_field} update...")
+        update_result = await asyncio.wait_for(
+            swag_service.update_config_field(update_request),
+            timeout=120  # 2 minute timeout for updates
+        )
+
+        await ctx.info("Running post-update health check...")
+        # Run health check and return formatted result
+        health_check_result = await _run_post_update_health_check(
+            swag_service, ctx, config_name, update_field, update_value
+        )
+
+        await log_action_success(ctx, f"Updated {update_field} in {config_name}")
+        await ctx.info("Update completed successfully")
+
+        # Convert service result to dict for formatter
+        result_data = {
+            "success": True,
+            "backup_created": update_result.backup_created,
+        }
+
+        return formatter.format_update_result(
+            result_data, config_name, update_field, update_value, health_check_result
+        )
+
+    except asyncio.CancelledError:
+        await ctx.info("Configuration update cancelled by user")
+        raise
+    except TimeoutError:
+        await ctx.info("Configuration update timed out")
+        return formatter.format_error_result(
+            "Update operation timed out", "update"
+        )
+

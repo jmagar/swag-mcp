@@ -41,6 +41,10 @@ dev-dependencies = [
     "types-PyYAML",
     "types-regex>=2025.7.34.20250809",
     "types-docker~=7.1",
+    "hypothesis>=6.0.0", # Property-based testing
+    "pytest-benchmark>=4.0.0", # Performance testing
+    "psutil>=5.9.0", # System monitoring for benchmarks
+    "types-psutil>=7.0.0.20250822",
 ]
 
 [tool.pytest.ini_options]

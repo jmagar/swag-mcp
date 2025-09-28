@@ -9,7 +9,8 @@ from collections import deque
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from re import Match
+from typing import Any, Literal
 
 import aiofiles
 import aiohttp
@@ -30,6 +31,11 @@ from swag_mcp.models.config import (
     SwagRemoveRequest,
     SwagResourceList,
     SwagUpdateRequest,
+)
+from swag_mcp.utils.error_codes import (
+    ErrorCode,
+    create_operation_error,
+    create_validation_error,
 )
 from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.formatters import (
@@ -125,6 +131,15 @@ class SwagManagerService:
         self._post_render_hook = None
         self._template_vars_hook = None
 
+    async def __aenter__(self) -> "SwagManagerService":
+        """Async context manager entry - initialize resources."""
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit - cleanup resources."""
+        await self._close_session()
+        await self._cleanup_file_locks()
+
     def _get_template_path(self) -> Path:
         """Return the root path for Jinja templates (testable hook)."""
         return self.template_path
@@ -212,6 +227,20 @@ class SwagManagerService:
             if file_key not in self._file_locks:
                 self._file_locks[file_key] = asyncio.Lock()
             return self._file_locks[file_key]
+
+    async def _cleanup_file_locks(self) -> None:
+        """Clean up unused file locks to prevent memory growth."""
+        async with self._file_locks_lock:
+            to_remove = []
+            for path, lock in self._file_locks.items():
+                if not lock.locked():
+                    to_remove.append(path)
+
+            for path in to_remove:
+                del self._file_locks[path]
+
+            if to_remove:
+                logger.debug(f"Cleaned up {len(to_remove)} unused file locks")
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session with connection pooling.
@@ -1000,7 +1029,7 @@ class SwagManagerService:
         )
 
     async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
-        """Update specific field in existing configuration using regex replacement."""
+        """Update specific field in existing configuration using targeted updaters."""
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
@@ -1011,225 +1040,300 @@ class SwagManagerService:
         if update_request.create_backup:
             backup_name = await self._create_backup(update_request.config_name)
 
-        # Apply targeted replacements based on field type
-        updated_content = content  # Start with original content
-        changes_made = False  # Track if any changes were actually made
+        # Dispatch to specific updater methods
+        updaters = {
+            "port": self._update_port_field,
+            "upstream": self._update_upstream_field,
+            "app": self._update_app_field,
+            "add_mcp": self._update_mcp_field
+        }
 
-        if update_request.update_field == "port":
-            # Validate port value
-            try:
-                port_value = int(update_request.update_value)
-                if not (1 <= port_value <= 65535):
-                    raise ValueError(f"Invalid port number: {port_value}")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid port value: {update_request.update_value}") from e
+        updater = updaters.get(update_request.update_field)
+        if not updater:
+            raise create_validation_error(
+                code=ErrorCode.INVALID_UPDATE_FIELD,
+                message=f"Unsupported update field: {update_request.update_field}",
+                context={"valid_fields": list(updaters.keys())}
+            )
 
-            # Try template format first: set $upstream_port
-            pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_port \"{port_value}\";"
-            new_content, port_replacements = re.subn(pattern, replacement, updated_content)
+        return await updater(update_request, content, backup_name)
 
-            if port_replacements > 0:
-                updated_content = new_content
-                changes_made = True
-                logger.debug(
-                    f"Updated {port_replacements} template port references to {update_request.update_value}"
+    async def _update_port_field(
+        self,
+        update_request: SwagUpdateRequest,
+        content: str,
+        backup_name: str | None
+    ) -> SwagConfigResult:
+        """Update port field in configuration."""
+        # Validate port value
+        try:
+            port_value = int(update_request.update_value)
+            if not (1 <= port_value <= 65535):
+                raise create_validation_error(
+                    ErrorCode.INVALID_PORT_NUMBER,
+                    f"Port number must be between 1-65535, got: {port_value}"
                 )
-            else:
-                # Try simple nginx format: proxy_pass http://app:port
-                pattern = r'proxy_pass\s+https?://([^/:]+):(\d+)([^;]*);'
-                
-                def replace_proxy_port(match):
-                    app = match.group(1)
-                    old_port = match.group(2)
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{app}:{port_value}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_port, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass port references to {update_request.update_value}"
-                    )
+        except (ValueError, TypeError) as e:
+            raise create_validation_error(
+                ErrorCode.INVALID_PORT_NUMBER,
+                f"Invalid port value: {update_request.update_value}",
+                context={"original_error": str(e)}
+            ) from e
 
-            # Update upstream comment to reflect new port
-            upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
-            upstream_comment_replacement = rf"\g<1>{port_value}"
-            new_content, comment_replacements = re.subn(
-                upstream_comment_pattern, upstream_comment_replacement, updated_content
-            )
+        updated_content = content
+        changes_made = False
 
-            if comment_replacements > 0:
-                updated_content = new_content
-                logger.debug(f"Updated {comment_replacements} upstream comments")
+        # Try template format first: set $upstream_port
+        pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
+        replacement = rf"set \$upstream_port \"{port_value}\";"
+        new_content, port_replacements = re.subn(pattern, replacement, updated_content)
 
-        elif update_request.update_field == "upstream":
-            # Validate upstream app name
-            if not re.match(r'^[A-Za-z0-9_.-]+$', update_request.update_value):
-                raise ValueError(f"Invalid upstream app name: {update_request.update_value}")
-
-            # Try template format first: set $upstream_app
-            pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_app \"{update_request.update_value}\";"
-            new_content, app_replacements = re.subn(pattern, replacement, updated_content)
-
-            if app_replacements > 0:
-                updated_content = new_content
-                changes_made = True
-                logger.debug(
-                    f"Updated {app_replacements} template app references to {update_request.update_value}"
-                )
-            else:
-                # Try simple nginx format: proxy_pass http://app:port
-                pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
-                
-                def replace_proxy_pass(match):
-                    old_app = match.group(1)
-                    port = match.group(2) or ''
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{update_request.update_value}{port}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_pass, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass app references to {update_request.update_value}"
-                    )
-
-            # Update upstream comment to reflect new app
-            upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
-            upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
-            new_content, comment_replacements = re.subn(
-                upstream_comment_pattern, upstream_comment_replacement, updated_content
-            )
-
-            if comment_replacements > 0:
-                updated_content = new_content
-                logger.debug(f"Updated {comment_replacements} upstream comments")
-
-        elif update_request.update_field == "app":
-            # Update both app and port (format: "app:port")
-            if ":" not in update_request.update_value:
-                raise ValueError("app field requires format 'app:port'")
-            app, port = update_request.update_value.split(":", 1)
-
-            # Validate app name
-            if not re.match(r'^[A-Za-z0-9_.-]+$', app):
-                raise ValueError(f"Invalid app name: {app}")
-
-            # Validate port
-            try:
-                port_value = int(port)
-                if not (1 <= port_value <= 65535):
-                    raise ValueError(f"Invalid port number: {port_value}")
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid port value: {port}") from e
-
-            # Try template format first: set $upstream_app and $upstream_port
-            pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_app \"{app}\";"
-            new_content, app_replacements = re.subn(pattern, replacement, updated_content)
-
-            if app_replacements > 0:
-                updated_content = new_content
-                changes_made = True
-                logger.debug(f"Updated {app_replacements} template app references to {app}")
-
-            pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-            replacement = rf"set \$upstream_port \"{port_value}\";"
-            new_content, port_replacements = re.subn(pattern, replacement, updated_content)
-
-            if port_replacements > 0:
-                updated_content = new_content
-                changes_made = True
-                logger.debug(f"Updated {port_replacements} template port references to {port_value}")
-                
-            # If template format didn't work, try simple nginx format
-            if not changes_made:
-                pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
-                
-                def replace_proxy_app_port(match):
-                    old_app = match.group(1)
-                    old_port = match.group(2) or ''
-                    path = match.group(3) or ''
-                    protocol = 'https' if 'https' in match.group(0) else 'http'
-                    return f'proxy_pass {protocol}://{app}:{port_value}{path};'
-                
-                new_content, proxy_replacements = re.subn(pattern, replace_proxy_app_port, updated_content)
-                
-                if proxy_replacements > 0:
-                    updated_content = new_content
-                    changes_made = True
-                    logger.debug(
-                        f"Updated {proxy_replacements} proxy_pass app:port references to {app}:{port_value}"
-                    )
-
-            # Update upstream comment to reflect both new app and port
-            upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
-            upstream_comment_replacement = f"# Upstream: http://{app}:{port_value}"
-            new_content, comment_replacements = re.subn(
-                upstream_comment_pattern, upstream_comment_replacement, updated_content
-            )
-
-            if comment_replacements > 0:
-                updated_content = new_content
-                logger.debug(f"Updated {comment_replacements} upstream comments")
-
-        elif update_request.update_field == "add_mcp":
-            # Add MCP location block - delegate to the dedicated method
-            mcp_path = update_request.update_value if update_request.update_value else "/mcp"
-
-            # Validate the computed MCP path
-            try:
-                validated_mcp_path = validate_mcp_path(mcp_path)
-            except ValueError as e:
-                from swag_mcp.services.errors import ValidationError
-
-                error_msg = f"Invalid MCP path: {str(e)}"
-                logger.error(error_msg)
-                raise ValidationError(error_msg) from e
-
-            # Call the add_mcp_location method with validated path
-            result = await self.add_mcp_location(
-                config_name=update_request.config_name,
-                mcp_path=validated_mcp_path,
-                create_backup=update_request.create_backup,
-            )
-
-            # Return early since add_mcp_location handles everything
-            return result
-
+        if port_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+            logger.debug(f"Updated {port_replacements} template port references to {port_value}")
         else:
-            raise ValueError(f"Unsupported update field: {update_request.update_field}")
+            # Try simple nginx format: proxy_pass http://app:port
+            pattern = r'proxy_pass\s+https?://([^/:]+):(\d+)([^;]*);'
 
-        # For standard field updates (not add_mcp), validate that changes were actually made
-        if update_request.update_field in ["port", "upstream", "app"] and not changes_made:
+            def replace_proxy_port(match: Match[str]) -> str:
+                app = match.group(1)
+                path = match.group(3) or ''
+                protocol = 'https' if 'https' in match.group(0) else 'http'
+                return f'proxy_pass {protocol}://{app}:{port_value}{path};'
+
+            new_content, proxy_replacements = re.subn(pattern, replace_proxy_port, updated_content)
+            if proxy_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(
+                f"Updated {proxy_replacements} proxy_pass port references to {port_value}"
+            )
+
+        # Update upstream comment
+        upstream_comment_pattern = r"(# Upstream: https?://[^:]+:)\d+"
+        upstream_comment_replacement = rf"\g<1>{port_value}"
+        new_content, comment_replacements = re.subn(
+            upstream_comment_pattern, upstream_comment_replacement, updated_content
+        )
+        if comment_replacements > 0:
+            updated_content = new_content
+
+        return await self._finalize_config_update(
+            update_request, updated_content, backup_name, changes_made
+        )
+
+    async def _update_upstream_field(
+        self,
+        update_request: SwagUpdateRequest,
+        content: str,
+        backup_name: str | None
+    ) -> SwagConfigResult:
+        """Update upstream app field in configuration."""
+        # Validate upstream app name
+        if not re.match(r'^[A-Za-z0-9_.-]+$', update_request.update_value):
+            raise create_validation_error(
+                ErrorCode.INVALID_SERVICE_NAME,
+                f"Invalid upstream app name: {update_request.update_value}"
+            )
+
+        updated_content = content
+        changes_made = False
+
+        # Try template format first: set $upstream_app
+        pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
+        replacement = rf"set \$upstream_app \"{update_request.update_value}\";"
+        new_content, app_replacements = re.subn(pattern, replacement, updated_content)
+
+        if app_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+            logger.debug(
+                f"Updated {app_replacements} template app references to "
+                f"{update_request.update_value}"
+            )
+        else:
+            # Try simple nginx format: proxy_pass http://app:port
+            pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
+
+            def replace_proxy_pass(match: Match[str]) -> str:
+                port = match.group(2) or ''
+                path = match.group(3) or ''
+                protocol = 'https' if 'https' in match.group(0) else 'http'
+                return f'proxy_pass {protocol}://{update_request.update_value}{port}{path};'
+
+            new_content, proxy_replacements = re.subn(pattern, replace_proxy_pass, updated_content)
+            if proxy_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(
+                    f"Updated {proxy_replacements} proxy_pass app references to "
+                    f"{update_request.update_value}"
+                )
+
+        # Update upstream comment
+        upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
+        upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
+        new_content, comment_replacements = re.subn(
+            upstream_comment_pattern, upstream_comment_replacement, updated_content
+        )
+        if comment_replacements > 0:
+            updated_content = new_content
+
+        return await self._finalize_config_update(
+            update_request, updated_content, backup_name, changes_made
+        )
+
+    async def _update_app_field(
+        self,
+        update_request: SwagUpdateRequest,
+        content: str,
+        backup_name: str | None
+    ) -> SwagConfigResult:
+        """Update both app and port field in configuration."""
+        # Update both app and port (format: "app:port")
+        if ":" not in update_request.update_value:
+            raise create_validation_error(
+                ErrorCode.INVALID_UPDATE_FIELD,
+                "app field requires format 'app:port'"
+            )
+
+        app, port = update_request.update_value.split(":", 1)
+
+        # Validate app name
+        if not re.match(r'^[A-Za-z0-9_.-]+$', app):
+            raise create_validation_error(
+                ErrorCode.INVALID_SERVICE_NAME,
+                f"Invalid app name: {app}"
+            )
+
+        # Validate port
+        try:
+            port_value = int(port)
+            if not (1 <= port_value <= 65535):
+                raise create_validation_error(
+                    ErrorCode.INVALID_PORT_NUMBER,
+                    f"Port number must be between 1-65535, got: {port_value}"
+                )
+        except (ValueError, TypeError) as e:
+            raise create_validation_error(
+                ErrorCode.INVALID_PORT_NUMBER,
+                f"Invalid port value: {port}",
+                context={"original_error": str(e)}
+            ) from e
+
+        updated_content = content
+        changes_made = False
+
+        # Try template format first
+        app_pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
+        app_replacement = rf"set \$upstream_app \"{app}\";"
+        new_content, app_replacements = re.subn(app_pattern, app_replacement, updated_content)
+
+        if app_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+
+        port_pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
+        port_replacement = rf"set \$upstream_port \"{port_value}\";"
+        new_content, port_replacements = re.subn(port_pattern, port_replacement, updated_content)
+
+        if port_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+
+        # If template format didn't work, try simple nginx format
+        if not changes_made:
+            pattern = r'proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);'
+
+            def replace_proxy_app_port(match: Match[str]) -> str:
+                path = match.group(3) or ''
+                protocol = 'https' if 'https' in match.group(0) else 'http'
+                return f'proxy_pass {protocol}://{app}:{port_value}{path};'
+
+            new_content, proxy_replacements = re.subn(
+                pattern, replace_proxy_app_port, updated_content
+            )
+            if proxy_replacements > 0:
+                updated_content = new_content
+                changes_made = True
+
+        # Update upstream comment
+        upstream_comment_pattern = r"# Upstream: https?://[^:]+(:\d+)"
+        upstream_comment_replacement = f"# Upstream: http://{app}:{port_value}"
+        new_content, comment_replacements = re.subn(
+            upstream_comment_pattern, upstream_comment_replacement, updated_content
+        )
+        if comment_replacements > 0:
+            updated_content = new_content
+
+        return await self._finalize_config_update(
+            update_request, updated_content, backup_name, changes_made
+        )
+
+    async def _update_mcp_field(
+        self,
+        update_request: SwagUpdateRequest,
+        content: str,
+        backup_name: str | None
+    ) -> SwagConfigResult:
+        """Add MCP location block to configuration."""
+        # Add MCP location block - delegate to the dedicated method
+        mcp_path = update_request.update_value if update_request.update_value else "/mcp"
+
+        # Validate the computed MCP path
+        try:
+            validated_mcp_path = validate_mcp_path(mcp_path)
+        except ValueError as e:
+            raise create_validation_error(
+                ErrorCode.INVALID_MCP_PATH,
+                f"Invalid MCP path: {str(e)}"
+            ) from e
+
+        # Call the add_mcp_location method with validated path
+        return await self.add_mcp_location(
+            config_name=update_request.config_name,
+            mcp_path=validated_mcp_path,
+            create_backup=update_request.create_backup,
+        )
+
+    async def _finalize_config_update(
+        self,
+        update_request: SwagUpdateRequest,
+        updated_content: str,
+        backup_name: str | None,
+        changes_made: bool
+    ) -> SwagConfigResult:
+        """Finalize configuration update with validation and file writing."""
+        # Validate that changes were actually made
+        if not changes_made:
             field = update_request.update_field
             config_name = update_request.config_name
-            if field == "upstream":
-                expected_format = "'set $upstream_app' variables or 'proxy_pass' directives"
-            elif field == "port":
-                expected_format = "'set $upstream_port' variables or 'proxy_pass' directives with ports"
-            elif field == "app":
-                expected_format = "'set $upstream_app' and 'set $upstream_port' variables or 'proxy_pass' directives"
-            else:
-                expected_format = "template format"
-                
-            error_msg = (
-                f"No changes made to {config_name}. "
-                f"The configuration file doesn't contain the expected format "
-                f"for '{field}' updates. Expected: {expected_format}. "
-                f"This operation supports both template-generated and standard nginx configurations."
-            )
-            logger.warning(error_msg)
-            raise ValueError(error_msg)
 
+            format_map = {
+                "upstream": (
+                    "'set $upstream_app' variables or 'proxy_pass' directives"
+                ),
+                "port": (
+                    "'set $upstream_port' variables or 'proxy_pass' directives with ports"
+                ),
+                "app": (
+                    "'set $upstream_app' and 'set $upstream_port' variables or "
+                    "'proxy_pass' directives"
+                )
+            }
+
+            expected_format = format_map.get(field, "template format")
+
+            raise create_operation_error(
+                ErrorCode.FILE_WRITE_ERROR,
+                f"No changes made to {config_name}. The configuration file doesn't "
+                f"contain the expected format for '{field}' updates",
+                context={
+                    "expected_format": expected_format,
+                    "supports": "both template-generated and standard nginx configurations"
+                }
+            )
 
         # Write updated content to a temporary file for validation
         import tempfile
@@ -1237,28 +1341,35 @@ class SwagManagerService:
             temp_file.write(updated_content)
             temp_path = Path(temp_file.name)
 
-        # Validate nginx syntax before committing changes
-        if not await self._validate_nginx_syntax(temp_path):
-            temp_path.unlink()  # Clean up temp file
-            raise ValueError("Updated configuration contains invalid nginx syntax")
+        try:
+            # Validate nginx syntax before committing changes
+            if not await self._validate_nginx_syntax(temp_path):
+                raise create_operation_error(
+                    ErrorCode.CONFIG_SYNTAX_ERROR,
+                    "Updated configuration contains invalid nginx syntax"
+                )
 
-        # Clean up temp file after validation
-        temp_path.unlink()
-        # Write updated content
-        config_file = self.config_path / update_request.config_name
-        await self._safe_write_file(
-            config_file, updated_content, f"field update for {update_request.config_name}"
-        )
+            # Write updated content
+            config_file = self.config_path / update_request.config_name
+            await self._safe_write_file(
+                config_file, updated_content, f"field update for {update_request.config_name}"
+            )
 
-        logger.info(
-            f"Successfully updated {update_request.update_field} in {update_request.config_name}"
-        )
+            logger.info(
+                f"Successfully updated {update_request.update_field} in "
+                f"{update_request.config_name}"
+            )
 
-        return SwagConfigResult(
-            filename=update_request.config_name,
-            content=updated_content,
-            backup_created=backup_name,
-        )
+            return SwagConfigResult(
+                filename=update_request.config_name,
+                content=updated_content,
+                backup_created=backup_name,
+            )
+
+        finally:
+            # Clean up temp file
+            if temp_path.exists():
+                temp_path.unlink()
 
     async def _create_backup(self, config_name: str) -> str:
         """Create timestamped backup of configuration file with proper locking."""
@@ -1275,7 +1386,11 @@ class SwagManagerService:
                 timestamp = datetime.now().strftime(
                     "%Y%m%d_%H%M%S_%f"
                 )  # Include microseconds for uniqueness
-                backup_name = f"{validated_name}.backup.{timestamp}"
+
+                # Add UUID fallback for atomic backup creation to prevent race conditions
+                import uuid
+                uuid_suffix = uuid.uuid4().hex[:8]
+                backup_name = f"{validated_name}.backup.{timestamp}_{uuid_suffix}"
                 backup_file = self.config_path / backup_name
 
                 # Double-check that backup doesn't already exist (extra safety)
@@ -1588,13 +1703,14 @@ class SwagManagerService:
 
         # Use cleanup lock to prevent multiple cleanup operations
         # and coordinate with backup creation
+        # Fix: Implement ordered locking to prevent deadlock
         async with self._cleanup_lock, self._backup_lock:
             cutoff_time = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
             cleaned_count = 0
 
-            # Enhanced pattern: filename.backup.YYYYMMDD_HHMMSS[_microseconds][.counter]
+            # Enhanced pattern: filename.backup.YYYYMMDD_HHMMSS_microseconds_uuid
             # This matches our improved backup naming scheme
-            backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}(_\d{6})?(\.\d+)?$")
+            backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}_\d{6}_[a-f0-9]{8}$")
 
             # Get list of backup files first (snapshot in time to avoid race conditions)
             backup_candidates = []
@@ -1628,7 +1744,9 @@ class SwagManagerService:
                         continue
 
                     # Check if file is currently being written (has corresponding temp file)
-                    temp_file = backup_file.with_suffix(f"{backup_file.suffix}.tmp.{os.getpid()}")
+                    temp_file = backup_file.with_suffix(
+                        f"{backup_file.suffix}.tmp.{os.getpid()}"
+                    )
                     if temp_file.exists():
                         logger.debug(f"Skipping backup being written: {backup_file.name}")
                         continue
@@ -1650,7 +1768,8 @@ class SwagManagerService:
 
                     # Attempt to acquire lock briefly for deletion
                     try:
-                        # Use asyncio.wait_for to timeout if lock can't be acquired quickly
+                        # Use asyncio.wait_for to timeout if lock can't be acquired
+                        # quickly
                         async with asyncio.timeout(1.0):  # 1 second timeout
                             async with file_lock:
                                 # Double-check file still exists and meets criteria
@@ -1664,7 +1783,9 @@ class SwagManagerService:
                                     cleaned_count += 1
 
                     except TimeoutError:
-                        logger.debug(f"Timeout acquiring lock for cleanup of {backup_file.name}")
+                        logger.debug(
+                            f"Timeout acquiring lock for cleanup of {backup_file.name}"
+                        )
                         continue
                     except (PermissionError, OSError) as e:
                         logger.warning(f"Failed to delete backup {backup_file.name}: {e}")
@@ -1895,7 +2016,7 @@ class SwagManagerService:
         # Look for auth method includes like: include /config/nginx/authelia-server.conf;
         pattern = r"include\s+/config/nginx/(\w+)-(?:server|location)\.conf;"
         matches = re.findall(pattern, content)
-        
+
         # Also check for simple auth method includes like: include /config/nginx/ldap.conf;
         if not matches:
             simple_pattern = r"include\s+/config/nginx/(\w+)\.conf;"
