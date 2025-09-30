@@ -1,4 +1,7 @@
-"""Formatting utilities for SWAG MCP server."""
+"""Formatting utilities for SWAG MCP server.
+
+Updated September 29, 2025 to support SWAG-compliant MCP template mapping.
+"""
 
 from datetime import datetime
 from typing import Any, Literal
@@ -248,6 +251,7 @@ def build_template_filename(config_type: str) -> str:
     Examples:
         build_template_filename("subdomain") -> "subdomain.conf.j2"
         build_template_filename("mcp-subdomain") -> "mcp-subdomain.conf.j2"
+        build_template_filename("swag-compliant-mcp-subdomain") -> "swag-compliant-mcp-subdomain.conf.j2"
 
     Raises:
         ValueError: If config_type is not one of the valid types
@@ -259,6 +263,16 @@ def build_template_filename(config_type: str) -> str:
             f"Invalid config type '{config_type}'. "
             f"Must be one of: {', '.join(CONFIG_TYPES)}"
         )
+
+    # Map new SWAG-compliant types to their template files
+    template_mapping = {
+        "swag-compliant-mcp-subdomain": "swag-compliant-mcp-subdomain.conf.j2",
+        "swag-compliant-mcp-subfolder": "swag-compliant-mcp-subfolder.conf.j2",
+    }
+
+    # Use mapping if available, otherwise use standard naming convention
+    if config_type in template_mapping:
+        return template_mapping[config_type]
 
     return f"{config_type}.conf.j2"
 

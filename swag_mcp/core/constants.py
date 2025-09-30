@@ -1,4 +1,7 @@
-"""Constants used throughout the SWAG MCP server."""
+"""Constants used throughout the SWAG MCP server.
+
+Updated September 29, 2025 to support SWAG-compliant MCP templates.
+"""
 
 # File patterns and extensions
 CONF_PATTERN = "*.conf"
@@ -21,6 +24,8 @@ CONFIG_TYPE_SUBDOMAIN = "subdomain"
 CONFIG_TYPE_SUBFOLDER = "subfolder"
 CONFIG_TYPE_MCP_SUBDOMAIN = "mcp-subdomain"
 CONFIG_TYPE_MCP_SUBFOLDER = "mcp-subfolder"
+CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN = "swag-compliant-mcp-subdomain"
+CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER = "swag-compliant-mcp-subfolder"
 
 # Configuration types tuple for efficient validation and iteration
 CONFIG_TYPES = (
@@ -28,6 +33,8 @@ CONFIG_TYPES = (
     CONFIG_TYPE_SUBFOLDER,
     CONFIG_TYPE_MCP_SUBDOMAIN,
     CONFIG_TYPE_MCP_SUBFOLDER,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER,
 )
 
 # Backwards-compat alias (if referenced elsewhere)
