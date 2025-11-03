@@ -303,7 +303,8 @@ def cached_result(
                 # Add hash of kwargs if present
                 if kwargs:
                     kwargs_str = str(sorted(kwargs.items()))
-                    kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:8]
+                    # MD5 used for cache key generation only, not cryptographic purposes
+                    kwargs_hash = hashlib.md5(kwargs_str.encode(), usedforsecurity=False).hexdigest()[:8]
                     key = f"{key}:{kwargs_hash}"
 
             # Try to get from cache or compute
