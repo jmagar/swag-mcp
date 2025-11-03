@@ -120,7 +120,11 @@ class BackupManager:
 
                     # Extract original config name from backup filename
                     original_config = backup_path.name.split(BACKUP_MARKER)[0]
-                    if not original_config.endswith(".conf"):
+                    # Only append .conf if it's missing both .conf and .conf.sample
+                    if (
+                        not original_config.endswith(".conf")
+                        and not original_config.endswith(".conf.sample")
+                    ):
                         original_config += ".conf"
 
                     backup_files.append(

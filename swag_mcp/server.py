@@ -205,11 +205,17 @@ def _extract_service_name(filename: str) -> str:
     if name.endswith(CONF_EXTENSION):
         name = name[: -len(CONF_EXTENSION)]
 
-    # Strip type suffixes if present (legacy .subdomain and .subfolder)
-    if name.endswith(".subdomain"):
-        name = name[: -len(".subdomain")]
-    elif name.endswith(".subfolder"):
-        name = name[: -len(".subfolder")]
+    # Strip type suffixes if present (legacy and SWAG-compliant)
+    # Check SWAG-compliant first (longer strings) to avoid partial matches
+    for suffix in (
+        f".{CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN}",
+        f".{CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER}",
+        ".subdomain",
+        ".subfolder",
+    ):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
 
     return name
 
@@ -231,20 +237,29 @@ async def create_mcp_server() -> FastMCP:
 
             # Validate required OAuth credentials
             if not client_id or not client_secret:
-                logger.error("Google OAuth requires both CLIENT_ID and CLIENT_SECRET environment variables")
-                logger.error(f"CLIENT_ID set: {bool(client_id)}, CLIENT_SECRET set: {bool(client_secret)}")
+                logger.error(
+                    "Google OAuth requires both CLIENT_ID and CLIENT_SECRET environment variables"
+                )
+                logger.error(
+                    "CLIENT_ID set: %s, CLIENT_SECRET set: %s",
+                    bool(client_id),
+                    bool(client_secret),
+                )
                 raise ValueError("Missing required OAuth credentials")
 
+            redirect_path = os.getenv(
+                "FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"
+            )
             auth_provider = GoogleProvider(
                 client_id=client_id,
                 client_secret=client_secret,
                 base_url=base_url,
                 required_scopes=scopes,
-                redirect_path=os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"),
+                redirect_path=redirect_path,
             )
             logger.info("✅ Google OAuth authentication enabled")
             logger.info(f"📍 OAuth base URL: {base_url}")
-            logger.info(f"🔑 OAuth client ID: {client_id[:20]}...")
+            logger.info("🔑 OAuth client ID: %s...", client_id[:20])
             logger.info(f"🔒 OAuth scopes: {scopes}")
         except ImportError as e:
             logger.error(f"Failed to import GoogleProvider: {e}")
@@ -254,7 +269,7 @@ async def create_mcp_server() -> FastMCP:
             logger.error("Google OAuth authentication disabled")
     else:
         logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
-    
+
     # Create FastMCP server instance with or without authentication
     mcp = FastMCP("SWAG Configuration Manager", auth=auth_provider)
 
@@ -328,7 +343,7 @@ async def main() -> None:
     """Async entry point for when called from within an async context."""
     # Load environment variables from .env file if present
     load_dotenv()
-    
+
     logger.info("Starting SWAG MCP Server with streamable-http transport (async mode)...")
 
     setup_templates()
