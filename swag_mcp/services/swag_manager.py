@@ -289,3 +289,140 @@ class SwagManagerService:
         Delegates to: TemplateManager
         """
         self.template_manager.clear_template_hooks()
+
+    # ========================================================================
+    # INTERNAL METHOD PROXIES - For backwards compatibility with tests
+    # ========================================================================
+
+    # Expose attributes for tests
+    @property
+    def template_env(self):
+        """Access template environment (for tests).
+
+        Delegates to: TemplateManager
+        """
+        return self.template_manager.template_env
+
+    @property
+    def _file_locks(self):
+        """Access file locks dict (for tests).
+
+        Delegates to: FileOperations
+        """
+        return self.file_ops._file_locks
+
+    @property
+    def _file_locks_lock(self):
+        """Access file locks lock (for tests).
+
+        Delegates to: FileOperations
+        """
+        return self.file_ops._file_locks_lock
+
+    @property
+    def _backup_lock(self):
+        """Access backup lock (for tests).
+
+        Delegates to: BackupManager
+        """
+        return self.backup_manager._backup_lock
+
+    @property
+    def _cleanup_lock(self):
+        """Access cleanup lock (for tests).
+
+        Delegates to: BackupManager
+        """
+        return self.backup_manager._cleanup_lock
+
+    @property
+    def _http_session(self):
+        """Access HTTP session (for tests).
+
+        Delegates to: HealthMonitor
+        """
+        return self.health_monitor._http_session
+
+    @property
+    def _directory_checked(self):
+        """Access directory checked flag (for tests).
+
+        Delegates to: ConfigOperations
+        """
+        return self.config_operations._directory_checked
+
+    # File operations proxies
+    async def _safe_write_file(self, file_path, content, operation_name="file write", use_lock=True):
+        """Proxy to FileOperations.safe_write_file (for tests)."""
+        return await self.file_ops.safe_write_file(file_path, content, operation_name, use_lock)
+
+    async def _get_file_lock(self, file_path):
+        """Proxy to FileOperations.get_file_lock (for tests)."""
+        return await self.file_ops.get_file_lock(file_path)
+
+    async def _cleanup_file_locks(self):
+        """Proxy to FileOperations.cleanup_file_locks (for tests)."""
+        return await self.file_ops.cleanup_file_locks()
+
+    def _ensure_config_directory(self):
+        """Proxy to ConfigOperations._ensure_config_directory (for tests)."""
+        return self.config_operations._ensure_config_directory()
+
+    # Template operations proxies
+    def _validate_template_variables(self, variables):
+        """Proxy to TemplateManager.validate_template_variables (for tests)."""
+        return self.template_manager.validate_template_variables(variables)
+
+    async def _render_template(self, template_name, variables):
+        """Proxy to TemplateManager.render_template (for tests)."""
+        return await self.template_manager.render_template(template_name, variables)
+
+    def _get_template_path(self):
+        """Proxy to TemplateManager.get_template_path (for tests)."""
+        return self.template_manager.get_template_path()
+
+    def _create_secure_template_environment(self):
+        """Proxy to TemplateManager._create_secure_template_environment (for tests)."""
+        return self.template_manager._create_secure_template_environment()
+
+    # Validation proxies
+    def _validate_config_content(self, content, config_name):
+        """Proxy to ValidationService.validate_config_content (for tests)."""
+        return self.validation_service.validate_config_content(content, config_name)
+
+    async def _validate_nginx_syntax(self, config_path):
+        """Proxy to ValidationService.validate_nginx_syntax (for tests)."""
+        return await self.validation_service.validate_nginx_syntax(config_path)
+
+    # Backup operations proxies
+    async def _create_backup(self, config_name):
+        """Proxy to BackupManager.create_backup (for tests)."""
+        return await self.backup_manager.create_backup(config_name)
+
+    # MCP operations proxies
+    def _extract_upstream_value(self, content, variable_name):
+        """Proxy to MCPOperations.extract_upstream_value (for tests)."""
+        return self.mcp_operations.extract_upstream_value(content, variable_name)
+
+    def _extract_auth_method(self, content):
+        """Proxy to MCPOperations.extract_auth_method (for tests)."""
+        return self.mcp_operations.extract_auth_method(content)
+
+    async def _render_mcp_location_block(self, mcp_path, upstream_app, upstream_port, upstream_proto, auth_method):
+        """Proxy to MCPOperations.render_mcp_location_block (for tests)."""
+        return await self.mcp_operations.render_mcp_location_block(
+            mcp_path, upstream_app, upstream_port, upstream_proto, auth_method
+        )
+
+    def _insert_location_block(self, content, location_block):
+        """Proxy to MCPOperations.insert_location_block (for tests)."""
+        return self.mcp_operations.insert_location_block(content, location_block)
+
+    # HTTP session proxies
+    async def _get_session(self):
+        """Proxy to HealthMonitor.get_session (for tests)."""
+        return await self.health_monitor.get_session()
+
+    async def _close_session(self):
+        """Proxy to HealthMonitor.close_session (for tests)."""
+        return await self.health_monitor.close_session()

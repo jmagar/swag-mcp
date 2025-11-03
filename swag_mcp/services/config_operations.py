@@ -9,6 +9,8 @@ import re
 import tempfile
 from pathlib import Path
 
+import aiofiles
+
 from swag_mcp.core.constants import LIST_FILTERS
 from swag_mcp.models.config import (
     ListFilterType,
@@ -165,7 +167,11 @@ class ConfigOperations:
 
         try:
             # Read file with proper encoding detection and Unicode normalization
-            content = await self.file_ops.read_file(config_file)
+            async with aiofiles.open(config_file, "rb") as f:
+                raw_content = await f.read()
+
+            # Detect encoding and normalize Unicode
+            content = detect_and_handle_encoding(raw_content)
 
         except OSError as e:
             handle_os_error(e, "reading configuration file", validated_name)
@@ -406,7 +412,11 @@ class ConfigOperations:
         # Read content for backup and response with error handling and Unicode normalization
         try:
             # Read file with proper encoding detection and Unicode normalization
-            content = await self.file_ops.read_file(config_file)
+            async with aiofiles.open(config_file, "rb") as f:
+                raw_content = await f.read()
+
+            # Detect encoding and normalize Unicode
+            content = detect_and_handle_encoding(raw_content)
 
         except OSError as e:
             handle_os_error(e, "reading configuration file for removal", validated_name)
