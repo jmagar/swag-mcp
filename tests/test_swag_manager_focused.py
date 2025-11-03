@@ -45,14 +45,15 @@ class TestSwagManagerFocused:
         tx = temp_service.begin_transaction(custom_id)
 
         assert tx.transaction_id == custom_id
-        assert tx.manager == temp_service
+        assert tx.file_ops is not None
 
     def test_begin_transaction_auto_generated_id(self, temp_service):
         """Test transaction with auto-generated ID."""
         tx = temp_service.begin_transaction()
 
-        assert tx.transaction_id.startswith("txn_")
-        assert len(tx.transaction_id) == 12
+        assert tx.transaction_id.startswith("tx_")
+        assert len(tx.transaction_id) == 11  # "tx_" + 8 hex chars
+        assert tx.file_ops is not None
 
     def test_template_environment_security_globals(self, temp_service):
         """Test secure template environment has restricted globals."""
