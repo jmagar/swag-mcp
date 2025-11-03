@@ -87,6 +87,7 @@ class SwagManagerService:
             template_manager=self.template_manager,
             validation=self.validation_service,
             file_ops=self.file_ops,
+            backup_manager=self.backup_manager,
         )
 
         # Create temporary wrapper for ConfigFieldUpdaters (circular dependency workaround)

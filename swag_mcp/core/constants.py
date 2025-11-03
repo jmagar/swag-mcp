@@ -15,8 +15,9 @@ VALID_NAME_PATTERN = r"^[\w-]+$"  # Service names, alphanumeric + hyphens/unders
 VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.\[\]:-]+$"  # Container names/IP addresses, IPv6 support
 VALID_CONFIG_NAME_PATTERN = r"^[a-zA-Z0-9_.-]+\.(conf|sample)$"  # Config filenames
 VALID_CONFIG_ONLY_PATTERN = r"^[a-zA-Z0-9_.-]+\.conf$"  # Only .conf files
+# Support both legacy short format (service.subdomain.conf) and SWAG-compliant format
 VALID_CONFIG_NAME_FORMAT = (
-    r"^[a-zA-Z0-9_-]+\.(subdomain|subfolder)\.conf$"  # Full config filename format
+    r"^[a-zA-Z0-9_-]+\.(subdomain|subfolder|swag-compliant-mcp-subdomain|swag-compliant-mcp-subfolder)\.conf$"
 )
 
 # Configuration types - SWAG-compliant only (templates consolidated in commit 64547f5)
