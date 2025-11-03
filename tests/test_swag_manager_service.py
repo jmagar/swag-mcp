@@ -125,11 +125,8 @@ server {
         with pytest.raises(ValueError):
             await service.read_config("../etc/passwd")
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.render_template")
-    async def test_create_config_success(self, mock_render, service, temp_config):
+    async def test_create_config_success(self, service, temp_config):
         """Test successful config creation."""
-        mock_render.return_value = "rendered config content"
-
         request = SwagConfigRequest(
             action=SwagAction.CREATE,
             config_name="testapp.subdomain.conf",
@@ -141,7 +138,9 @@ server {
         result = await service.create_config(request)
 
         assert result.filename == "testapp.subdomain.conf"
-        assert result.content == "rendered config content"
+        assert len(result.content) > 0
+        assert "testapp.example.com" in result.content
+        assert "testapp:8080" in result.content
         assert (temp_config.proxy_confs_path / "testapp.subdomain.conf").exists()
 
     async def test_create_config_invalid_service_name(self, service):
@@ -378,38 +377,28 @@ server {
 
     # Template Validation Tests
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.get_template_path")
-    async def test_validate_template_exists_true(self, mock_get_path, service):
+    async def test_validate_template_exists_true(self, service):
         """Test template validation when template exists."""
-        mock_path = Mock()
-        mock_path.exists.return_value = True
-        mock_get_path.return_value = mock_path
-
-        result = await service.validate_template_exists("subdomain")
+        # Use actual SWAG-compliant template name
+        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
 
         assert result is True
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.get_template_path")
-    async def test_validate_template_exists_false(self, mock_get_path, service):
+    async def test_validate_template_exists_false(self, service):
         """Test template validation when template doesn't exist."""
-        mock_path = Mock()
-        mock_path.exists.return_value = False
-        mock_get_path.return_value = mock_path
-
         result = await service.validate_template_exists("nonexistent")
 
         assert result is False
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService.validate_template_exists")
-    async def test_validate_all_templates(self, mock_validate, service):
+    async def test_validate_all_templates(self, service):
         """Test validation of all templates."""
-        mock_validate.side_effect = lambda t: t in ["subdomain", "subfolder"]
-
         result = await service.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert "subdomain" in result
-        assert "subfolder" in result
+        assert "swag-compliant-mcp-subdomain" in result
+        assert "swag-compliant-mcp-subfolder" in result
+        assert result["swag-compliant-mcp-subdomain"] is True
+        assert result["swag-compliant-mcp-subfolder"] is True
 
     # Health Check Tests
 

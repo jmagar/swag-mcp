@@ -29,8 +29,11 @@ class TestSwagManagerServiceBasic:
         """Create a temporary template directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             template_dir = Path(temp_dir)
-            # Create a simple template
-            (template_dir / "subdomain.conf.j2").write_text(
+            # Create SWAG-compliant templates
+            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text(
+                "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
+            )
+            (template_dir / "swag-compliant-mcp-subfolder.conf.j2").write_text(
                 "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
             )
             yield template_dir
@@ -113,8 +116,8 @@ class TestSwagManagerServiceBasic:
     async def test_validate_template_exists(self, service):
         """Test template existence validation with specific assertions."""
         # Test existing template
-        result = await service.validate_template_exists("subdomain")
-        assert result is True, "Expected 'subdomain' template to exist in test setup"
+        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
+        assert result is True, "Expected 'swag-compliant-mcp-subdomain' template to exist in test setup"
         assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
         # Test non-existent template
@@ -126,8 +129,8 @@ class TestSwagManagerServiceBasic:
         """Test validating all templates."""
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
-        assert "subdomain" in result
-        assert result["subdomain"] is True
+        assert "swag-compliant-mcp-subdomain" in result
+        assert result["swag-compliant-mcp-subdomain"] is True
 
     async def test_get_resource_configs(self, service, temp_config_dir):
         """Test getting resource configs."""
@@ -182,7 +185,7 @@ class TestSwagManagerServiceBasic:
 
     def test_create_secure_template_environment(self, service):
         """Test that template environment is properly secured."""
-        env = service.template_env
+        env = service.template_manager.template_env
         assert env is not None
 
         # Test that dangerous globals are removed

@@ -28,7 +28,7 @@ class TestSwagManagerServiceInit:
         assert hasattr(service.file_ops, "_file_write_lock")
         assert hasattr(service.backup_manager, "_cleanup_lock")
         assert hasattr(service.file_ops, "_file_locks")
-        assert hasattr(service.config_operations, "_active_transactions")
+        assert hasattr(service.file_ops, "_active_transactions")
 
     def test_init_with_custom_paths(self):
         """Test service initialization with custom paths."""
@@ -52,8 +52,8 @@ class TestSecureTemplateEnvironment:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create a basic template
-            (template_dir / "subdomain.conf.j2").write_text(
+            # Create a basic template with SWAG-compliant name
+            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text(
                 "server_name {{ server_name }};\n"
                 "proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }};"
             )
@@ -136,10 +136,10 @@ class TestAtomicTransactions:
         """Test atomic transaction as context manager."""
         async with temp_service.begin_transaction("test_ctx") as tx:
             assert tx.transaction_id == "test_ctx"
-            assert tx.transaction_id in temp_service.config_operations._active_transactions
+            assert tx.transaction_id in temp_service.file_ops._active_transactions
 
         # Transaction should be cleaned up after context exits
-        assert "test_ctx" not in temp_service.config_operations._active_transactions
+        assert "test_ctx" not in temp_service.file_ops._active_transactions
 
     async def test_transaction_rollback_on_error(self, temp_service):
         """Test transaction rollback when error occurs."""
@@ -340,15 +340,15 @@ class TestTemplateValidation:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create template files
-            (template_dir / "subdomain.conf.j2").write_text("subdomain template")
-            (template_dir / "subfolder.conf.j2").write_text("subfolder template")
+            # Create template files with SWAG-compliant names
+            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text("subdomain template")
+            (template_dir / "swag-compliant-mcp-subfolder.conf.j2").write_text("subfolder template")
 
             yield SwagManagerService(config_dir, template_dir)
 
     async def test_validate_template_exists_true(self, temp_service):
         """Test template validation when template exists."""
-        result = await temp_service.validate_template_exists("subdomain")
+        result = await temp_service.validate_template_exists("swag-compliant-mcp-subdomain")
         assert result is True
 
     async def test_validate_template_exists_false(self, temp_service):
@@ -361,10 +361,10 @@ class TestTemplateValidation:
         result = await temp_service.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert "subdomain" in result
-        assert "subfolder" in result
-        assert result["subdomain"] is True
-        assert result["subfolder"] is True
+        assert "swag-compliant-mcp-subdomain" in result
+        assert "swag-compliant-mcp-subfolder" in result
+        assert result["swag-compliant-mcp-subdomain"] is True
+        assert result["swag-compliant-mcp-subfolder"] is True
 
 
 class TestBackupOperations:

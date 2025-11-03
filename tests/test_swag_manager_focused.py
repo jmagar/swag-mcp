@@ -264,12 +264,11 @@ class TestSwagManagerTemplateOperations:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create template files
+            # Create template files with SWAG-compliant names
             templates = {
-                "subdomain.conf.j2": "subdomain template content",
-                "subfolder.conf.j2": "subfolder template content",
-                "mcp-subdomain.conf.j2": "mcp subdomain template",
-                "mcp-location.conf.j2": "mcp location template",
+                "swag-compliant-mcp-subdomain.conf.j2": "subdomain template content",
+                "swag-compliant-mcp-subfolder.conf.j2": "subfolder template content",
+                "mcp_location_block.j2": "mcp location template",
             }
 
             for name, content in templates.items():
@@ -279,7 +278,7 @@ class TestSwagManagerTemplateOperations:
 
     async def test_validate_template_exists_valid(self, temp_service_with_templates):
         """Test template existence validation for valid templates."""
-        result = await temp_service_with_templates.validate_template_exists("subdomain")
+        result = await temp_service_with_templates.validate_template_exists("swag-compliant-mcp-subdomain")
         assert result is True
 
     async def test_validate_template_exists_invalid(self, temp_service_with_templates):
@@ -292,8 +291,8 @@ class TestSwagManagerTemplateOperations:
         result = await temp_service_with_templates.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert result.get("subdomain") is True
-        assert result.get("subfolder") is True
+        assert result.get("swag-compliant-mcp-subdomain") is True
+        assert result.get("swag-compliant-mcp-subfolder") is True
 
 
 class TestSwagManagerBackupOperations:
@@ -356,30 +355,35 @@ class TestSwagManagerMiscMethods:
 
     def test_init_creates_locks_and_dicts(self, basic_service):
         """Test initialization creates required locks and dictionaries."""
-        assert hasattr(basic_service, "_backup_lock")
-        assert hasattr(basic_service, "_file_write_lock")
-        assert hasattr(basic_service, "_cleanup_lock")
-        assert hasattr(basic_service, "_file_locks")
-        assert hasattr(basic_service.config_operations, "_active_transactions")
-        assert hasattr(basic_service, "_file_locks_lock")
-        assert hasattr(basic_service, "_transaction_lock")
+        # Check backup manager attributes
+        assert hasattr(basic_service.backup_manager, "_backup_lock")
 
-        assert isinstance(basic_service._file_locks, dict)
-        assert isinstance(basic_service.config_operations._active_transactions, dict)
+        # Check file operations attributes
+        assert hasattr(basic_service.file_ops, "_file_write_lock")
+        assert hasattr(basic_service.file_ops, "_file_locks")
+        assert hasattr(basic_service.file_ops, "_active_transactions")
+        assert hasattr(basic_service.file_ops, "_file_locks_lock")
+        assert hasattr(basic_service.file_ops, "_transaction_lock")
+
+        # Check backup manager attributes
+        assert hasattr(basic_service.backup_manager, "_cleanup_lock")
+
+        assert isinstance(basic_service.file_ops._file_locks, dict)
+        assert isinstance(basic_service.file_ops._active_transactions, dict)
 
     def test_directory_checked_flag(self, basic_service):
         """Test directory checked flag initialization."""
-        assert hasattr(basic_service, "_directory_checked")
-        assert isinstance(basic_service._directory_checked, bool)
+        assert hasattr(basic_service.config_operations, "_directory_checked")
+        assert isinstance(basic_service.config_operations._directory_checked, bool)
 
     def test_template_env_initialization(self, basic_service):
         """Test template environment is properly initialized."""
-        assert hasattr(basic_service, "template_env")
-        assert basic_service.template_env is not None
+        assert hasattr(basic_service.template_manager, "template_env")
+        assert basic_service.template_manager.template_env is not None
 
         # Should be a sandboxed environment
-        assert hasattr(basic_service.template_env, "is_safe_attribute")
-        assert hasattr(basic_service.template_env, "globals")
+        assert hasattr(basic_service.template_manager.template_env, "is_safe_attribute")
+        assert hasattr(basic_service.template_manager.template_env, "globals")
 
 
 # Simple integration test to boost overall coverage
