@@ -53,7 +53,7 @@ class TestDeadlockPrevention:
             # Create a config file to backup
             config_file = swag_service.config_path / f"test{i}.conf"
             config_file.write_text(f"test config {i}")
-            return await swag_service._create_backup(f"test{i}.conf")
+            return await swag_service.backup_manager.create_backup(f"test{i}.conf")
 
         # Run operations concurrently that previously could deadlock
         tasks = [cleanup_task()]
@@ -85,8 +85,8 @@ class TestDeadlockPrevention:
         lock_acquisition_order = []
 
         # Mock the locks to track acquisition order
-        original_cleanup_lock = swag_service._cleanup_lock
-        original_backup_lock = swag_service._backup_lock
+        original_cleanup_lock = swag_service.backup_manager._cleanup_lock
+        original_backup_lock = swag_service.backup_manager._backup_lock
 
         class TrackingLock:
             def __init__(self, name, original_lock):
@@ -101,8 +101,8 @@ class TestDeadlockPrevention:
                 lock_acquisition_order.append(f"release_{self.name}")
                 return await self._lock.__aexit__(exc_type, exc_val, exc_tb)
 
-        swag_service._cleanup_lock = TrackingLock("cleanup", original_cleanup_lock)
-        swag_service._backup_lock = TrackingLock("backup", original_backup_lock)
+        swag_service.backup_manager._cleanup_lock = TrackingLock("cleanup", original_cleanup_lock)
+        swag_service.backup_manager._backup_lock = TrackingLock("backup", original_backup_lock)
 
         # Create test backup files
         for i in range(3):
@@ -156,7 +156,7 @@ class TestRaceConditionHandling:
             write_operations.append(f"start_{operation_id}")
 
             # Use the service's file writing mechanism
-            await swag_service._safe_write_file(
+            await swag_service.file_ops.safe_write_file(
                 config_file,
                 content,
                 f"test operation {operation_id}"
@@ -200,7 +200,7 @@ class TestRaceConditionHandling:
 
         # Create multiple concurrent backup operations
         async def create_backup():
-            return await swag_service._create_backup("test.conf")
+            return await swag_service.backup_manager.create_backup("test.conf")
 
         # Run many concurrent backup operations
         tasks = [create_backup() for _ in range(10)]
@@ -257,12 +257,12 @@ class TestResourceManagement:
         # Use the service as an async context manager
         async with swag_service:
             # Get a session to create one
-            session1 = await swag_service._get_session()
+            session1 = await swag_service.health_monitor.get_session()
             assert session1 is not None
             assert not session1.closed
 
             # Get the same session (should be cached)
-            session2 = await swag_service._get_session()
+            session2 = await swag_service.health_monitor.get_session()
             assert session1 is session2
 
         # After context exit, session should be cleaned up
@@ -286,20 +286,20 @@ class TestResourceManagement:
             test_files.append(test_file)
 
             # Get lock for each file
-            lock = await swag_service._get_file_lock(test_file)
+            lock = await swag_service.file_ops.get_file_lock(test_file)
             locks.append(lock)
 
         # Should have 10 locks in the registry
-        initial_lock_count = len(swag_service._file_locks)
+        initial_lock_count = len(swag_service.file_ops._file_locks)
         assert initial_lock_count == 10
 
         # Clean up unused locks
-        await swag_service._cleanup_file_locks()
+        await swag_service.file_ops.cleanup_file_locks()
 
         # All locks should still be there (they're not locked)
         # This tests that the cleanup doesn't remove unlocked locks incorrectly
         # The actual cleanup happens when locks are not in use
-        after_cleanup_count = len(swag_service._file_locks)
+        after_cleanup_count = len(swag_service.file_ops._file_locks)
 
         # Locks should be cleaned up if they're not locked
         assert after_cleanup_count <= initial_lock_count

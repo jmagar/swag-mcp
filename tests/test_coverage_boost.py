@@ -259,8 +259,8 @@ class TestSwagManagerBasics:
         service = SwagManagerService(config_dir, template_dir)
 
         test_file = config_dir / "test.conf"
-        lock1 = await service._get_file_lock(test_file)
-        lock2 = await service._get_file_lock(test_file)
+        lock1 = await service.file_ops.get_file_lock(test_file)
+        lock2 = await service.file_ops.get_file_lock(test_file)
         assert lock1 is lock2
 
     def test_transaction_begin(self, temp_dirs):
@@ -277,7 +277,7 @@ class TestSwagManagerBasics:
         service = SwagManagerService(config_dir, template_dir)
 
         # Should not raise exception
-        service._ensure_config_directory()
+        service.config_operations._ensure_config_directory()
         assert config_dir.exists()
 
     def test_validate_template_variables(self, temp_dirs):
@@ -286,7 +286,7 @@ class TestSwagManagerBasics:
         service = SwagManagerService(config_dir, template_dir)
 
         vars_dict = {"service_name": "test", "server_name": "example.com"}
-        result = service._validate_template_variables(vars_dict)
+        result = service.template_manager.validate_template_variables(vars_dict)
         assert isinstance(result, dict)
 
     def test_extract_upstream_value(self, temp_dirs):
@@ -295,7 +295,7 @@ class TestSwagManagerBasics:
         service = SwagManagerService(config_dir, template_dir)
 
         content = 'set $upstream_app "test-app";'
-        result = service._extract_upstream_value(content, "upstream_app")
+        result = service.mcp_operations.extract_upstream_value(content, "upstream_app")
         assert result == "test-app"
 
     def test_extract_auth_method(self, temp_dirs):
@@ -304,7 +304,7 @@ class TestSwagManagerBasics:
         service = SwagManagerService(config_dir, template_dir)
 
         content = "include /config/nginx/authelia-server.conf;"
-        result = service._extract_auth_method(content)
+        result = service.mcp_operations.extract_auth_method(content)
         assert result == "authelia"
 
     @pytest.mark.asyncio
@@ -380,8 +380,8 @@ class TestSwagManagerAdvanced:
             config_path = Path(config_dir)
             template_path = Path(template_dir)
 
-            # Create template
-            (template_path / "subdomain.conf.j2").write_text(
+            # Create SWAG-compliant template
+            (template_path / "swag-compliant-mcp-subdomain.conf.j2").write_text(
                 "server_name {{ server_name }}; "
                 "proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }};"
             )
@@ -409,7 +409,7 @@ class TestSwagManagerAdvanced:
         """Test template existence validation."""
         service, _ = service_with_files
 
-        result = await service.validate_template_exists("subdomain")
+        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
         assert result is True
 
     @pytest.mark.asyncio
@@ -418,7 +418,7 @@ class TestSwagManagerAdvanced:
         """Test template non-existence."""
         service, _ = service_with_files
 
-        result = await service.validate_template_exists("subfolder")
+        result = await service.validate_template_exists("swag-compliant-mcp-subfolder")
         assert result is False
 
     @pytest.mark.asyncio
@@ -428,5 +428,5 @@ class TestSwagManagerAdvanced:
 
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
-        assert "subdomain" in result
-        assert result["subdomain"] is True
+        assert "swag-compliant-mcp-subdomain" in result
+        assert result["swag-compliant-mcp-subdomain"] is True

@@ -33,8 +33,8 @@ class TestSwagManagerFocused:
         """Test file lock creation and reuse."""
         test_file = temp_service.config_path / "test.lock"
 
-        lock1 = await temp_service._get_file_lock(test_file)
-        lock2 = await temp_service._get_file_lock(test_file)
+        lock1 = await temp_service.file_ops.get_file_lock(test_file)
+        lock2 = await temp_service.file_ops.get_file_lock(test_file)
 
         assert lock1 is lock2
         assert isinstance(lock1, asyncio.Lock)
@@ -56,7 +56,7 @@ class TestSwagManagerFocused:
 
     def test_template_environment_security_globals(self, temp_service):
         """Test secure template environment has restricted globals."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Check strict undefined and sandbox features
         assert env.undefined is StrictUndefined
@@ -76,7 +76,7 @@ class TestSwagManagerFocused:
 
     def test_template_security_attribute_blocking(self, temp_service):
         """Test template security blocks dangerous attributes."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Test private attribute blocking
         assert not env.is_safe_attribute(object(), "_private", None)
@@ -89,7 +89,7 @@ class TestSwagManagerFocused:
 
     def test_template_security_allows_safe_attributes(self, temp_service):
         """Test template security allows safe attributes."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Safe string methods
         assert env.is_safe_attribute("test", "upper", None)

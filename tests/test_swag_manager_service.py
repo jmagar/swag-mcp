@@ -51,8 +51,8 @@ class TestSwagManagerService:
         )
         yield service
         # Cleanup
-        if hasattr(service, "_http_session") and service._http_session:
-            await service._http_session.close()
+        if hasattr(service.health_monitor, "_http_session") and service.health_monitor._http_session:
+            await service.health_monitor._http_session.close()
 
     @pytest_asyncio.fixture
     async def sample_config_file(self, temp_config):
@@ -125,7 +125,7 @@ server {
         with pytest.raises(ValueError):
             await service.read_config("../etc/passwd")
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService._render_template")
+    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.render_template")
     async def test_create_config_success(self, mock_render, service, temp_config):
         """Test successful config creation."""
         mock_render.return_value = "rendered config content"
@@ -318,7 +318,7 @@ server {
 
     async def test_create_backup(self, service, sample_config_file):
         """Test backup creation."""
-        backup_path = await service._create_backup("test.subdomain.conf")
+        backup_path = await service.backup_manager.create_backup("test.subdomain.conf")
 
         # Backup format is: {filename}.backup.{timestamp}
         assert ".backup." in backup_path
@@ -359,8 +359,8 @@ server {
         new_config.write_text("server { server_name new.example.com; }")
 
         # Create backups using the service
-        old_backup_name = await service._create_backup("old.subdomain.conf")
-        new_backup_name = await service._create_backup("new.subdomain.conf")
+        old_backup_name = await service.backup_manager.create_backup("old.subdomain.conf")
+        new_backup_name = await service.backup_manager.create_backup("new.subdomain.conf")
 
         old_backup_path = temp_config.proxy_confs_path / old_backup_name
         new_backup_path = temp_config.proxy_confs_path / new_backup_name
@@ -378,7 +378,7 @@ server {
 
     # Template Validation Tests
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService._get_template_path")
+    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.get_template_path")
     async def test_validate_template_exists_true(self, mock_get_path, service):
         """Test template validation when template exists."""
         mock_path = Mock()
@@ -389,7 +389,7 @@ server {
 
         assert result is True
 
-    @patch("swag_mcp.services.swag_manager.SwagManagerService._get_template_path")
+    @patch("swag_mcp.services.swag_manager.SwagManagerService.template_manager.get_template_path")
     async def test_validate_template_exists_false(self, mock_get_path, service):
         """Test template validation when template doesn't exist."""
         mock_path = Mock()

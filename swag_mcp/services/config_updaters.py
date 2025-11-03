@@ -80,6 +80,45 @@ class ConfigFieldUpdaters:
         self.file_ops = file_ops
         self.mcp_ops = mcp_ops
 
+    async def update_field(
+        self,
+        update_request: SwagUpdateRequest,
+        current_content: str,
+        backup_name: str | None,
+        config_path: Path,
+    ) -> SwagConfigResult:
+        """Dispatch to appropriate field updater based on update_field value.
+
+        Args:
+            update_request: Update request with field and value
+            current_content: Current configuration content
+            backup_name: Backup filename if backup was created
+            config_path: Path to configuration directory (unused, kept for signature)
+
+        Returns:
+            SwagConfigResult from the appropriate field updater
+
+        Raises:
+            ValueError: If update_field is not supported
+
+        """
+        # Dispatch to specific updater methods
+        updaters = {
+            "port": self.update_port_field,
+            "upstream": self.update_upstream_field,
+            "app": self.update_app_field,
+            "add_mcp": self.update_mcp_field,
+        }
+
+        updater = updaters.get(update_request.update_field)
+        if not updater:
+            raise ValueError(
+                f"Unsupported update field: {update_request.update_field}. "
+                f"Supported fields: {', '.join(updaters.keys())}"
+            )
+
+        return await updater(update_request, current_content, backup_name)
+
     async def update_port_field(
         self, update_request: SwagUpdateRequest, content: str, backup_name: str | None
     ) -> SwagConfigResult:

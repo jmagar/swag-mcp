@@ -23,12 +23,12 @@ class TestSwagManagerServiceInit:
         service = SwagManagerService()
         assert service.config_path is not None
         assert service.template_path is not None
-        assert hasattr(service, "template_env")
-        assert hasattr(service, "_backup_lock")
-        assert hasattr(service, "_file_write_lock")
-        assert hasattr(service, "_cleanup_lock")
-        assert hasattr(service, "_file_locks")
-        assert hasattr(service, "_active_transactions")
+        assert hasattr(service.template_manager, "template_env")
+        assert hasattr(service.backup_manager, "_backup_lock")
+        assert hasattr(service.file_ops, "_file_write_lock")
+        assert hasattr(service.backup_manager, "_cleanup_lock")
+        assert hasattr(service.file_ops, "_file_locks")
+        assert hasattr(service.config_operations, "_active_transactions")
 
     def test_init_with_custom_paths(self):
         """Test service initialization with custom paths."""
@@ -62,7 +62,7 @@ class TestSecureTemplateEnvironment:
 
     def test_template_environment_security(self, temp_service):
         """Test that template environment has security restrictions."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Check that only essential safe globals are available
         safe_globals = env.globals.keys()
@@ -82,7 +82,7 @@ class TestSecureTemplateEnvironment:
 
     def test_is_safe_attribute_blocks_dangerous_attrs(self, temp_service):
         """Test that is_safe_attribute blocks dangerous attributes."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Test blocking private attributes
         assert not env.is_safe_attribute(object(), "_private", None)
@@ -95,7 +95,7 @@ class TestSecureTemplateEnvironment:
 
     def test_is_safe_attribute_allows_safe_attrs(self, temp_service):
         """Test that is_safe_attribute allows safe attributes."""
-        env = temp_service.template_env
+        env = temp_service.template_manager.template_env
 
         # Test allowing safe attributes on safe types
         assert env.is_safe_attribute("test", "upper", None)

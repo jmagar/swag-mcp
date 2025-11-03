@@ -44,12 +44,12 @@ class TestSwagManagerServiceBasic:
         """Test service initialization with comprehensive validation."""
         assert service.config_path is not None, "Service config_path should be set"
         assert service.template_path is not None, "Service template_path should be set"
-        assert service.template_env is not None, "Service template_env should be initialized"
+        assert service.template_manager.template_env is not None, "Service template_env should be initialized"
 
         # Validate types and properties
         assert hasattr(service.config_path, 'exists'), "config_path should be a Path object"
         assert hasattr(service.template_path, 'exists'), "template_path should be a Path object"
-        assert hasattr(service.template_env, 'get_template'), (
+        assert hasattr(service.template_manager.template_env, 'get_template'), (
             "template_env should be a Jinja2 Environment"
         )
 
