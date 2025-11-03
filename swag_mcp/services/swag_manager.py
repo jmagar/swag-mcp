@@ -327,6 +327,14 @@ class SwagManagerService:
         """
         return self.backup_manager._backup_lock
 
+    @_backup_lock.setter
+    def _backup_lock(self, value):
+        """Set backup lock (for tests).
+
+        Delegates to: BackupManager
+        """
+        self.backup_manager._backup_lock = value
+
     @property
     def _cleanup_lock(self):
         """Access cleanup lock (for tests).
@@ -334,6 +342,14 @@ class SwagManagerService:
         Delegates to: BackupManager
         """
         return self.backup_manager._cleanup_lock
+
+    @_cleanup_lock.setter
+    def _cleanup_lock(self, value):
+        """Set cleanup lock (for tests).
+
+        Delegates to: BackupManager
+        """
+        self.backup_manager._cleanup_lock = value
 
     @property
     def _http_session(self):
