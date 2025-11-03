@@ -501,7 +501,11 @@ class TestSwagToolIntegration:
     async def test_update_add_mcp_location(
         self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
     ) -> None:
-        """Test adding an MCP location to an existing configuration."""
+        """Test adding a custom MCP location to an existing configuration.
+
+        Note: SWAG-compliant templates already include /mcp location by default.
+        This test adds a custom MCP endpoint at a different path.
+        """
         config_name = f"{test_config_name}-mcp.subdomain.conf"
         test_config_cleanup(config_name)
 
@@ -518,14 +522,14 @@ class TestSwagToolIntegration:
         )
         assert create_result.is_error is False
 
-        # Add MCP location
+        # Add custom MCP location (not /mcp, which is already included in SWAG-compliant templates)
         update_result = await mcp_client.call_tool(
             "swag",
             {
                 "action": SwagAction.UPDATE,
                 "config_name": config_name,
                 "update_field": "add_mcp",
-                "update_value": "/mcp",
+                "update_value": "/ai-service",
                 "create_backup": True,
             },
         )
@@ -748,9 +752,12 @@ class TestSwagToolIntegration:
         assert isinstance(result.structured_content["total_count"], int)
 
     async def test_cleanup_backups_default_retention(self, mcp_client: Client) -> None:
-        """Test cleaning up backups with default retention."""
+        """Test cleaning up backups with default retention.
+
+        Note: retention_days must be > 0 to trigger cleanup action (not just backup_action).
+        """
         result = await mcp_client.call_tool(
-            "swag", {"action": SwagAction.BACKUPS, "backup_action": "cleanup"}
+            "swag", {"action": SwagAction.BACKUPS, "backup_action": "cleanup", "retention_days": 30}
         )
 
         assert result.is_error is False
