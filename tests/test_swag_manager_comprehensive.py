@@ -136,10 +136,10 @@ class TestAtomicTransactions:
         """Test atomic transaction as context manager."""
         async with temp_service.begin_transaction("test_ctx") as tx:
             assert tx.transaction_id == "test_ctx"
-            assert tx.transaction_id in temp_service._active_transactions
+            assert tx.transaction_id in temp_service.config_operations._active_transactions
 
         # Transaction should be cleaned up after context exits
-        assert "test_ctx" not in temp_service._active_transactions
+        assert "test_ctx" not in temp_service.config_operations._active_transactions
 
     async def test_transaction_rollback_on_error(self, temp_service):
         """Test transaction rollback when error occurs."""
@@ -223,11 +223,11 @@ class TestFileOperations:
         test_file = temp_service.config_path / "test.conf"
 
         # Get lock for first time
-        lock1 = await temp_service._get_file_lock(test_file)
+        lock1 = await temp_service.file_ops.get_file_lock(test_file)
         assert isinstance(lock1, asyncio.Lock)
 
         # Get lock for same file - should be same instance
-        lock2 = await temp_service._get_file_lock(test_file)
+        lock2 = await temp_service.file_ops.get_file_lock(test_file)
         assert lock1 is lock2
 
     async def test_safe_write_file_success(self, temp_service):
@@ -235,7 +235,7 @@ class TestFileOperations:
         test_file = temp_service.config_path / "write_test.conf"
         content = "test configuration content"
 
-        await temp_service._safe_write_file(test_file, content, "test operation")
+        await temp_service.file_ops.safe_write_file(test_file, content, "test operation")
 
         assert test_file.exists()
         assert test_file.read_text() == content
@@ -245,7 +245,7 @@ class TestFileOperations:
         test_file = temp_service.config_path / "lock_test.conf"
         content = "locked write test"
 
-        await temp_service._safe_write_file(test_file, content, "locked operation", use_lock=True)
+        await temp_service.file_ops.safe_write_file(test_file, content, "locked operation", use_lock=True)
 
         assert test_file.exists()
         assert test_file.read_text() == content
@@ -263,7 +263,7 @@ class TestFileOperations:
 
         try:
             with pytest.raises(OSError):
-                await temp_service._safe_write_file(test_file, "new content", "permission test")
+                await temp_service.file_ops.safe_write_file(test_file, "new content", "permission test")
         finally:
             # Clean up - restore directory permissions
             temp_service.config_path.chmod(original_perms)
@@ -271,7 +271,7 @@ class TestFileOperations:
     def test_ensure_config_directory_exists(self, temp_service):
         """Test directory creation when it exists."""
         # Directory should already exist from fixture
-        temp_service._ensure_config_directory()
+        temp_service.config_operations._ensure_config_directory()
         assert temp_service.config_path.exists()
 
     def test_ensure_config_directory_creates(self):
@@ -285,7 +285,7 @@ class TestFileOperations:
             assert not config_dir.exists()
 
             service = SwagManagerService(config_dir, template_dir)
-            service._ensure_config_directory()
+            service.config_operations._ensure_config_directory()
 
             assert config_dir.exists()
 
@@ -299,7 +299,7 @@ class TestFileOperations:
             "upstream_proto": "http",
         }
 
-        result = temp_service._validate_template_variables(template_vars)
+        result = temp_service.template_manager.validate_template_variables(template_vars)
 
         assert isinstance(result, dict)
         assert "service_name" in result
@@ -310,7 +310,7 @@ class TestFileOperations:
         content = "server_name example.com;\nproxy_pass http://app:8080;"
         config_name = "test.subdomain.conf"
 
-        result = temp_service._validate_config_content(content, config_name)
+        result = temp_service.validation_service.validate_config_content(content, config_name)
 
         assert isinstance(result, str)
         assert result == content
@@ -321,7 +321,7 @@ class TestFileOperations:
         content = "\ufeffserver_name café.com;"
         config_name = "unicode.subdomain.conf"
 
-        result = temp_service._validate_config_content(content, config_name)
+        result = temp_service.validation_service.validate_config_content(content, config_name)
 
         # BOM should be removed, Unicode normalized
         assert not result.startswith("\ufeff")
@@ -385,7 +385,7 @@ class TestBackupOperations:
         original_content = "original configuration"
         config_file.write_text(original_content)
 
-        backup_name = await temp_service._create_backup("test.subdomain.conf")
+        backup_name = await temp_service.backup_manager.create_backup("test.subdomain.conf")
 
         assert backup_name is not None
         backup_file = temp_service.config_path / backup_name
@@ -395,7 +395,7 @@ class TestBackupOperations:
     async def test_create_backup_file_not_exists(self, temp_service):
         """Test backup creation when original file doesn't exist."""
         with pytest.raises(OSError):
-            await temp_service._create_backup("nonexistent.conf")
+            await temp_service.backup_manager.create_backup("nonexistent.conf")
 
     async def test_list_backups(self, temp_service):
         """Test listing backup files."""
@@ -445,14 +445,14 @@ class TestExtractorMethods:
     def test_extract_upstream_value_app(self, temp_service):
         """Test extracting upstream app value from content."""
         content = 'set $upstream_app "test-app";'
-        result = temp_service._extract_upstream_value(content, "upstream_app")
+        result = temp_service.mcp_operations.extract_upstream_value(content, "upstream_app")
 
         assert result == "test-app"
 
     def test_extract_upstream_value_port(self, temp_service):
         """Test extracting upstream port value from content."""
         content = 'set $upstream_port "8080";'
-        result = temp_service._extract_upstream_value(content, "upstream_port")
+        result = temp_service.mcp_operations.extract_upstream_value(content, "upstream_port")
 
         assert result == "8080"
 
@@ -460,26 +460,26 @@ class TestExtractorMethods:
         """Test extraction when no match is found."""
         content = "server_name example.com;"
         with pytest.raises(ValueError, match="Could not find upstream_app"):
-            temp_service._extract_upstream_value(content, "upstream_app")
+            temp_service.mcp_operations.extract_upstream_value(content, "upstream_app")
 
     def test_extract_auth_method_authelia(self, temp_service):
         """Test extracting authelia auth method."""
         content = "include /config/nginx/authelia-server.conf;"
-        result = temp_service._extract_auth_method(content)
+        result = temp_service.mcp_operations.extract_auth_method(content)
 
         assert result == "authelia"
 
     def test_extract_auth_method_ldap(self, temp_service):
         """Test extracting LDAP auth method."""
         content = "include /config/nginx/ldap.conf;"
-        result = temp_service._extract_auth_method(content)
+        result = temp_service.mcp_operations.extract_auth_method(content)
 
         assert result == "ldap"
 
     def test_extract_auth_method_none(self, temp_service):
         """Test extracting no auth method."""
         content = "server_name example.com; proxy_pass http://app:8080;"
-        result = temp_service._extract_auth_method(content)
+        result = temp_service.mcp_operations.extract_auth_method(content)
 
         assert result == "none"
 
@@ -509,7 +509,7 @@ location {{ mcp_path }} {
     async def test_render_mcp_location_block(self, temp_service):
         """Test rendering MCP location block."""
 
-        result = await temp_service._render_mcp_location_block(
+        result = await temp_service.mcp_operations.render_mcp_location_block(
             mcp_path="/ai-service",
             upstream_app="mcp-server",
             upstream_port="8080",
@@ -539,7 +539,7 @@ server {
     }
         """.strip()
 
-        result = temp_service._insert_location_block(original_content, location_block)
+        result = temp_service.mcp_operations.insert_location_block(original_content, location_block)
 
         assert "/mcp" in result
         # The location block is inserted, so check that the key parts are present
@@ -736,7 +736,7 @@ class TestErrorHandlingEdgeCases:
             mock_which.return_value = None
 
             # Should handle missing nginx gracefully
-            result = await temp_service._validate_nginx_syntax(test_file)
+            result = await temp_service.validation_service.validate_nginx_syntax(test_file)
             # Method should return boolean, True when nginx not available (assume valid)
             assert isinstance(result, bool)
             assert result is True

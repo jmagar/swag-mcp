@@ -243,11 +243,11 @@ class TestSwagManagerServiceBasic:
         test_file = temp_config_dir / "test.conf"
 
         # Test that we can get a lock for a file
-        lock = await service._get_file_lock(test_file)
+        lock = await service.file_ops.get_file_lock(test_file)
         assert lock is not None
 
         # Test that we get the same lock for the same file
-        lock2 = await service._get_file_lock(test_file)
+        lock2 = await service.file_ops.get_file_lock(test_file)
         assert lock is lock2
 
     def test_transaction_begin(self, service):
@@ -262,7 +262,7 @@ class TestSwagManagerServiceBasic:
 
         # This should not raise an exception for basic content
         try:
-            result = service._validate_config_content(content, "test.conf")
+            result = service.validation_service.validate_config_content(content, "test.conf")
             assert isinstance(result, str), (
                 f"Expected string result from validation, got {type(result)}"
             )
@@ -286,7 +286,7 @@ class TestSwagManagerServiceBasic:
             "upstream_port": 8080,
         }
 
-        result = service._validate_template_variables(valid_vars)
+        result = service.template_manager.validate_template_variables(valid_vars)
         assert isinstance(result, dict)
         assert "service_name" in result
 
@@ -306,11 +306,11 @@ class TestSwagManagerServiceBasic:
         """
 
         # Test upstream extraction (expects 'set $variable "value";' format)
-        upstream = service._extract_upstream_value(content, "upstream_app")
+        upstream = service.mcp_operations.extract_upstream_value(content, "upstream_app")
         assert upstream == "jellyfin"
 
         # Test auth method extraction (looks for include statements)
-        auth_method = service._extract_auth_method(content)
+        auth_method = service.mcp_operations.extract_auth_method(content)
         assert auth_method == "authelia"
 
     async def test_safe_write_file_permissions(self, service, temp_config_dir):
@@ -321,7 +321,7 @@ class TestSwagManagerServiceBasic:
         # This should work in a writable temp directory
         # _safe_write_file takes: file_path, content, operation_name, use_lock
         try:
-            await service._safe_write_file(test_file, content, "test write", use_lock=False)
+            await service.file_ops.safe_write_file(test_file, content, "test write", use_lock=False)
             assert test_file.exists()
             assert test_file.read_text() == content
         except Exception as e:
@@ -331,5 +331,5 @@ class TestSwagManagerServiceBasic:
     def test_ensure_config_directory(self, service):
         """Test directory creation and validation."""
         # This should not raise an exception
-        service._ensure_config_directory()
+        service.config_operations._ensure_config_directory()
         assert service.config_path.exists()

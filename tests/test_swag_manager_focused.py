@@ -107,7 +107,7 @@ class TestSwagManagerFocused:
             "upstream_port": 8080,
         }
 
-        result = temp_service._validate_template_variables(template_vars)
+        result = temp_service.template_manager.validate_template_variables(template_vars)
         assert isinstance(result, dict)
         assert "service_name" in result
 
@@ -116,14 +116,14 @@ class TestSwagManagerFocused:
         content = "server_name example.com;"
         config_name = "test.conf"
 
-        result = temp_service._validate_config_content(content, config_name)
+        result = temp_service.validation_service.validate_config_content(content, config_name)
         assert isinstance(result, str)
         assert content in result
 
     def test_ensure_config_directory_existing(self, temp_service):
         """Test directory creation when directory exists."""
         # Should not raise error
-        temp_service._ensure_config_directory()
+        temp_service.config_operations._ensure_config_directory()
         assert temp_service.config_path.exists()
 
     async def test_safe_write_file_basic(self, temp_service):
@@ -131,7 +131,7 @@ class TestSwagManagerFocused:
         test_file = temp_service.config_path / "test.conf"
         content = "test content"
 
-        await temp_service._safe_write_file(test_file, content, "test operation")
+        await temp_service.file_ops.safe_write_file(test_file, content, "test operation")
 
         assert test_file.exists()
         assert test_file.read_text() == content
@@ -141,7 +141,7 @@ class TestSwagManagerFocused:
         test_file = temp_service.config_path / "locked.conf"
         content = "locked content"
 
-        await temp_service._safe_write_file(test_file, content, "locked op", use_lock=True)
+        await temp_service.file_ops.safe_write_file(test_file, content, "locked op", use_lock=True)
 
         assert test_file.exists()
         assert test_file.read_text() == content
@@ -150,34 +150,34 @@ class TestSwagManagerFocused:
         """Test upstream value extraction with different patterns."""
         # Test app extraction
         content1 = 'set $upstream_app "my-app";'
-        result1 = temp_service._extract_upstream_value(content1, "upstream_app")
+        result1 = temp_service.mcp_operations.extract_upstream_value(content1, "upstream_app")
         assert result1 == "my-app"
 
         # Test port extraction
         content2 = 'set $upstream_port "9000";'
-        result2 = temp_service._extract_upstream_value(content2, "upstream_port")
+        result2 = temp_service.mcp_operations.extract_upstream_value(content2, "upstream_port")
         assert result2 == "9000"
 
         # Test with no match - should raise ValueError
         content3 = "server_name example.com;"
         with pytest.raises(ValueError, match="Could not find upstream_app"):
-            temp_service._extract_upstream_value(content3, "upstream_app")
+            temp_service.mcp_operations.extract_upstream_value(content3, "upstream_app")
 
     def test_extract_auth_method_variations(self, temp_service):
         """Test auth method extraction with different configs."""
         # Authelia
         content1 = "include /config/nginx/authelia-server.conf;"
-        result1 = temp_service._extract_auth_method(content1)
+        result1 = temp_service.mcp_operations.extract_auth_method(content1)
         assert result1 in ["authelia", "none", "ldap", "authentik", "tinyauth", "basic"]
 
         # LDAP
         content2 = "include /config/nginx/ldap.conf;"
-        result2 = temp_service._extract_auth_method(content2)
+        result2 = temp_service.mcp_operations.extract_auth_method(content2)
         assert result2 in ["authelia", "none", "ldap", "authentik", "tinyauth", "basic"]
 
         # No auth
         content3 = "server_name test.com; proxy_pass http://app:8080;"
-        result3 = temp_service._extract_auth_method(content3)
+        result3 = temp_service.mcp_operations.extract_auth_method(content3)
         assert result3 == "none"
 
     def test_insert_location_block_basic(self, temp_service):
@@ -195,7 +195,7 @@ class TestSwagManagerFocused:
         proxy_pass http://app:8080/mcp;
     }"""
 
-        result = temp_service._insert_location_block(original, location_block)
+        result = temp_service.mcp_operations.insert_location_block(original, location_block)
 
         assert "/mcp" in result
         assert "proxy_pass http://app:8080/mcp;" in result
@@ -216,7 +216,7 @@ class TestSwagManagerConcurrency:
         test_file = temp_service.config_path / "concurrent.lock"
 
         # Get locks concurrently
-        lock_tasks = [temp_service._get_file_lock(test_file) for _ in range(5)]
+        lock_tasks = [temp_service.file_ops.get_file_lock(test_file) for _ in range(5)]
         locks = await asyncio.gather(*lock_tasks)
 
         # All should return the same lock instance
@@ -241,7 +241,7 @@ class TestSwagManagerConcurrency:
 
         # Write files concurrently
         write_tasks = [
-            temp_service._safe_write_file(file, content, f"op {i}")
+            temp_service.file_ops.safe_write_file(file, content, f"op {i}")
             for i, (file, content) in enumerate(zip(files, contents, strict=False))
         ]
 
@@ -317,7 +317,7 @@ class TestSwagManagerBackupOperations:
 
     async def test_create_backup_existing_file(self, temp_service_with_files):
         """Test backup creation for existing file."""
-        backup_name = await temp_service_with_files._create_backup("test1.conf")
+        backup_name = await temp_service_with_files.backup_manager.create_backup("test1.conf")
 
         assert isinstance(backup_name, str)
         backup_file = temp_service_with_files.config_path / backup_name
@@ -328,7 +328,7 @@ class TestSwagManagerBackupOperations:
         """Test backup creation for nonexistent file."""
         # The method will raise an error for nonexistent files
         with pytest.raises(FileNotFoundError):
-            await temp_service_with_files._create_backup("nonexistent.conf")
+            await temp_service_with_files.backup_manager.create_backup("nonexistent.conf")
 
     async def test_list_backups(self, temp_service_with_files):
         """Test backup file listing."""
@@ -360,12 +360,12 @@ class TestSwagManagerMiscMethods:
         assert hasattr(basic_service, "_file_write_lock")
         assert hasattr(basic_service, "_cleanup_lock")
         assert hasattr(basic_service, "_file_locks")
-        assert hasattr(basic_service, "_active_transactions")
+        assert hasattr(basic_service.config_operations, "_active_transactions")
         assert hasattr(basic_service, "_file_locks_lock")
         assert hasattr(basic_service, "_transaction_lock")
 
         assert isinstance(basic_service._file_locks, dict)
-        assert isinstance(basic_service._active_transactions, dict)
+        assert isinstance(basic_service.config_operations._active_transactions, dict)
 
     def test_directory_checked_flag(self, basic_service):
         """Test directory checked flag initialization."""
@@ -406,5 +406,5 @@ class TestSwagManagerIntegration:
 
             # Test file lock creation
             test_path = config_dir / "test.conf"
-            lock = await service._get_file_lock(test_path)
+            lock = await service.file_ops.get_file_lock(test_path)
             assert lock is not None
