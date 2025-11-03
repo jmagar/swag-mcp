@@ -942,8 +942,9 @@ class SwagManagerService:
         if base_type not in ["subdomain", "subfolder"]:
             raise ValueError(f"Invalid base type '{base_type}'. Must be 'subdomain' or 'subfolder'")
 
-        # Determine template based on base_type and mcp_enabled
-        template_type = f"mcp-{base_type}" if request.mcp_enabled else base_type
+        # Use SWAG-compliant MCP templates (consolidated in commit 64547f5)
+        # All templates now support MCP/SSE streaming with include /config/nginx/mcp.conf
+        template_type = f"swag-compliant-mcp-{base_type}"
 
         logger.info(f"Creating {template_type} configuration for {service_name} ({config_name})")
         self._ensure_config_directory()

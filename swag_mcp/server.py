@@ -22,8 +22,8 @@ from swag_mcp.core.config import config
 from swag_mcp.core.constants import (
     CONF_EXTENSION,
     CONF_PATTERN,
-    CONFIG_TYPE_SUBDOMAIN,
-    CONFIG_TYPE_SUBFOLDER,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER,
     HEALTH_ENDPOINT,
     HTTP_METHOD_GET,
     SERVICE_NAME,
@@ -290,12 +290,10 @@ def setup_templates() -> None:
         logger.warning(f"Template directory {template_path} does not exist, creating...")
         template_path.mkdir(parents=True, exist_ok=True)
 
-    # Check if required templates exist
+    # Check if required SWAG-compliant templates exist (consolidated in commit 64547f5)
     required_templates = [
-        build_template_filename(CONFIG_TYPE_SUBDOMAIN),
-        build_template_filename(CONFIG_TYPE_SUBFOLDER),
-        build_template_filename(f"mcp-{CONFIG_TYPE_SUBDOMAIN}"),
-        build_template_filename(f"mcp-{CONFIG_TYPE_SUBFOLDER}"),
+        build_template_filename(CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN),
+        build_template_filename(CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER),
     ]
 
     for template_name in required_templates:

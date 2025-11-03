@@ -19,26 +19,25 @@ VALID_CONFIG_NAME_FORMAT = (
     r"^[a-zA-Z0-9_-]+\.(subdomain|subfolder)\.conf$"  # Full config filename format
 )
 
-# Configuration types
-CONFIG_TYPE_SUBDOMAIN = "subdomain"
-CONFIG_TYPE_SUBFOLDER = "subfolder"
-CONFIG_TYPE_MCP_SUBDOMAIN = "mcp-subdomain"
-CONFIG_TYPE_MCP_SUBFOLDER = "mcp-subfolder"
+# Configuration types - SWAG-compliant only (templates consolidated in commit 64547f5)
+# Legacy types removed: subdomain, subfolder, mcp-subdomain, mcp-subfolder
 CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN = "swag-compliant-mcp-subdomain"
 CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER = "swag-compliant-mcp-subfolder"
 
 # Configuration types tuple for efficient validation and iteration
 CONFIG_TYPES = (
-    CONFIG_TYPE_SUBDOMAIN,
-    CONFIG_TYPE_SUBFOLDER,
-    CONFIG_TYPE_MCP_SUBDOMAIN,
-    CONFIG_TYPE_MCP_SUBFOLDER,
     CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN,
     CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER,
 )
 
 # Backwards-compat alias (if referenced elsewhere)
 ALL_CONFIG_TYPES = list(CONFIG_TYPES)
+
+# Legacy constants for backwards compatibility (deprecated - do not use in new code)
+CONFIG_TYPE_SUBDOMAIN = "subdomain"
+CONFIG_TYPE_SUBFOLDER = "subfolder"
+CONFIG_TYPE_MCP_SUBDOMAIN = "mcp-subdomain"
+CONFIG_TYPE_MCP_SUBFOLDER = "mcp-subfolder"
 
 # URI schemes and paths
 SWAG_URI_BASE = "swag://"

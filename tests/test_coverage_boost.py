@@ -143,11 +143,16 @@ class TestFormatters:
         assert "s" in format_duration(1500)
 
     def test_build_template_filename(self):
-        """Test template filename building."""
-        assert build_template_filename("subdomain") == "subdomain.conf.j2"
+        """Test template filename building with SWAG-compliant types."""
+        assert build_template_filename("swag-compliant-mcp-subdomain") == "swag-compliant-mcp-subdomain.conf.j2"
+        assert build_template_filename("swag-compliant-mcp-subfolder") == "swag-compliant-mcp-subfolder.conf.j2"
 
         with pytest.raises(ValueError):
             build_template_filename("invalid")
+
+        # Legacy template types should raise ValueError
+        with pytest.raises(ValueError):
+            build_template_filename("subdomain")
 
     def test_format_health_check_result(self):
         """Test health check result formatting."""
@@ -199,9 +204,12 @@ class TestConstants:
     """Test constants are properly defined."""
 
     def test_config_types(self):
-        """Test config types constant."""
-        assert "subdomain" in CONFIG_TYPES
-        assert "subfolder" in CONFIG_TYPES
+        """Test config types constant for SWAG-compliant types only."""
+        assert "swag-compliant-mcp-subdomain" in CONFIG_TYPES
+        assert "swag-compliant-mcp-subfolder" in CONFIG_TYPES
+        # Legacy types should not be in CONFIG_TYPES
+        assert "subdomain" not in CONFIG_TYPES
+        assert "subfolder" not in CONFIG_TYPES
 
     def test_auth_methods(self):
         """Test auth methods constant."""
