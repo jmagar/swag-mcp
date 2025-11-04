@@ -414,7 +414,7 @@ class TestMemoryLeakDetection:
             config_file = swag_service.config_path / f"lock_test{i:03d}.subdomain.conf"
             config_file.write_text(f"# Lock test {i}")
 
-        initial_lock_count = len(swag_service._file_locks)
+        initial_lock_count = len(swag_service.file_ops._file_locks)
 
         # Perform operations that create locks
         for i in range(100):
@@ -427,12 +427,12 @@ class TestMemoryLeakDetection:
                 pass
 
         # Check lock count after operations
-        after_ops_count = len(swag_service._file_locks)
+        after_ops_count = len(swag_service.file_ops._file_locks)
 
         # Trigger cleanup
-        await swag_service._cleanup_file_locks()
+        await swag_service.file_ops.cleanup_file_locks()
 
-        final_lock_count = len(swag_service._file_locks)
+        final_lock_count = len(swag_service.file_ops._file_locks)
 
         print(
             f"Locks: initial={initial_lock_count}, after_ops={after_ops_count}, "

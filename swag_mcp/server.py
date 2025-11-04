@@ -22,8 +22,8 @@ from swag_mcp.core.config import config
 from swag_mcp.core.constants import (
     CONF_EXTENSION,
     CONF_PATTERN,
-    CONFIG_TYPE_SUBDOMAIN,
-    CONFIG_TYPE_SUBFOLDER,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN,
+    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER,
     HEALTH_ENDPOINT,
     HTTP_METHOD_GET,
     SERVICE_NAME,
@@ -205,11 +205,17 @@ def _extract_service_name(filename: str) -> str:
     if name.endswith(CONF_EXTENSION):
         name = name[: -len(CONF_EXTENSION)]
 
-    # Strip type suffixes if present
-    if name.endswith(f".{CONFIG_TYPE_SUBDOMAIN}"):
-        name = name[: -len(f".{CONFIG_TYPE_SUBDOMAIN}")]
-    elif name.endswith(f".{CONFIG_TYPE_SUBFOLDER}"):
-        name = name[: -len(f".{CONFIG_TYPE_SUBFOLDER}")]
+    # Strip type suffixes if present (legacy and SWAG-compliant)
+    # Check SWAG-compliant first (longer strings) to avoid partial matches
+    for suffix in (
+        f".{CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN}",
+        f".{CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER}",
+        ".subdomain",
+        ".subfolder",
+    ):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
 
     return name
 
@@ -221,23 +227,39 @@ async def create_mcp_server() -> FastMCP:
     if os.getenv("FASTMCP_SERVER_AUTH") == "fastmcp.server.auth.providers.google.GoogleProvider":
         try:
             from fastmcp.server.auth.providers.google import GoogleProvider
-            
+
             # Configure GoogleProvider with environment variables
             client_id = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID")
+            client_secret = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET")
             base_url = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "http://localhost:8000")
             scopes_str = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REQUIRED_SCOPES", "")
             scopes = [scope.strip() for scope in scopes_str.split(",") if scope.strip()]
-            
+
+            # Validate required OAuth credentials
+            if not client_id or not client_secret:
+                logger.error(
+                    "Google OAuth requires both CLIENT_ID and CLIENT_SECRET environment variables"
+                )
+                logger.error(
+                    "CLIENT_ID set: %s, CLIENT_SECRET set: %s",
+                    bool(client_id),
+                    bool(client_secret),
+                )
+                raise ValueError("Missing required OAuth credentials")
+
+            redirect_path = os.getenv(
+                "FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"
+            )
             auth_provider = GoogleProvider(
                 client_id=client_id,
-                client_secret=os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET"),
+                client_secret=client_secret,
                 base_url=base_url,
                 required_scopes=scopes,
-                redirect_path=os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"),
+                redirect_path=redirect_path,
             )
             logger.info("✅ Google OAuth authentication enabled")
             logger.info(f"📍 OAuth base URL: {base_url}")
-            logger.info(f"🔑 OAuth client ID: {client_id[:20] if client_id else 'NOT_SET'}...")
+            logger.info("🔑 OAuth client ID: %s...", client_id[:20])
             logger.info(f"🔒 OAuth scopes: {scopes}")
         except ImportError as e:
             logger.error(f"Failed to import GoogleProvider: {e}")
@@ -247,7 +269,7 @@ async def create_mcp_server() -> FastMCP:
             logger.error("Google OAuth authentication disabled")
     else:
         logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
-    
+
     # Create FastMCP server instance with or without authentication
     mcp = FastMCP("SWAG Configuration Manager", auth=auth_provider)
 
@@ -290,12 +312,10 @@ def setup_templates() -> None:
         logger.warning(f"Template directory {template_path} does not exist, creating...")
         template_path.mkdir(parents=True, exist_ok=True)
 
-    # Check if required templates exist
+    # Check if required SWAG-compliant templates exist (consolidated in commit 64547f5)
     required_templates = [
-        build_template_filename(CONFIG_TYPE_SUBDOMAIN),
-        build_template_filename(CONFIG_TYPE_SUBFOLDER),
-        build_template_filename(f"mcp-{CONFIG_TYPE_SUBDOMAIN}"),
-        build_template_filename(f"mcp-{CONFIG_TYPE_SUBFOLDER}"),
+        build_template_filename(CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN),
+        build_template_filename(CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER),
     ]
 
     for template_name in required_templates:
@@ -323,7 +343,7 @@ async def main() -> None:
     """Async entry point for when called from within an async context."""
     # Load environment variables from .env file if present
     load_dotenv()
-    
+
     logger.info("Starting SWAG MCP Server with streamable-http transport (async mode)...")
 
     setup_templates()

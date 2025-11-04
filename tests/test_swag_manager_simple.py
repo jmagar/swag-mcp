@@ -29,8 +29,11 @@ class TestSwagManagerServiceBasic:
         """Create a temporary template directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             template_dir = Path(temp_dir)
-            # Create a simple template
-            (template_dir / "subdomain.conf.j2").write_text(
+            # Create SWAG-compliant templates
+            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text(
+                "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
+            )
+            (template_dir / "swag-compliant-mcp-subfolder.conf.j2").write_text(
                 "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
             )
             yield template_dir
@@ -44,12 +47,12 @@ class TestSwagManagerServiceBasic:
         """Test service initialization with comprehensive validation."""
         assert service.config_path is not None, "Service config_path should be set"
         assert service.template_path is not None, "Service template_path should be set"
-        assert service.template_env is not None, "Service template_env should be initialized"
+        assert service.template_manager.template_env is not None, "Service template_env should be initialized"
 
         # Validate types and properties
         assert hasattr(service.config_path, 'exists'), "config_path should be a Path object"
         assert hasattr(service.template_path, 'exists'), "template_path should be a Path object"
-        assert hasattr(service.template_env, 'get_template'), (
+        assert hasattr(service.template_manager.template_env, 'get_template'), (
             "template_env should be a Jinja2 Environment"
         )
 
@@ -113,8 +116,8 @@ class TestSwagManagerServiceBasic:
     async def test_validate_template_exists(self, service):
         """Test template existence validation with specific assertions."""
         # Test existing template
-        result = await service.validate_template_exists("subdomain")
-        assert result is True, "Expected 'subdomain' template to exist in test setup"
+        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
+        assert result is True, "Expected 'swag-compliant-mcp-subdomain' template to exist in test setup"
         assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
         # Test non-existent template
@@ -126,8 +129,8 @@ class TestSwagManagerServiceBasic:
         """Test validating all templates."""
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
-        assert "subdomain" in result
-        assert result["subdomain"] is True
+        assert "swag-compliant-mcp-subdomain" in result
+        assert result["swag-compliant-mcp-subdomain"] is True
 
     async def test_get_resource_configs(self, service, temp_config_dir):
         """Test getting resource configs."""
@@ -182,7 +185,7 @@ class TestSwagManagerServiceBasic:
 
     def test_create_secure_template_environment(self, service):
         """Test that template environment is properly secured."""
-        env = service.template_env
+        env = service.template_manager.template_env
         assert env is not None
 
         # Test that dangerous globals are removed
@@ -243,11 +246,11 @@ class TestSwagManagerServiceBasic:
         test_file = temp_config_dir / "test.conf"
 
         # Test that we can get a lock for a file
-        lock = await service._get_file_lock(test_file)
+        lock = await service.file_ops.get_file_lock(test_file)
         assert lock is not None
 
         # Test that we get the same lock for the same file
-        lock2 = await service._get_file_lock(test_file)
+        lock2 = await service.file_ops.get_file_lock(test_file)
         assert lock is lock2
 
     def test_transaction_begin(self, service):
@@ -262,7 +265,7 @@ class TestSwagManagerServiceBasic:
 
         # This should not raise an exception for basic content
         try:
-            result = service._validate_config_content(content, "test.conf")
+            result = service.validation_service.validate_config_content(content, "test.conf")
             assert isinstance(result, str), (
                 f"Expected string result from validation, got {type(result)}"
             )
@@ -286,7 +289,7 @@ class TestSwagManagerServiceBasic:
             "upstream_port": 8080,
         }
 
-        result = service._validate_template_variables(valid_vars)
+        result = service.template_manager.validate_template_variables(valid_vars)
         assert isinstance(result, dict)
         assert "service_name" in result
 
@@ -306,11 +309,11 @@ class TestSwagManagerServiceBasic:
         """
 
         # Test upstream extraction (expects 'set $variable "value";' format)
-        upstream = service._extract_upstream_value(content, "upstream_app")
+        upstream = service.mcp_operations.extract_upstream_value(content, "upstream_app")
         assert upstream == "jellyfin"
 
         # Test auth method extraction (looks for include statements)
-        auth_method = service._extract_auth_method(content)
+        auth_method = service.mcp_operations.extract_auth_method(content)
         assert auth_method == "authelia"
 
     async def test_safe_write_file_permissions(self, service, temp_config_dir):
@@ -321,7 +324,7 @@ class TestSwagManagerServiceBasic:
         # This should work in a writable temp directory
         # _safe_write_file takes: file_path, content, operation_name, use_lock
         try:
-            await service._safe_write_file(test_file, content, "test write", use_lock=False)
+            await service.file_ops.safe_write_file(test_file, content, "test write", use_lock=False)
             assert test_file.exists()
             assert test_file.read_text() == content
         except Exception as e:
@@ -331,5 +334,5 @@ class TestSwagManagerServiceBasic:
     def test_ensure_config_directory(self, service):
         """Test directory creation and validation."""
         # This should not raise an exception
-        service._ensure_config_directory()
+        service.config_operations._ensure_config_directory()
         assert service.config_path.exists()

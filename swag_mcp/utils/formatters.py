@@ -243,37 +243,32 @@ def build_template_filename(config_type: str) -> str:
     """Build a template filename from config type.
 
     Args:
-        config_type: Type of configuration
+        config_type: Type of configuration (SWAG-compliant types only)
 
     Returns:
         Template filename with .j2 extension
 
     Examples:
-        build_template_filename("subdomain") -> "subdomain.conf.j2"
-        build_template_filename("mcp-subdomain") -> "mcp-subdomain.conf.j2"
         build_template_filename("swag-compliant-mcp-subdomain") -> "swag-compliant-mcp-subdomain.conf.j2"
+        build_template_filename("swag-compliant-mcp-subfolder") -> "swag-compliant-mcp-subfolder.conf.j2"
 
     Raises:
-        ValueError: If config_type is not one of the valid types
+        ValueError: If config_type is not one of the valid SWAG-compliant types
+
+    Note:
+        Legacy template types (subdomain, subfolder, mcp-subdomain, mcp-subfolder)
+        were removed in commit 64547f5. All templates now use SWAG-compliant format
+        with include /config/nginx/mcp.conf for DRY configuration.
 
     """
-    # Use canonical CONFIG_TYPES constant
+    # Validate against SWAG-compliant CONFIG_TYPES only
     if config_type not in CONFIG_TYPES:
         raise ValueError(
             f"Invalid config type '{config_type}'. "
             f"Must be one of: {', '.join(CONFIG_TYPES)}"
         )
 
-    # Map new SWAG-compliant types to their template files
-    template_mapping = {
-        "swag-compliant-mcp-subdomain": "swag-compliant-mcp-subdomain.conf.j2",
-        "swag-compliant-mcp-subfolder": "swag-compliant-mcp-subfolder.conf.j2",
-    }
-
-    # Use mapping if available, otherwise use standard naming convention
-    if config_type in template_mapping:
-        return template_mapping[config_type]
-
+    # All SWAG-compliant templates follow the standard naming convention
     return f"{config_type}.conf.j2"
 
 
