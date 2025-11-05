@@ -199,11 +199,6 @@ location ^~ /{{ service_name }}/mcp {
         return 204;
     }
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
     # Route to MCP service (may be different from main service)
     proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/mcp;
 }
