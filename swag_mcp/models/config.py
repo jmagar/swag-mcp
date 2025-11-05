@@ -204,6 +204,10 @@ class SwagConfigRequest(SwagBaseRequest):
 
         This ensures backward compatibility - if MCP fields are not provided,
         they automatically use the same upstream as the main service.
+
+        Note: Defaults are set regardless of mcp_enabled because the templates
+        always render these variables. If left as None, Jinja2 would render
+        "None" as a string, breaking nginx configuration.
         """
         if self.mcp_upstream_app is None:
             self.mcp_upstream_app = self.upstream_app
@@ -317,13 +321,17 @@ class SwagEditRequest(SwagBaseRequest):
                 "upstream_app",
                 "upstream_port",
                 "upstream_proto",
+                "mcp_upstream_app",
+                "mcp_upstream_port",
+                "mcp_upstream_proto",
                 "auth_method",
                 "enable_quic",
             )
         ):
             raise ValueError(
                 "At least one of new_content/server_name/upstream_app/"
-                "upstream_port/upstream_proto/auth_method/enable_quic must be provided"
+                "upstream_port/upstream_proto/mcp_upstream_app/mcp_upstream_port/"
+                "mcp_upstream_proto/auth_method/enable_quic must be provided"
             )
         return self
 

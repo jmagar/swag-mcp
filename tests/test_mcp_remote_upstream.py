@@ -161,3 +161,28 @@ class TestMCPRemoteUpstream:
                 mcp_upstream_app="invalid/app",  # Invalid - contains /
                 mcp_upstream_port=8080,
             )
+
+    @pytest.mark.asyncio
+    async def test_edit_mcp_upstream_fields_only(self):
+        """Test that we can edit only MCP upstream fields (P1 bug fix)."""
+        from swag_mcp.models.config import SwagEditRequest
+
+        # This should NOT raise an error - editing only MCP upstream fields is valid
+        request = SwagEditRequest(
+            action="edit",
+            config_name="test.subdomain.conf",
+            mcp_upstream_app="new-mcp-server",
+            mcp_upstream_port=9000,
+        )
+
+        assert request.mcp_upstream_app == "new-mcp-server"
+        assert request.mcp_upstream_port == 9000
+
+        # Test editing only one MCP field
+        request2 = SwagEditRequest(
+            action="edit",
+            config_name="test.subdomain.conf",
+            mcp_upstream_app="another-server",
+        )
+
+        assert request2.mcp_upstream_app == "another-server"
