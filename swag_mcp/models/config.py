@@ -114,7 +114,10 @@ class SwagConfigRequest(SwagBaseRequest):
         default=None,
         pattern=VALID_UPSTREAM_PATTERN,
         max_length=100,
-        description="Container name or IP for MCP service (defaults to upstream_app if not specified)",
+        description=(
+            "Container name or IP for MCP service "
+            "(defaults to upstream_app if not specified)"
+        ),
     )
 
     mcp_upstream_port: int | None = Field(

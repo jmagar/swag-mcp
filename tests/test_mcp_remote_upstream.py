@@ -1,7 +1,9 @@
 """Test MCP remote upstream support."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+import pytest_asyncio
 from swag_mcp.models.config import SwagConfigRequest
 from swag_mcp.services.swag_manager import SwagManagerService
 
@@ -9,7 +11,7 @@ from swag_mcp.services.swag_manager import SwagManagerService
 class TestMCPRemoteUpstream:
     """Test MCP remote upstream server support."""
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def swag_manager(self, tmp_path):
         """Create a SWAG manager instance with temporary directories."""
         config_path = tmp_path / "proxy-confs"
@@ -42,7 +44,7 @@ class TestMCPRemoteUpstream:
 
         # Create config and verify it contains the correct upstream variables
         result = await swag_manager.create_config(request)
-        assert "test.subdomain.conf" == result.filename
+        assert result.filename == "test.subdomain.conf"
 
         # Verify main upstream variables
         assert 'set $upstream_app "testapp"' in result.content
@@ -85,7 +87,7 @@ class TestMCPRemoteUpstream:
 
         # Create config and verify it contains separate upstream variables
         result = await swag_manager.create_config(request)
-        assert "jellyfin.subdomain.conf" == result.filename
+        assert result.filename == "jellyfin.subdomain.conf"
 
         # Verify main service uses jellyfin upstream
         assert 'set $upstream_app "jellyfin"' in result.content
@@ -122,7 +124,7 @@ class TestMCPRemoteUpstream:
         )
 
         result = await swag_manager.create_config(request)
-        assert "plex.subfolder.conf" == result.filename
+        assert result.filename == "plex.subfolder.conf"
 
         # Verify both upstreams are configured
         assert 'set $upstream_app "plex"' in result.content
@@ -151,7 +153,9 @@ class TestMCPRemoteUpstream:
         assert request.mcp_upstream_app == "ai_server-01.local"
 
         # Invalid upstream app should raise error
-        with pytest.raises(ValidationError, match="MCP upstream app name.*contains invalid characters"):
+        with pytest.raises(
+            ValidationError, match="MCP upstream app name.*contains invalid characters"
+        ):
             SwagConfigRequest(
                 action="create",
                 config_name="test.subdomain.conf",
