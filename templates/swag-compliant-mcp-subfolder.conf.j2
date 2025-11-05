@@ -13,10 +13,15 @@ location ^~ /{{ service_name }}/ {
 
 # Main service location block
 location ^~ /{{ service_name }} {
-    # Upstream target variables (SWAG standard pattern)
+    # Main service upstream variables (SWAG standard pattern)
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
     set $upstream_proto "{{ upstream_proto }}";
+
+    # MCP service upstream variables (may differ from main service)
+    set $mcp_upstream_app "{{ mcp_upstream_app }}";
+    set $mcp_upstream_port "{{ mcp_upstream_port }}";
+    set $mcp_upstream_proto "{{ mcp_upstream_proto }}";
 
     # MCP 2025-06-18 Compliance: DNS Rebinding Protection (Simplified)
     set $origin_valid 0;
@@ -199,7 +204,8 @@ location ^~ /{{ service_name }}/mcp {
     set $upstream_port "{{ upstream_port }}";
     set $upstream_proto "{{ upstream_proto }}";
 
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/mcp;
+    # Route to MCP service (may be different from main service)
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/mcp;
 }
 
 # MCP 2025-06-18 REQUIRED: OAuth 2.0 Protected Resource Metadata (RFC9728)
@@ -236,12 +242,8 @@ location ^~ /{{ service_name }}/.well-known/oauth-protected-resource {
     # Metadata should be cacheable but not for too long
     add_header Cache-Control "public, max-age=3600" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/.well-known/oauth-protected-resource;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/.well-known/oauth-protected-resource;
 }
 
 # OAuth 2.0 Authorization Server Metadata (RFC8414)
@@ -256,12 +258,8 @@ location ^~ /{{ service_name }}/.well-known/oauth-authorization-server {
     # Metadata should be cacheable
     add_header Cache-Control "public, max-age=3600" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/.well-known/oauth-authorization-server;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/.well-known/oauth-authorization-server;
 }
 
 # OpenID Connect Discovery (for compatibility)
@@ -276,12 +274,8 @@ location ^~ /{{ service_name }}/.well-known/openid-configuration {
     # Metadata should be cacheable
     add_header Cache-Control "public, max-age=3600" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/.well-known/openid-configuration;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/.well-known/openid-configuration;
 }
 
 # OAuth 2.0 Dynamic Client Registration (RFC7591) - RECOMMENDED
@@ -301,12 +295,8 @@ location ^~ /{{ service_name }}/register {
     add_header Cache-Control "no-store" always;
     add_header Pragma "no-cache" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/register;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/register;
 }
 
 # OAuth 2.1 Authorization Endpoint
@@ -322,12 +312,8 @@ location ^~ /{{ service_name }}/authorize {
     proxy_set_header X-Forwarded-Prefix /{{ service_name }};
     proxy_set_header X-Script-Name /{{ service_name }};
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/authorize;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/authorize;
 }
 
 # OAuth 2.1 Token Endpoint
@@ -348,12 +334,8 @@ location ^~ /{{ service_name }}/token {
     add_header Pragma "no-cache" always;
     add_header Expires "0" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/token;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/token;
 }
 
 # OAuth 2.1 Token Revocation Endpoint
@@ -374,12 +356,8 @@ location ^~ /{{ service_name }}/revoke {
     add_header Pragma "no-cache" always;
     add_header Expires "0" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/revoke;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/revoke;
 }
 
 # OAuth callback handling (includes all /auth/* paths for various providers)
@@ -395,12 +373,8 @@ location ^~ /{{ service_name }}/auth/ {
     proxy_set_header X-Forwarded-Prefix /{{ service_name }};
     proxy_set_header X-Script-Name /{{ service_name }};
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port/auth/;
+    # Route to MCP service
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port/auth/;
 }
 
 # Enhanced health check endpoint
@@ -432,11 +406,7 @@ location ^~ /{{ service_name }}/health {
     add_header Cache-Control "no-cache, no-store, must-revalidate" always;
     add_header Pragma "no-cache" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
+    # Route to main service (health checks the primary app)
     proxy_pass $upstream_proto://$upstream_app:$upstream_port/health;
 }
 
@@ -460,10 +430,6 @@ location ~* ^/{{ service_name }}/(session|sessions) {
     add_header Cache-Control "no-store" always;
     add_header Pragma "no-cache" always;
 
-    # Upstream target variables (SWAG standard pattern)
-    set $upstream_app "{{ upstream_app }}";
-    set $upstream_port "{{ upstream_port }}";
-    set $upstream_proto "{{ upstream_proto }}";
-
-    proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+    # Route to MCP service (sessions are MCP-related)
+    proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
 }

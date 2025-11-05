@@ -193,6 +193,34 @@ swag create jellyfin jellyfin.example.com jellyfin 8096
 swag create claude-mcp ai.example.com claude-mcp-server 8080 mcp-subdomain
 ```
 
+### Remote MCP Server Support (NEW!)
+
+You can now have your MCP service running on a different server than your main web application. This is perfect for GPU-accelerated AI services or distributed architectures.
+
+**Use Case**: Jellyfin media server on one machine, AI subtitle generator on a GPU server
+
+**Natural Language:**
+- *"Create a Jellyfin proxy at jellyfin.example.com using jellyfin:8096 with MCP endpoint on ai-gpu-server:8080"*
+- *"Set up Jellyfin at jellyfin.example.com port 8096, but use ai-server port 9000 for the MCP service"*
+
+**What happens:**
+- Main service traffic (`/`) → `jellyfin:8096`
+- MCP endpoint traffic (`/mcp`, OAuth, etc.) → `ai-gpu-server:8080`
+
+**Example Configuration:**
+```python
+SwagConfigRequest(
+    config_name="jellyfin.subdomain.conf",
+    server_name="jellyfin.example.com",
+    upstream_app="jellyfin",           # Main Jellyfin server
+    upstream_port=8096,
+    mcp_upstream_app="ai-gpu-server",  # Separate AI server
+    mcp_upstream_port=8080
+)
+```
+
+**Backward Compatible**: If you don't specify MCP upstream fields, they default to the main upstream (existing behavior).
+
 ### Health Check Verification
 
 **Natural Language:**

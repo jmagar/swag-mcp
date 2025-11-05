@@ -109,6 +109,26 @@ class SwagConfigRequest(SwagBaseRequest):
 
     mcp_enabled: bool = Field(default=False, description="Enable MCP/SSE support for AI services")
 
+    # MCP-specific upstream configuration (optional - defaults to main upstream)
+    mcp_upstream_app: str | None = Field(
+        default=None,
+        pattern=VALID_UPSTREAM_PATTERN,
+        max_length=100,
+        description="Container name or IP for MCP service (defaults to upstream_app if not specified)",
+    )
+
+    mcp_upstream_port: int | None = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="Port for MCP service (defaults to upstream_port if not specified)",
+    )
+
+    mcp_upstream_proto: Literal["http", "https"] | None = Field(
+        default=None,
+        description="Protocol for MCP service (defaults to upstream_proto if not specified)",
+    )
+
     auth_method: AuthMethodType = Field(
         default="authelia", description="Authentication method to use"
     )
@@ -151,6 +171,22 @@ class SwagConfigRequest(SwagBaseRequest):
             )
         return v
 
+    @field_validator("mcp_upstream_app", mode="before")
+    @classmethod
+    def validate_mcp_upstream_app(cls, v: str | None) -> str | None:
+        """Validate MCP upstream app name format."""
+        if v is None:
+            return v
+        v = _ud.normalize("NFKC", v).strip()
+        if not v:
+            raise ValueError("MCP upstream app name cannot be empty")
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError(
+                f"MCP upstream app name '{_ud.normalize('NFKC', v[:50])}...' "
+                f"contains invalid characters"
+            )
+        return v
+
     @field_validator("auth_method")
     @classmethod
     def validate_auth_method(cls, v: str) -> str:
@@ -161,6 +197,21 @@ class SwagConfigRequest(SwagBaseRequest):
                 f"Invalid auth_method '{_ud.normalize('NFKC', v)}'. Valid methods: {valid_methods}"
             )
         return v
+
+    @model_validator(mode="after")
+    def set_mcp_upstream_defaults(self) -> "SwagConfigRequest":
+        """Set MCP upstream defaults to main upstream if not specified.
+
+        This ensures backward compatibility - if MCP fields are not provided,
+        they automatically use the same upstream as the main service.
+        """
+        if self.mcp_upstream_app is None:
+            self.mcp_upstream_app = self.upstream_app
+        if self.mcp_upstream_port is None:
+            self.mcp_upstream_port = self.upstream_port
+        if self.mcp_upstream_proto is None:
+            self.mcp_upstream_proto = self.upstream_proto
+        return self
 
 
 # Alias for backward/semantic compatibility with tooling/tests
@@ -227,6 +278,26 @@ class SwagEditRequest(SwagBaseRequest):
         default=None, description="Protocol for upstream connection"
     )
 
+    # MCP-specific upstream configuration (optional)
+    mcp_upstream_app: str | None = Field(
+        default=None,
+        pattern=VALID_UPSTREAM_PATTERN,
+        max_length=100,
+        description="Container name or IP for MCP service",
+    )
+
+    mcp_upstream_port: int | None = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="Port for MCP service",
+    )
+
+    mcp_upstream_proto: Literal["http", "https"] | None = Field(
+        default=None,
+        description="Protocol for MCP service",
+    )
+
     auth_method: AuthMethodType | None = Field(
         default=None, description="Authentication method to use"
     )
@@ -276,6 +347,19 @@ class SwagEditRequest(SwagBaseRequest):
             raise ValueError("Upstream app name cannot be empty")
         if ".." in v or "/" in v or "\\" in v:
             raise ValueError("Upstream app name contains invalid characters")
+        return v
+
+    @field_validator("mcp_upstream_app", mode="before")
+    @classmethod
+    def validate_edit_mcp_upstream_app(cls, v: str | None) -> str | None:
+        """Validate MCP upstream app name format for edit requests."""
+        if v is None:
+            return v
+        v = _ud.normalize("NFKC", v).strip()
+        if not v:
+            raise ValueError("MCP upstream app name cannot be empty")
+        if ".." in v or "/" in v or "\\" in v:
+            raise ValueError("MCP upstream app name contains invalid characters")
         return v
 
 
