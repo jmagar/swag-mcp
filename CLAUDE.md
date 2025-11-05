@@ -80,6 +80,56 @@ The unified `swag` tool supports 10 actions:
 | `cleanup_backups` | Clean old backups | "Clean up backup files older than 7 days" |
 | `health_check` | Test service health | "Check if media.example.com is accessible" |
 
+## Remote MCP Server Support (NEW)
+
+SWAG MCP now supports running MCP services on different machines than the main web application. This enables distributed architectures and GPU-accelerated AI services.
+
+### Use Cases
+
+**Scenario 1: Media Server + AI Service**
+- Jellyfin media server: `jellyfin:8096`
+- AI subtitle generator: `ai-gpu-server:8080`
+
+**Scenario 2: Application + Multiple MCP Services**
+- Plex media server: `plex:32400`
+- Transcoding MCP: `transcode-server:9000`
+
+### Configuration Fields
+
+When creating a config, you can now specify separate upstream servers for MCP endpoints:
+
+**Main Service Fields** (required):
+- `upstream_app`: Container name or IP for main service
+- `upstream_port`: Port for main service
+- `upstream_proto`: Protocol (http/https) for main service
+
+**MCP Service Fields** (optional - defaults to main service):
+- `mcp_upstream_app`: Container name or IP for MCP service
+- `mcp_upstream_port`: Port for MCP service
+- `mcp_upstream_proto`: Protocol (http/https) for MCP service
+
+### Natural Language Examples
+
+**Same machine (backward compatible)**:
+- *"Create jellyfin proxy at jellyfin.example.com:8096 with MCP enabled"*
+  - Both main and MCP use `jellyfin:8096`
+
+**Remote MCP server**:
+- *"Create jellyfin proxy at jellyfin.example.com using jellyfin:8096 with MCP on ai-server:8080"*
+  - Main: `jellyfin:8096`, MCP: `ai-server:8080`
+
+- *"Set up plex at plex.example.com port 32400, but use gpu-server port 9000 for MCP"*
+  - Main: `plex:32400`, MCP: `gpu-server:9000`
+
+### Traffic Routing
+
+When using remote MCP servers, traffic is routed as follows:
+
+- **Main Service** (`/`): Routes to `upstream_app:upstream_port`
+- **MCP Endpoints** (`/mcp`, OAuth paths): Route to `mcp_upstream_app:mcp_upstream_port`
+- **Health Checks** (`/health`): Routes to main service
+- **Sessions** (`/session*`): Routes to MCP service
+
 ## Environment Variables
 
 All configuration uses `SWAG_MCP_*` prefix:

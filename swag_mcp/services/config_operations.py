@@ -256,6 +256,10 @@ class ConfigOperations:
                     "upstream_app": request.upstream_app,
                     "upstream_port": validated_port,
                     "upstream_proto": request.upstream_proto,
+                    # MCP upstream variables (with defaults from model validator)
+                    "mcp_upstream_app": request.mcp_upstream_app,
+                    "mcp_upstream_port": request.mcp_upstream_port,
+                    "mcp_upstream_proto": request.mcp_upstream_proto,
                     "auth_method": request.auth_method,
                     "enable_quic": request.enable_quic,
                 }

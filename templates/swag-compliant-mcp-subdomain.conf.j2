@@ -25,10 +25,15 @@ server {
 
     client_max_body_size 0;
 
-    # Upstream target variables (SWAG standard pattern)
+    # Main service upstream variables (SWAG standard pattern)
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
     set $upstream_proto "{{ upstream_proto }}";
+
+    # MCP service upstream variables (may differ from main service)
+    set $mcp_upstream_app "{{ mcp_upstream_app }}";
+    set $mcp_upstream_port "{{ mcp_upstream_port }}";
+    set $mcp_upstream_proto "{{ mcp_upstream_proto }}";
 
     # MCP 2025-06-18 Compliance: DNS Rebinding Protection (Simplified)
     set $origin_valid 0;
@@ -122,7 +127,8 @@ server {
             return 204;
         }
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service (may be different from main service)
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # MCP 2025-06-18 REQUIRED: OAuth 2.0 Protected Resource Metadata (RFC9728)
@@ -141,7 +147,8 @@ server {
         # Metadata should be cacheable but not for too long
         add_header Cache-Control "public, max-age=3600" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth 2.0 Authorization Server Metadata (RFC8414)
@@ -152,7 +159,8 @@ server {
         # Metadata should be cacheable
         add_header Cache-Control "public, max-age=3600" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OpenID Connect Discovery (for compatibility)
@@ -163,7 +171,8 @@ server {
         # Metadata should be cacheable
         add_header Cache-Control "public, max-age=3600" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth 2.0 Dynamic Client Registration (RFC7591) - RECOMMENDED
@@ -179,7 +188,8 @@ server {
         add_header Cache-Control "no-store" always;
         add_header Pragma "no-cache" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth 2.1 Authorization Endpoint
@@ -191,7 +201,8 @@ server {
         proxy_set_header MCP-Protocol-Version $http_mcp_protocol_version;
         proxy_set_header Mcp-Session-Id $http_mcp_session_id;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth 2.1 Token Endpoint
@@ -208,7 +219,8 @@ server {
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth 2.1 Token Revocation Endpoint
@@ -225,7 +237,8 @@ server {
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # OAuth callback handling (includes all /auth/* paths for various providers)
@@ -237,7 +250,8 @@ server {
         proxy_set_header MCP-Protocol-Version $http_mcp_protocol_version;
         proxy_set_header Mcp-Session-Id $http_mcp_session_id;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # Enhanced health check endpoint
@@ -278,7 +292,8 @@ server {
         add_header Cache-Control "no-store" always;
         add_header Pragma "no-cache" always;
 
-        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+        # Route to MCP service (sessions are MCP-related)
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
     # Default location for normal web service (non-MCP traffic)
