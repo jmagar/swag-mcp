@@ -156,7 +156,7 @@ class ConfigFieldUpdaters:
 
         # Try template format first: set $upstream_port
         pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-        replacement = rf'set \$upstream_port "{port_value}";'
+        replacement = rf'set $upstream_port "{port_value}";'
         new_content, port_replacements = re.subn(pattern, replacement, updated_content)
 
         if port_replacements > 0:
@@ -223,7 +223,7 @@ class ConfigFieldUpdaters:
 
         # Try template format first: set $upstream_app
         pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-        replacement = rf'set \$upstream_app "{update_request.update_value}";'
+        replacement = rf'set $upstream_app "{update_request.update_value}";'
         new_content, app_replacements = re.subn(pattern, replacement, updated_content)
 
         if app_replacements > 0:
@@ -316,7 +316,7 @@ class ConfigFieldUpdaters:
 
         # Try template format first
         app_pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-        app_replacement = rf'set \$upstream_app "{app}";'
+        app_replacement = rf'set $upstream_app "{app}";'
         new_content, app_replacements = re.subn(app_pattern, app_replacement, updated_content)
 
         if app_replacements > 0:
@@ -324,7 +324,7 @@ class ConfigFieldUpdaters:
             changes_made = True
 
         port_pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-        port_replacement = rf'set \$upstream_port "{port_value}";'
+        port_replacement = rf'set $upstream_port "{port_value}";'
         new_content, port_replacements = re.subn(port_pattern, port_replacement, updated_content)
 
         if port_replacements > 0:

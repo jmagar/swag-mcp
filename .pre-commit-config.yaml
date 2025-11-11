@@ -30,7 +30,7 @@ repos:
           - jinja2==3.1.6
           - aiofiles==24.1.0
           - types-aiofiles
-          - pyyaml==6.0.0
+          - pyyaml>=6.0.2
           - types-PyYAML
           - pytest
           - types-requests
