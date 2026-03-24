@@ -7,11 +7,13 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import aiofiles
+if TYPE_CHECKING:
+    from swag_mcp.services.file_operations import FileOperations
 
 from swag_mcp.core.config import config
+from swag_mcp.services.filesystem import FilesystemBackend
 from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.validators import detect_and_handle_encoding, validate_config_filename
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 class BackupManager:
     """Handles backup creation and cleanup."""
 
-    def __init__(self, config_path: Path, file_ops: Any) -> None:
+    def __init__(self, config_path: Path, file_ops: "FileOperations") -> None:
         """Initialize backup manager.
 
         Args:
@@ -35,6 +37,11 @@ class BackupManager:
         # Initialize asyncio locks for concurrent operation safety
         self._backup_lock = asyncio.Lock()  # Protects backup creation operations
         self._cleanup_lock = asyncio.Lock()  # Protects cleanup operations
+
+    @property
+    def fs(self) -> FilesystemBackend:
+        """Access the filesystem backend."""
+        return self.file_ops.fs
 
     async def create_backup(self, config_name: str) -> str:
         """Create timestamped backup of configuration file with proper locking."""
@@ -62,7 +69,9 @@ class BackupManager:
                 # Double-check that backup doesn't already exist (extra safety)
                 counter = 0
                 original_backup_name = backup_name
-                while backup_file.exists() and counter < 1000:  # Prevent infinite loop
+                while (
+                    await self.fs.exists(str(backup_file)) and counter < 1000
+                ):  # Prevent infinite loop
                     counter += 1
                     backup_name = f"{original_backup_name}.{counter}"
                     backup_file = self.config_path / backup_name
@@ -75,8 +84,7 @@ class BackupManager:
                 # Read original content with error handling and Unicode normalization
                 try:
                     # Read file with proper encoding detection and Unicode normalization
-                    async with aiofiles.open(config_file, "rb") as src:
-                        raw_content = await src.read()
+                    raw_content = await self.fs.read_bytes(str(config_file))
 
                     # Detect encoding and normalize Unicode
                     content = detect_and_handle_encoding(raw_content)
@@ -114,22 +122,23 @@ class BackupManager:
         backup_pattern = "*" + BACKUP_MARKER + "*"
 
         try:
-            for backup_path in self.config_path.glob(backup_pattern):
-                if backup_path.is_file():
-                    stat = backup_path.stat()
+            filenames = await self.fs.glob(str(self.config_path), backup_pattern)
+            for filename in filenames:
+                full_path = str(self.config_path / filename)
+                if await self.fs.is_file(full_path):
+                    stat = await self.fs.stat(full_path)
 
                     # Extract original config name from backup filename
-                    original_config = backup_path.name.split(BACKUP_MARKER)[0]
+                    original_config = filename.split(BACKUP_MARKER)[0]
                     # Only append .conf if it's missing both .conf and .conf.sample
-                    if (
-                        not original_config.endswith(".conf")
-                        and not original_config.endswith(".conf.sample")
+                    if not original_config.endswith(".conf") and not original_config.endswith(
+                        ".conf.sample"
                     ):
                         original_config += ".conf"
 
                     backup_files.append(
                         {
-                            "name": backup_path.name,
+                            "name": filename,
                             "size_bytes": stat.st_size,
                             "modified_time": stat.st_mtime,
                             "original_config": original_config,
@@ -163,18 +172,20 @@ class BackupManager:
             # Get list of backup files first (snapshot in time to avoid race conditions)
             backup_candidates = []
             try:
-                for backup_file in self.config_path.glob("*.backup.*"):
-                    if backup_file.is_file():
-                        backup_candidates.append(backup_file)
+                filenames = await self.fs.glob(str(self.config_path), "*.backup.*")
+                for filename in filenames:
+                    full_path = str(self.config_path / filename)
+                    if await self.fs.is_file(full_path):
+                        backup_candidates.append((filename, full_path))
             except OSError as e:
                 logger.warning(f"Error scanning backup files: {e}")
                 return 0
 
             # Process each candidate backup file
-            for backup_file in backup_candidates:
+            for filename, backup_file_path in backup_candidates:
                 try:
                     # Double-check file still exists (another process might have cleaned it)
-                    if not backup_file.exists():
+                    if not await self.fs.exists(backup_file_path):
                         continue
 
                     # Additional safety checks:
@@ -183,33 +194,36 @@ class BackupManager:
                     # 3. Must be older than retention period
                     # 4. Must not be currently being written (check for temp files)
 
-                    if not backup_pattern.match(backup_file.name):
-                        logger.debug(f"Skipping file (wrong format): {backup_file.name}")
+                    if not backup_pattern.match(filename):
+                        logger.debug(f"Skipping file (wrong format): {filename}")
                         continue
 
-                    if not backup_file.is_file():
-                        logger.debug(f"Skipping non-file: {backup_file.name}")
+                    if not await self.fs.is_file(backup_file_path):
+                        logger.debug(f"Skipping non-file: {filename}")
                         continue
 
                     # Check if file is currently being written (has corresponding temp file)
-                    temp_file = backup_file.with_suffix(f"{backup_file.suffix}.tmp.{os.getpid()}")
-                    if temp_file.exists():
-                        logger.debug(f"Skipping backup being written: {backup_file.name}")
+                    backup_path_obj = Path(backup_file_path)
+                    temp_file = backup_path_obj.with_suffix(
+                        f"{backup_path_obj.suffix}.tmp.{os.getpid()}"
+                    )
+                    if await self.fs.exists(str(temp_file)):
+                        logger.debug(f"Skipping backup being written: {filename}")
                         continue
 
                     # Check modification time
                     try:
-                        file_stat = backup_file.stat()
+                        file_stat = await self.fs.stat(backup_file_path)
                         if file_stat.st_mtime >= cutoff_time:
                             continue  # File is not old enough to delete
                     except OSError as e:
-                        logger.debug(f"Could not get stats for {backup_file.name}: {e}")
+                        logger.debug(f"Could not get stats for {filename}: {e}")
                         continue
 
                     # Check if file is currently locked by getting its lock (non-blocking)
-                    file_lock = await self.file_ops.get_file_lock(backup_file)
+                    file_lock = await self.file_ops.get_file_lock(Path(backup_file_path))
                     if file_lock.locked():
-                        logger.debug(f"Skipping locked backup file: {backup_file.name}")
+                        logger.debug(f"Skipping locked backup file: {filename}")
                         continue
 
                     # Attempt to acquire lock briefly for deletion
@@ -220,28 +234,27 @@ class BackupManager:
                             async with file_lock:
                                 # Double-check file still exists and meets criteria
                                 if (
-                                    backup_file.exists()
-                                    and backup_file.is_file()
-                                    and backup_file.stat().st_mtime < cutoff_time
+                                    await self.fs.exists(backup_file_path)
+                                    and await self.fs.is_file(backup_file_path)
+                                    and (await self.fs.stat(backup_file_path)).st_mtime
+                                    < cutoff_time
                                 ):
-                                    logger.debug(f"Deleting old backup: {backup_file.name}")
-                                    backup_file.unlink()
+                                    logger.debug(f"Deleting old backup: {filename}")
+                                    await self.fs.unlink(backup_file_path)
                                     cleaned_count += 1
 
                     except TimeoutError:
-                        logger.debug(f"Timeout acquiring lock for cleanup of {backup_file.name}")
+                        logger.debug(f"Timeout acquiring lock for cleanup of {filename}")
                         continue
                     except (PermissionError, OSError) as e:
-                        logger.warning(f"Failed to delete backup {backup_file.name}: {e}")
+                        logger.warning(f"Failed to delete backup {filename}: {e}")
                         continue
                     except Exception as e:
-                        logger.warning(
-                            f"Unexpected error cleaning up backup {backup_file.name}: {e}"
-                        )
+                        logger.warning(f"Unexpected error cleaning up backup {filename}: {e}")
                         continue
 
                 except Exception as e:
-                    logger.warning(f"Error processing backup file {backup_file}: {e}")
+                    logger.warning(f"Error processing backup file {filename}: {e}")
                     continue
 
             logger.info(f"Cleaned up {cleaned_count} old backup files")

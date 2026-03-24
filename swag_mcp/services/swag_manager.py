@@ -24,13 +24,45 @@ from swag_mcp.services.backup_manager import BackupManager
 from swag_mcp.services.config_operations import ConfigOperations
 from swag_mcp.services.config_updaters import ConfigFieldUpdaters
 from swag_mcp.services.file_operations import FileOperations
+from swag_mcp.services.filesystem import FilesystemBackend, LocalFilesystem
 from swag_mcp.services.health_monitor import HealthMonitor
 from swag_mcp.services.mcp_operations import MCPOperations
 from swag_mcp.services.resource_manager import ResourceManager
 from swag_mcp.services.template_manager import TemplateManager
 from swag_mcp.services.validation import ValidationService
+from swag_mcp.utils.uri import parse_swag_uri
 
 logger = logging.getLogger(__name__)
+
+
+def _create_filesystem_backend(uri: str) -> tuple[FilesystemBackend, str]:
+    """Create the appropriate filesystem backend based on URI.
+
+    Args:
+        uri: SWAG path URI (local path or remote host:/path)
+
+    Returns:
+        Tuple of (FilesystemBackend, config_path_string)
+
+    """
+    parsed = parse_swag_uri(uri)
+
+    if parsed.is_remote:
+        from swag_mcp.services.ssh_filesystem import SSHFilesystem
+
+        logger.info(
+            f"Using SSH filesystem backend: "
+            f"{parsed.username + '@' if parsed.username else ''}"
+            f"{parsed.host}:{parsed.port}:{parsed.path}"
+        )
+        return SSHFilesystem(
+            host=parsed.host,  # type: ignore[arg-type]
+            port=parsed.port,
+            username=parsed.username,
+        ), parsed.path
+    else:
+        logger.info(f"Using local filesystem backend: {parsed.path}")
+        return LocalFilesystem(), parsed.path
 
 
 class SwagManagerService:
@@ -46,22 +78,44 @@ class SwagManagerService:
     - MCPOperations: MCP location operations
     - ConfigFieldUpdaters: Field updaters (port/upstream/app/mcp)
     - ConfigOperations: CRUD operations
+
+    Supports both local and remote (SSH) SWAG servers via FilesystemBackend.
     """
 
     def __init__(
         self,
         config_path: Path | None = None,
         template_path: Path | None = None,
+        fs: FilesystemBackend | None = None,
     ) -> None:
         """Initialize the SWAG manager orchestrator service.
 
         Args:
             config_path: Path to SWAG proxy configurations directory
             template_path: Path to Jinja2 templates directory
+            fs: Filesystem backend (auto-detected from config if not provided)
+
         """
-        self.config_path: Path = (
-            Path(config_path) if config_path is not None else Path(config.proxy_confs_path)
-        )
+        # Determine filesystem backend and config path
+        if fs is not None:
+            # Explicit backend provided (e.g., for testing)
+            self.fs = fs
+            self.config_path = (
+                Path(config_path) if config_path is not None else Path(config.proxy_confs_path)
+            )
+        elif config.proxy_confs_uri:
+            # URI configured - parse it to determine backend
+            self.fs, config_path_str = _create_filesystem_backend(config.proxy_confs_uri)
+            self.config_path = Path(config_path_str)
+        elif config_path is not None:
+            # Explicit local path
+            self.fs = LocalFilesystem()
+            self.config_path = Path(config_path)
+        else:
+            # Default local path
+            self.fs = LocalFilesystem()
+            self.config_path = Path(config.proxy_confs_path)
+
         self.template_path: Path = (
             Path(template_path) if template_path is not None else Path(config.template_path)
         )
@@ -69,11 +123,14 @@ class SwagManagerService:
         logger.info(f"Initializing SWAG manager with proxy configs path: {self.config_path}")
 
         # ===== PHASE 1: Instantiate managers with no dependencies =====
-        self.file_ops = FileOperations(config_path=self.config_path)
+        self.file_ops = FileOperations(config_path=self.config_path, fs=self.fs)
         self.template_manager = TemplateManager(template_path=self.template_path)
         self.validation_service = ValidationService()
-        self.health_monitor = HealthMonitor()
-        self.resource_manager = ResourceManager(config_path=self.config_path)
+        self.health_monitor = HealthMonitor(
+            fs=self.fs,
+            swag_log_base_path=config.swag_log_base_path,
+        )
+        self.resource_manager = ResourceManager(config_path=self.config_path, fs=self.fs)
 
         # ===== PHASE 2: Instantiate managers with single-level dependencies =====
         self.backup_manager = BackupManager(
@@ -92,6 +149,7 @@ class SwagManagerService:
 
         # Create temporary wrapper for ConfigFieldUpdaters (circular dependency workaround)
         from swag_mcp.services.config_updaters import MCPOperations as MCPOperationsWrapper
+
         mcp_ops_wrapper = MCPOperationsWrapper(swag_manager=self)
 
         self.config_updaters = ConfigFieldUpdaters(
@@ -124,6 +182,9 @@ class SwagManagerService:
 
         # Cleanup file locks
         await self.file_ops.cleanup_file_locks()
+
+        # Close filesystem backend (SSH connection, etc.)
+        await self.fs.close()
 
         logger.info("Cleaned up SWAG manager resources")
 

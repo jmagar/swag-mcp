@@ -45,11 +45,10 @@ class TestDomainValidationProperties:
     @given(
         st.text(
             alphabet=st.characters(
-                whitelist_categories=("Ll", "Lu", "Nd"),
-                whitelist_characters=".-"
+                whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters=".-"
             ),
             min_size=1,
-            max_size=253  # Max domain length
+            max_size=253,  # Max domain length
         )
     )
     def test_valid_domain_characters_always_pass_basic_checks(self, domain):
@@ -125,13 +124,19 @@ class TestConfigFilenameProperties:
             lambda service, config_type: f"{service}.{config_type}.conf",
             service=st.text(
                 alphabet=st.characters(
-                    whitelist_categories=("Ll", "Lu", "Nd"),
-                    whitelist_characters="-_"
+                    whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="-_"
                 ),
                 min_size=1,
-                max_size=50
+                max_size=50,
             ),
-            config_type=st.sampled_from(["subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"])
+            config_type=st.sampled_from(
+                [
+                    "subdomain",
+                    "subfolder",
+                    "mcp-subdomain",
+                    "mcp-subfolder",
+                ]
+            ),
         )
     )
     @settings(max_examples=20, deadline=5000)
@@ -171,11 +176,10 @@ class TestServiceNameProperties:
     @given(
         st.text(
             alphabet=st.characters(
-                whitelist_categories=("Ll", "Lu", "Nd"),
-                whitelist_characters="-_"
+                whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="-_"
             ),
             min_size=1,
-            max_size=50
+            max_size=50,
         )
     )
     @settings(max_examples=10, deadline=5000)
@@ -276,7 +280,7 @@ class TestUnicodeNormalizationProperties:
             assert isinstance(result, str)
 
             # If original had printable content, normalized should too
-            if any(c.isprintable() and c != ' ' for c in text):
+            if any(c.isprintable() and c != " " for c in text):
                 # Should have some content (not be empty after normalization)
                 # This is a weak property since normalization might remove some chars
                 assert len(result) >= 0  # At minimum, should be a string
@@ -293,16 +297,15 @@ class TestConfigurationListHandling:
                 lambda service: f"{service}.subdomain.conf",
                 service=st.text(
                     alphabet=st.characters(
-                        whitelist_categories=("Ll", "Lu", "Nd"),
-                        whitelist_characters="-_"
+                        whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="-_"
                     ),
                     min_size=1,
-                    max_size=50
-                ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-"))
+                    max_size=50,
+                ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")),
             ),
             min_size=0,
             max_size=10,  # Reduced for performance
-            unique=True
+            unique=True,
         )
     )
     @settings(max_examples=3, deadline=10000)  # Very reduced examples for debugging
@@ -315,11 +318,10 @@ class TestConfigurationListHandling:
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_path = Path(tmp_dir)
-            
+
             # Create SwagManagerService with temp directory
             swag_service = SwagManagerService(
-                config_path=temp_path,
-                template_path=Path("templates")
+                config_path=temp_path, template_path=Path("templates")
             )
 
             # Create config files
@@ -340,10 +342,10 @@ class TestConfigurationListHandling:
                 result = await swag_service.list_configs("all")
 
                 # Basic properties of the result (SwagListResult)
-                assert hasattr(result, 'configs')
-                assert hasattr(result, 'total_count')
-                assert hasattr(result, 'list_filter')
-                
+                assert hasattr(result, "configs")
+                assert hasattr(result, "total_count")
+                assert hasattr(result, "list_filter")
+
                 assert isinstance(result.configs, list)
                 assert isinstance(result.total_count, int)
                 assert result.total_count >= 0
@@ -351,9 +353,9 @@ class TestConfigurationListHandling:
 
                 # Should find the configs we created
                 for created_name in created_files:
-                    assert created_name in result.configs, (
-                        f"Created file {created_name} not found in listing: {result.configs}"
-                    )
+                    assert (
+                        created_name in result.configs
+                    ), f"Created file {created_name} not found in listing: {result.configs}"
 
             except Exception as e:
                 pytest.fail(f"Config listing failed with valid files: {e}")
@@ -415,15 +417,11 @@ class TestPropertyBasedIntegration:
 
     @given(
         st.text(
-            alphabet=st.characters(
-                min_codepoint=ord('a'), max_codepoint=ord('z')
-            ) | st.characters(
-                min_codepoint=ord('A'), max_codepoint=ord('Z')
-            ) | st.characters(
-                min_codepoint=ord('0'), max_codepoint=ord('9')
-            ),
+            alphabet=st.characters(min_codepoint=ord("a"), max_codepoint=ord("z"))
+            | st.characters(min_codepoint=ord("A"), max_codepoint=ord("Z"))
+            | st.characters(min_codepoint=ord("0"), max_codepoint=ord("9")),
             min_size=1,
-            max_size=15
+            max_size=15,
         ),
         st.integers(min_value=1000, max_value=9999),  # Common port range
     )

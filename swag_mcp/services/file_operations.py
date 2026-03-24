@@ -3,12 +3,10 @@
 import asyncio
 import errno
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
-import aiofiles
-
+from swag_mcp.services.filesystem import FilesystemBackend, LocalFilesystem
 from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.validators import detect_and_handle_encoding, normalize_unicode_text
 
@@ -32,6 +30,11 @@ class AtomicTransaction:
         self.modified_files: list[tuple[Path, str]] = []  # (file_path, original_content)
         self.deleted_files: list[tuple[Path, str]] = []  # (file_path, original_content)
         self._completed = False
+
+    @property
+    def fs(self) -> FilesystemBackend:
+        """Access filesystem backend via file_ops."""
+        return self.file_ops.fs
 
     async def __aenter__(self) -> "AtomicTransaction":
         """Enter async context manager and initialize transaction."""
@@ -71,26 +74,21 @@ class AtomicTransaction:
 
     async def track_file_modification(self, file_path: Path) -> None:
         """Track a file that will be modified in this transaction."""
-        if file_path.exists():
+        if await self.fs.exists(str(file_path)):
             try:
-                # Read current content for rollback
-                async with aiofiles.open(file_path, "rb") as f:
-                    raw_content = await f.read()
+                raw_content = await self.fs.read_bytes(str(file_path))
                 original_content = detect_and_handle_encoding(raw_content)
                 self.modified_files.append((file_path, original_content))
             except Exception as e:
                 logger.warning(
                     f"Could not backup original content for rollback of {file_path}: {e}"
                 )
-                # Continue without backup - not ideal but better than failing the operation
 
     async def track_file_deletion(self, file_path: Path) -> None:
         """Track a file that will be deleted in this transaction."""
-        if file_path.exists():
+        if await self.fs.exists(str(file_path)):
             try:
-                # Read current content for rollback
-                async with aiofiles.open(file_path, "rb") as f:
-                    raw_content = await f.read()
+                raw_content = await self.fs.read_bytes(str(file_path))
                 original_content = detect_and_handle_encoding(raw_content)
                 self.deleted_files.append((file_path, original_content))
             except Exception as e:
@@ -109,11 +107,10 @@ class AtomicTransaction:
         # Remove created files with per-file locking
         for file_path in reversed(self.created_files):  # Reverse order for safety
             try:
-                # Acquire per-file lock for atomic rollback operation
                 file_lock = await self.file_ops.get_file_lock(file_path)
                 async with file_lock:
-                    if file_path.exists():
-                        file_path.unlink()
+                    if await self.fs.exists(str(file_path)):
+                        await self.fs.unlink(str(file_path))
                         logger.debug(f"Rollback: removed created file {file_path}")
             except Exception as e:
                 rollback_errors.append(f"Failed to remove created file {file_path}: {e}")
@@ -121,11 +118,8 @@ class AtomicTransaction:
         # Restore modified files with per-file locking
         for file_path, original_content in reversed(self.modified_files):
             try:
-                # Acquire per-file lock for atomic rollback operation
                 file_lock = await self.file_ops.get_file_lock(file_path)
                 async with file_lock:
-                    # Use the file_ops' safe write with no additional lock
-                    # (we already have the file lock)
                     await self.file_ops.safe_write_file(
                         file_path, original_content, f"rollback of {file_path}", use_lock=False
                     )
@@ -136,11 +130,8 @@ class AtomicTransaction:
         # Restore deleted files with per-file locking
         for file_path, original_content in self.deleted_files:
             try:
-                # Acquire per-file lock for atomic rollback operation
                 file_lock = await self.file_ops.get_file_lock(file_path)
                 async with file_lock:
-                    # Use the file_ops' safe write with no additional lock
-                    # (we already have the file lock)
                     await self.file_ops.safe_write_file(
                         file_path,
                         original_content,
@@ -152,7 +143,6 @@ class AtomicTransaction:
                 rollback_errors.append(f"Failed to restore deleted file {file_path}: {e}")
 
         if rollback_errors:
-            # Log all rollback errors but don't raise - we're already in error handling
             logger.error(
                 f"Rollback of transaction {self.transaction_id} had errors: "
                 f"{'; '.join(rollback_errors)}"
@@ -162,14 +152,20 @@ class AtomicTransaction:
 class FileOperations:
     """Handles low-level file I/O, locking, and transactions."""
 
-    def __init__(self, config_path: Path) -> None:
+    def __init__(
+        self,
+        config_path: Path,
+        fs: FilesystemBackend | None = None,
+    ) -> None:
         """Initialize file operations.
 
         Args:
             config_path: Path to the configuration directory
+            fs: Filesystem backend (defaults to LocalFilesystem)
 
         """
         self.config_path = config_path
+        self.fs: FilesystemBackend = fs or LocalFilesystem()
         self._directory_checked = False
 
         # Initialize asyncio locks for concurrent operation safety
@@ -210,7 +206,7 @@ class FileOperations:
             asyncio.Lock for the specific file
 
         """
-        file_key = str(file_path.resolve())
+        file_key = str(file_path)
 
         async with self._file_locks_lock:
             if file_key not in self._file_locks:
@@ -240,7 +236,7 @@ class FileOperations:
     ) -> None:
         """Safely write content to file with proper error handling for disk full scenarios.
 
-        Includes Unicode normalization.
+        Includes Unicode normalization. Uses the filesystem backend for atomic writes.
 
         Args:
             file_path: Path to write the file to
@@ -261,20 +257,15 @@ class FileOperations:
 
         async def _perform_write() -> None:
             """Perform the actual write operation."""
-            # Create temporary file for atomic write
-            temp_path = file_path.with_suffix(f"{file_path.suffix}.tmp.{os.getpid()}")
+            path_str = str(file_path)
+            parent_str = str(file_path.parent)
 
+            # Check available disk space before writing (approximate check)
             try:
-                # Ensure parent directory exists
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-
-                # Check available disk space before writing (approximate check)
-                try:
-                    stat_info = os.statvfs(file_path.parent)
-                    available_bytes = stat_info.f_bavail * stat_info.f_frsize
+                space_info = await self.fs.statvfs(parent_str)
+                if space_info is not None:
+                    available_bytes, _ = space_info
                     content_size = len(normalized_content.encode("utf-8"))
-
-                    # Require at least 10MB buffer beyond content size
                     required_bytes = content_size + (10 * 1024 * 1024)
 
                     if available_bytes < required_bytes:
@@ -284,87 +275,42 @@ class FileOperations:
                             f"Required: {required_bytes // 1024 // 1024}MB, "
                             f"Available: {available_bytes // 1024 // 1024}MB",
                         )
-                except (OSError, AttributeError) as e:
-                    if isinstance(e, OSError) and e.errno == errno.ENOSPC:
-                        raise  # Re-raise space errors
-                    logger.debug(f"Could not check disk space: {e}")
-                    # Continue without space check on unsupported filesystems
+            except OSError as e:
+                if e.errno == errno.ENOSPC:
+                    raise
+                logger.debug(f"Could not check disk space: {e}")
 
-                # Write to temporary file first (atomic operation)
-                try:
-                    async with aiofiles.open(temp_path, "w", encoding="utf-8") as f:
-                        bytes_written = await f.write(normalized_content)
+            # Write atomically via filesystem backend
+            try:
+                await self.fs.write_text(path_str, normalized_content)
+            except OSError as e:
+                handle_os_error(e, operation_name)
+            except UnicodeEncodeError as e:
+                raise ValueError(
+                    f"Content contains invalid characters for {operation_name}: {str(e)}"
+                ) from e
+            except Exception as e:
+                raise OSError(
+                    errno.EIO, f"Unexpected error during {operation_name}: {str(e)}"
+                ) from e
 
-                        # Verify all content was written
-                        expected_bytes = len(normalized_content)
-                        if bytes_written != expected_bytes:
-                            raise OSError(
-                                errno.EIO,
-                                f"Partial write detected during {operation_name}. "
-                                f"Expected {expected_bytes} characters, wrote {bytes_written}",
-                            )
-
-                        # Force sync to disk to catch I/O errors early
-                        await f.flush()
-                        await asyncio.to_thread(os.fsync, f.fileno())
-
-                except OSError as e:
-                    # Use centralized error handling for OSError
-                    handle_os_error(e, operation_name)
-                except UnicodeEncodeError as e:
-                    raise ValueError(
-                        f"Content contains invalid characters for {operation_name}: {str(e)}"
-                    ) from e
-                except Exception as e:
+            # Verify the file was written correctly
+            try:
+                written_content = await self.fs.read_text(path_str)
+                if written_content != normalized_content:
                     raise OSError(
-                        errno.EIO, f"Unexpected error during {operation_name}: {str(e)}"
-                    ) from e
-
-                # Verify the temporary file was written correctly
-                try:
-                    temp_stat = temp_path.stat()
-                    if temp_stat.st_size == 0 and normalized_content:
-                        raise OSError(
-                            errno.EIO,
-                            f"Written file is empty after {operation_name}, possible I/O error",
-                        )
-
-                    # Read back and verify content (for critical operations)
-                    async with aiofiles.open(temp_path, encoding="utf-8") as f:
-                        written_content = await f.read()
-                        if written_content != normalized_content:
-                            raise OSError(
-                                errno.EIO,
-                                f"Content verification failed after {operation_name}. "
-                                "File may be corrupted or partially written.",
-                            )
-                except OSError:
-                    raise  # Re-raise OSErrors
-                except Exception as e:
-                    raise OSError(
-                        errno.EIO, f"File verification failed after {operation_name}: {str(e)}"
-                    ) from e
-
-                # Atomic move from temporary to final location
-                try:
-                    temp_path.replace(file_path)
-                    logger.debug(f"Successfully completed atomic {operation_name} to {file_path}")
-                except OSError as e:
-                    handle_os_error(e, f"final move for {operation_name}")
-
-            except Exception:
-                # Clean up temporary file on any error
-                try:
-                    if temp_path.exists():
-                        temp_path.unlink()
-                        logger.debug(f"Cleaned up temporary file after error: {temp_path}")
-                except Exception as cleanup_error:
-                    logger.warning(
-                        f"Failed to clean up temporary file {temp_path}: {cleanup_error}"
+                        errno.EIO,
+                        f"Content verification failed after {operation_name}. "
+                        "File may be corrupted or partially written.",
                     )
-
-                # Re-raise the original error
+            except OSError:
                 raise
+            except Exception as e:
+                raise OSError(
+                    errno.EIO, f"File verification failed after {operation_name}: {str(e)}"
+                ) from e
+
+            logger.debug(f"Successfully completed atomic {operation_name} to {file_path}")
 
         # Execute write with or without file locking
         if use_lock:
@@ -374,8 +320,8 @@ class FileOperations:
         else:
             await _perform_write()
 
-    def ensure_config_directory(self) -> None:
+    async def ensure_config_directory(self) -> None:
         """Ensure the configuration directory exists."""
         if not self._directory_checked:
-            self.config_path.mkdir(parents=True, exist_ok=True)
+            await self.fs.mkdir(str(self.config_path), parents=True)
             self._directory_checked = True

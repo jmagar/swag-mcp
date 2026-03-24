@@ -168,11 +168,11 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
         url = result.get("url") if isinstance(result, dict) else getattr(result, "url", "unknown")
         # Ensure url is a string, not bytes
         if isinstance(url, bytes):
-            url = url.decode('utf-8', errors='replace')
+            url = url.decode("utf-8", errors="replace")
         domain = urlsplit(url).netloc or url
         # Ensure domain is a string (urlsplit can return bytes)
         if isinstance(domain, bytes):
-            domain = domain.decode('utf-8', errors='replace')
+            domain = domain.decode("utf-8", errors="replace")
         if redirect_url and redirect_url != url:
             redirect_info = f" -> {redirect_url}"
 
@@ -227,11 +227,11 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
         )
         # Ensure url_value is a string, not bytes
         if isinstance(url_value, bytes):
-            url_value = url_value.decode('utf-8', errors='replace')
+            url_value = url_value.decode("utf-8", errors="replace")
         domain_value = urlsplit(url_value).netloc or url_value
         # Ensure domain_value is a string (urlsplit can return bytes)
         if isinstance(domain_value, bytes):
-            domain_value = domain_value.decode('utf-8', errors='replace')
+            domain_value = domain_value.decode("utf-8", errors="replace")
         error_info = f" - {error_value}" if error_value else ""
         message = f"{status_icon} {domain_value} - {status_text} {time_text}{error_info}"
         status = f"failed: {error_value}" if error_value else "failed"
@@ -249,8 +249,10 @@ def build_template_filename(config_type: str) -> str:
         Template filename with .j2 extension
 
     Examples:
-        build_template_filename("swag-compliant-mcp-subdomain") -> "swag-compliant-mcp-subdomain.conf.j2"
-        build_template_filename("swag-compliant-mcp-subfolder") -> "swag-compliant-mcp-subfolder.conf.j2"
+        build_template_filename("swag-compliant-mcp-subdomain")
+            -> "swag-compliant-mcp-subdomain.conf.j2"
+        build_template_filename("swag-compliant-mcp-subfolder")
+            -> "swag-compliant-mcp-subfolder.conf.j2"
 
     Raises:
         ValueError: If config_type is not one of the valid SWAG-compliant types
@@ -264,8 +266,7 @@ def build_template_filename(config_type: str) -> str:
     # Validate against SWAG-compliant CONFIG_TYPES only
     if config_type not in CONFIG_TYPES:
         raise ValueError(
-            f"Invalid config type '{config_type}'. "
-            f"Must be one of: {', '.join(CONFIG_TYPES)}"
+            f"Invalid config type '{config_type}'. " f"Must be one of: {', '.join(CONFIG_TYPES)}"
         )
 
     # All SWAG-compliant templates follow the standard naming convention

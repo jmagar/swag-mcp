@@ -15,9 +15,12 @@ VALID_NAME_PATTERN = r"^[\w-]+$"  # Service names, alphanumeric + hyphens/unders
 VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.\[\]:-]+$"  # Container names/IP addresses, IPv6 support
 VALID_CONFIG_NAME_PATTERN = r"^[a-zA-Z0-9_.-]+\.(conf|sample)$"  # Config filenames
 VALID_CONFIG_ONLY_PATTERN = r"^[a-zA-Z0-9_.-]+\.conf$"  # Only .conf files
-# Support both legacy short format (service.subdomain.conf) and SWAG-compliant format
+# Support both legacy short format and SWAG-compliant format
 VALID_CONFIG_NAME_FORMAT = (
-    r"^[a-zA-Z0-9_-]+\.(subdomain|subfolder|swag-compliant-mcp-subdomain|swag-compliant-mcp-subfolder)\.conf$"
+    r"^[a-zA-Z0-9_-]+\."
+    r"(subdomain|subfolder"
+    r"|swag-compliant-mcp-subdomain"
+    r"|swag-compliant-mcp-subfolder)\.conf$"
 )
 
 # Configuration types - SWAG-compliant only (templates consolidated in commit 64547f5)
@@ -102,3 +105,17 @@ HTTP_METHOD_GET = "GET"
 # Status messages
 STATUS_HEALTHY = "healthy"
 SERVICE_NAME = "swag-mcp"
+
+# Docker Configuration
+SWAG_CONTAINER_NAME = "swag"
+DOCKER_SOCKET_PATH = "/var/run/docker.sock"
+DOCKER_API_TIMEOUT = 30
+
+# Log types mapping to container paths
+DOCKER_LOG_PATHS = {
+    "nginx-access": "/var/log/nginx/access.log",
+    "nginx-error": "/var/log/nginx/error.log",
+    "fail2ban": "/var/log/fail2ban/fail2ban.log",
+    "letsencrypt": "/var/log/letsencrypt/letsencrypt.log",
+    "renewal": "/var/log/letsencrypt/renewal.log",
+}

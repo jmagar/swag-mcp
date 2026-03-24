@@ -47,34 +47,36 @@ class TestSwagManagerServiceBasic:
         """Test service initialization with comprehensive validation."""
         assert service.config_path is not None, "Service config_path should be set"
         assert service.template_path is not None, "Service template_path should be set"
-        assert service.template_manager.template_env is not None, "Service template_env should be initialized"
+        assert (
+            service.template_manager.template_env is not None
+        ), "Service template_env should be initialized"
 
         # Validate types and properties
-        assert hasattr(service.config_path, 'exists'), "config_path should be a Path object"
-        assert hasattr(service.template_path, 'exists'), "template_path should be a Path object"
-        assert hasattr(service.template_manager.template_env, 'get_template'), (
-            "template_env should be a Jinja2 Environment"
-        )
+        assert hasattr(service.config_path, "exists"), "config_path should be a Path object"
+        assert hasattr(service.template_path, "exists"), "template_path should be a Path object"
+        assert hasattr(
+            service.template_manager.template_env, "get_template"
+        ), "template_env should be a Jinja2 Environment"
 
     async def test_list_configs_empty(self, service):
         """Test listing configs in empty directory with detailed validation."""
         result = await service.list_configs()
 
         # Validate result structure
-        assert hasattr(result, 'configs'), "Result should have 'configs' attribute"
-        assert hasattr(result, 'total_count'), "Result should have 'total_count' attribute"
+        assert hasattr(result, "configs"), "Result should have 'configs' attribute"
+        assert hasattr(result, "total_count"), "Result should have 'total_count' attribute"
 
         # Validate empty state
-        assert isinstance(result.configs, list), (
-            f"configs should be a list, got {type(result.configs)}"
-        )
-        assert len(result.configs) == 0, (
-            f"Expected empty config list, got {len(result.configs)} items"
-        )
+        assert isinstance(
+            result.configs, list
+        ), f"configs should be a list, got {type(result.configs)}"
+        assert (
+            len(result.configs) == 0
+        ), f"Expected empty config list, got {len(result.configs)} items"
         assert result.total_count == 0, f"Expected total_count 0, got {result.total_count}"
-        assert result.total_count == len(result.configs), (
-            "total_count should match configs list length"
-        )
+        assert result.total_count == len(
+            result.configs
+        ), "total_count should match configs list length"
 
     async def test_list_configs_with_files(self, service, temp_config_dir):
         """Test listing configs with actual files."""
@@ -84,19 +86,19 @@ class TestSwagManagerServiceBasic:
         (temp_config_dir / "sample.subdomain.conf.sample").write_text("# sample config")
 
         result = await service.list_configs("all")
-        assert hasattr(result, 'configs')
+        assert hasattr(result, "configs")
         assert len(result.configs) == 3
         assert result.total_count == 3
 
         # Test active filter
         result = await service.list_configs("active")
-        assert hasattr(result, 'configs')
+        assert hasattr(result, "configs")
         assert len(result.configs) == 2  # Excludes sample
         assert result.total_count == 2
 
         # Test samples filter
         result = await service.list_configs("samples")
-        assert hasattr(result, 'configs')
+        assert hasattr(result, "configs")
         assert len(result.configs) == 1  # Only sample
         assert result.total_count == 1
 
@@ -117,7 +119,9 @@ class TestSwagManagerServiceBasic:
         """Test template existence validation with specific assertions."""
         # Test existing template
         result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
-        assert result is True, "Expected 'swag-compliant-mcp-subdomain' template to exist in test setup"
+        assert (
+            result is True
+        ), "Expected 'swag-compliant-mcp-subdomain' template to exist in test setup"
         assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
         # Test non-existent template
@@ -138,8 +142,8 @@ class TestSwagManagerServiceBasic:
         (temp_config_dir / "test.subdomain.conf").write_text("# test")
 
         result = await service.get_resource_configs()
-        assert hasattr(result, 'configs')
-        assert hasattr(result, 'total_count')
+        assert hasattr(result, "configs")
+        assert hasattr(result, "total_count")
         assert len(result.configs) >= 0
         assert result.total_count == len(result.configs)
 
@@ -149,8 +153,8 @@ class TestSwagManagerServiceBasic:
         (temp_config_dir / "test.subdomain.conf.sample").write_text("# sample")
 
         result = await service.get_sample_configs()
-        assert hasattr(result, 'configs')
-        assert hasattr(result, 'total_count')
+        assert hasattr(result, "configs")
+        assert hasattr(result, "total_count")
         assert len(result.configs) == 1
         assert result.total_count == 1
 
@@ -198,7 +202,7 @@ class TestSwagManagerServiceBasic:
             action=SwagAction.REMOVE, config_name="nonexistent.conf", create_backup=False
         )
 
-        with pytest.raises(ValueError, match="contains binary content or is unsafe to read"):
+        with pytest.raises(FileNotFoundError, match="not found"):
             await service.remove_config(request)
 
     async def test_update_config_not_found(self, service, temp_config_dir):
@@ -266,9 +270,9 @@ class TestSwagManagerServiceBasic:
         # This should not raise an exception for basic content
         try:
             result = service.validation_service.validate_config_content(content, "test.conf")
-            assert isinstance(result, str), (
-                f"Expected string result from validation, got {type(result)}"
-            )
+            assert isinstance(
+                result, str
+            ), f"Expected string result from validation, got {type(result)}"
             assert len(result) >= len(content), "Validated content should not be shorter than input"
         except Exception as e:
             # If validation fails, it should be a controlled failure with descriptive message
@@ -331,8 +335,8 @@ class TestSwagManagerServiceBasic:
             # Even if it fails, it should be a controlled failure
             assert isinstance(e, Exception)
 
-    def test_ensure_config_directory(self, service):
+    async def test_ensure_config_directory(self, service):
         """Test directory creation and validation."""
         # This should not raise an exception
-        service.config_operations._ensure_config_directory()
+        await service.config_operations._ensure_config_directory()
         assert service.config_path.exists()

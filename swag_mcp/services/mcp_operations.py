@@ -9,19 +9,17 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
-import aiofiles
-
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
     detect_and_handle_encoding,
     validate_config_filename,
-    validate_file_content_safety_async,
     validate_mcp_path,
 )
 
 if TYPE_CHECKING:
     from swag_mcp.services.backup_manager import BackupManager
     from swag_mcp.services.file_operations import FileOperations
+    from swag_mcp.services.filesystem import FilesystemBackend
     from swag_mcp.services.template_manager import TemplateManager
     from swag_mcp.services.validation import ValidationService
 
@@ -55,6 +53,11 @@ class MCPOperations:
         self.file_ops = file_ops
         self.backup_manager = backup_manager
 
+    @property
+    def fs(self) -> "FilesystemBackend":
+        """Access filesystem backend through file_ops."""
+        return self.file_ops.fs
+
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content.
 
@@ -76,18 +79,16 @@ class MCPOperations:
         config_file = self.config_path / validated_name
 
         # Check if file exists first
-        if not config_file.exists():
+        if not await self.fs.exists(str(config_file)):
             raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
         # Security validation: ensure file is safe to read as text
-        if not await validate_file_content_safety_async(config_file):
+        raw_content = await self.fs.read_bytes(str(config_file))
+        if b"\0" in raw_content[:512]:
             raise ValueError(f"Configuration file {validated_name} is not safe to read as text")
 
         # Read file with proper encoding detection and Unicode normalization
         try:
-            async with aiofiles.open(config_file, "rb") as f:
-                raw_content = await f.read()
-
             # Detect encoding and normalize Unicode
             content = detect_and_handle_encoding(raw_content)
             logger.debug(f"Successfully read configuration {validated_name}")
@@ -158,7 +159,7 @@ class MCPOperations:
                 # Validate and cast upstream_proto to Literal type
                 if upstream_proto_raw not in ("http", "https"):
                     upstream_proto_raw = "http"  # Default to safe value
-                upstream_proto = cast(Literal["http", "https"], upstream_proto_raw)
+                upstream_proto = cast("Literal['http', 'https']", upstream_proto_raw)
                 auth_method = self.extract_auth_method(content)
 
                 # Render MCP location block

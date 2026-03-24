@@ -3,7 +3,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -46,12 +46,14 @@ class TestSwagManagerService:
     async def service(self, temp_config):
         """Create SwagManagerService with temporary config."""
         service = SwagManagerService(
-            config_path=temp_config.proxy_confs_path,
-            template_path=temp_config.template_path
+            config_path=temp_config.proxy_confs_path, template_path=temp_config.template_path
         )
         yield service
         # Cleanup
-        if hasattr(service.health_monitor, "_http_session") and service.health_monitor._http_session:
+        if (
+            hasattr(service.health_monitor, "_http_session")
+            and service.health_monitor._http_session
+        ):
             await service.health_monitor._http_session.close()
 
     @pytest_asyncio.fixture
@@ -294,7 +296,7 @@ server {
         """Test removing non-existent config."""
         request = SwagRemoveRequest(action=SwagAction.REMOVE, config_name="nonexistent.conf")
 
-        with pytest.raises(ValueError, match="contains binary content or is unsafe to read"):
+        with pytest.raises(FileNotFoundError, match="not found"):
             await service.remove_config(request)
 
     async def test_remove_config_with_backup(self, service, sample_config_file):
@@ -335,6 +337,7 @@ server {
         """Test listing backups with existing backup files."""
         # Create a backup file with the proper timestamp format
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_123456")
         backup_filename = f"test.subdomain.conf.backup.{timestamp}"
         backup_path = temp_config.proxy_confs_path / backup_filename
@@ -549,7 +552,7 @@ server {
         results = await asyncio.gather(
             update_config(update_contents[0]),
             update_config(update_contents[1]),
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # Verify results
@@ -561,15 +564,15 @@ server {
         for r in results:
             if isinstance(r, Exception):
                 # Only file locking or contention errors are expected
-                assert isinstance(r, OSError | SwagServiceError), (
-                    f"Unexpected exception type: {type(r)}"
-                )
+                assert isinstance(
+                    r, OSError | SwagServiceError
+                ), f"Unexpected exception type: {type(r)}"
 
         # Verify final file content matches one of the updates
         final_content = sample_config_file.read_text()
-        assert final_content in update_contents, (
-            "Final content should match one of the attempted updates"
-        )
+        assert (
+            final_content in update_contents
+        ), "Final content should match one of the attempted updates"
 
     async def test_invalid_utf8_content(self, service, temp_config):
         """Test handling of invalid UTF-8 content."""

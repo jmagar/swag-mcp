@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from swag_mcp.models.config import SwagResourceList
+from swag_mcp.services.filesystem import FilesystemBackend, LocalFilesystem
 from swag_mcp.utils.formatters import get_possible_sample_filenames
 
 logger = logging.getLogger(__name__)
@@ -12,25 +13,24 @@ logger = logging.getLogger(__name__)
 class ResourceManager:
     """Handles resource and sample config management."""
 
-    def __init__(self, config_path: Path) -> None:
+    def __init__(self, config_path: Path, fs: FilesystemBackend | None = None) -> None:
         """Initialize resource manager.
 
         Args:
             config_path: Path to the configuration directory
+            fs: Filesystem backend to use (defaults to LocalFilesystem)
 
         """
         self.config_path = config_path
+        self.fs: FilesystemBackend = fs or LocalFilesystem()
 
     async def get_resource_configs(self) -> SwagResourceList:
         """Get list of active configuration files for resources."""
         logger.info("Getting active configuration files for resources")
 
         # Get active configurations (excluding samples and backups)
-        active_configs = [
-            f.name
-            for f in self.config_path.glob("*.conf")
-            if not f.name.endswith(".sample") and ".backup." not in f.name
-        ]
+        filenames = await self.fs.glob(str(self.config_path), "*.conf")
+        active_configs = [f for f in filenames if not f.endswith(".sample") and ".backup." not in f]
 
         # Sort the list
         active_configs = sorted(active_configs)
@@ -44,7 +44,7 @@ class ResourceManager:
         logger.info("Getting sample configuration files for resources")
 
         # Get sample configurations
-        sample_configs = [f.name for f in self.config_path.glob("*.sample")]
+        sample_configs = await self.fs.glob(str(self.config_path), "*.sample")
 
         # Sort the list
         sample_configs = sorted(sample_configs)
@@ -62,8 +62,7 @@ class ResourceManager:
 
         found_configs = []
         for pattern in patterns:
-            config_file = self.config_path / pattern
-            if config_file.exists():
+            if await self.fs.exists(str(self.config_path / pattern)):
                 found_configs.append(pattern)
 
         logger.info(f"Found {len(found_configs)} sample configurations for {service_name}")

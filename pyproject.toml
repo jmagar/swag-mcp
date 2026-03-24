@@ -17,6 +17,8 @@ dependencies = [
     "aiohttp>=3.9.0",
     "pyyaml>=6.0.0",
     "regex>=2024.5.15",
+    "docker>=7.1.0",
+    "asyncssh>=2.14.0",
 ]
 
 

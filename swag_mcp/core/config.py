@@ -40,6 +40,23 @@ class SwagConfig(BaseSettings):
         description="Path to SWAG proxy configurations directory",
     )
 
+    proxy_confs_uri: str = Field(
+        default="",
+        description=(
+            "URI for proxy confs path. Supports remote SSH: "
+            "[user@]host[:port]:/path or local: /path. "
+            "If set, takes precedence over proxy_confs_path."
+        ),
+    )
+
+    swag_log_base_path: str = Field(
+        default="/swag/log",
+        description=(
+            "Base path for SWAG log files. On the same machine as proxy_confs_path "
+            "(local or remote via SSH)."
+        ),
+    )
+
     template_path: Path = Field(
         default=Path("templates"), description="Path to Jinja2 templates directory"
     )
@@ -117,7 +134,7 @@ class SwagConfig(BaseSettings):
     # Health check settings
     health_check_insecure: bool = Field(
         default=False,
-        description="Disable SSL certificate verification for health checks (not recommended)"
+        description="Disable SSL certificate verification for health checks (not recommended)",
     )
 
     # Validators to handle empty string values
