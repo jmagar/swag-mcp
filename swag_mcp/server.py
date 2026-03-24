@@ -226,7 +226,7 @@ async def create_mcp_server() -> FastMCP:
     auth_provider = None
     if os.getenv("FASTMCP_SERVER_AUTH") == "fastmcp.server.auth.providers.google.GoogleProvider":
         try:
-            from fastmcp.server.auth.providers.google import (  # type: ignore[import-not-found]
+            from fastmcp.server.auth.providers.google import (
                 GoogleProvider,
             )
 

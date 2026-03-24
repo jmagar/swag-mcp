@@ -232,7 +232,7 @@ class TemplateManager:
         # Override the sandboxed environment's security checks
         # Note: is_safe_attribute signature doesn't perfectly match Jinja2 expectations
         # but this works for our security model
-        env.is_safe_attribute = is_safe_attribute  # type: ignore[method-assign]
+        env.is_safe_attribute = is_safe_attribute  # type: ignore[invalid-assignment]  # intentional monkey-patch
 
         # Disable dangerous template features
         env.filters.clear()  # Remove potentially dangerous filters

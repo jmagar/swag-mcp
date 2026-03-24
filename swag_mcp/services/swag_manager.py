@@ -50,13 +50,14 @@ def _create_filesystem_backend(uri: str) -> tuple[FilesystemBackend, str]:
     if parsed.is_remote:
         from swag_mcp.services.ssh_filesystem import SSHFilesystem
 
+        assert parsed.host is not None, "Remote URI must have a host"
         logger.info(
             f"Using SSH filesystem backend: "
             f"{parsed.username + '@' if parsed.username else ''}"
             f"{parsed.host}:{parsed.port}:{parsed.path}"
         )
         return SSHFilesystem(
-            host=parsed.host,  # type: ignore[arg-type]
+            host=parsed.host,
             port=parsed.port,
             username=parsed.username,
         ), parsed.path

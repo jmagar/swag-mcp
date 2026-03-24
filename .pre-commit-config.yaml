@@ -18,23 +18,12 @@ repos:
       # Run the formatter
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+  - repo: local
     hooks:
-      - id: mypy
+      - id: ty
+        name: ty
+        entry: uv run ty check swag_mcp/
+        language: system
+        types: [python]
+        pass_filenames: false
         files: ^swag_mcp/
-        additional_dependencies:
-          - fastmcp==2.11.3
-          - pydantic==2.11.7
-          - pydantic-settings==2.7.0
-          - jinja2==3.1.6
-          - aiofiles==24.1.0
-          - types-aiofiles
-          - pyyaml>=6.0.2
-          - types-PyYAML
-          - pytest
-          - types-requests
-          - regex>=2024.5.15
-          - types-regex>=2025.7.34.20250809
-          - types-Jinja2
-        args: [--config-file=pyproject.toml]

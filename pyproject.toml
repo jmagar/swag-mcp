@@ -35,18 +35,13 @@ dev-dependencies = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.8.0",
-    "mypy>=1.13.0",
+    "ty>=0.0.24",
     "pre-commit>=4.0.0",
     "bandit>=1.7.0",
     "pip-audit>=2.0.0",
-    "types-aiofiles",
-    "types-PyYAML",
-    "types-regex>=2025.7.34.20250809",
-    "types-docker~=7.1",
     "hypothesis>=6.0.0", # Property-based testing
     "pytest-benchmark>=4.0.0", # Performance testing
     "psutil>=5.9.0", # System monitoring for benchmarks
-    "types-psutil>=7.0.0.20250822",
 ]
 
 [tool.pytest.ini_options]
@@ -104,32 +99,15 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-[tool.mypy]
-cache_dir = ".cache/mypy"
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-show_error_codes = true
+[tool.ty.environment]
+python-version = "3.11"
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-disallow_untyped_decorators = false
-ignore_missing_imports = true
+[[tool.ty.overrides]]
+# Decorator wrappers use func.__name__ which ty can't resolve on Callable types
+include = ["swag_mcp/utils/tool_decorators.py", "swag_mcp/utils/mcp_cache.py"]
 
-[[tool.mypy.overrides]]
-module = ["aiohttp"]
-ignore_missing_imports = true
+[tool.ty.overrides.rules]
+unresolved-attribute = "ignore"
 
 [tool.coverage.run]
 data_file = ".cache/coverage/.coverage"

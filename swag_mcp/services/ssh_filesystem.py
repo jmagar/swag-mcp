@@ -62,7 +62,7 @@ class SSHFilesystem:
                 return self._sftp
 
             try:
-                import asyncssh  # type: ignore[import-not-found]
+                import asyncssh
             except ImportError as e:
                 raise ImportError(
                     "asyncssh is required for remote SSH support. Install it with: uv add asyncssh"
@@ -125,9 +125,9 @@ class SSHFilesystem:
 
         async def _read_raw(sftp: Any) -> bytes:
             async with sftp.open(path, "rb") as f:
-                return await f.read()  # type: ignore[no-any-return]
+                return await f.read()
 
-        return await self._with_reconnect(_read_raw)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_read_raw)
 
     async def read_text(self, path: str, encoding: str = "utf-8") -> str:
         """Read file contents as text via SFTP."""
@@ -164,17 +164,17 @@ class SSHFilesystem:
         """Check if path exists on remote server."""
 
         async def _exists(sftp: Any) -> bool:
-            return await sftp.exists(path)  # type: ignore[no-any-return]
+            return await sftp.exists(path)
 
-        return await self._with_reconnect(_exists)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_exists)
 
     async def is_file(self, path: str) -> bool:
         """Check if path is a regular file."""
 
         async def _is_file(sftp: Any) -> bool:
-            return await sftp.isfile(path)  # type: ignore[no-any-return]
+            return await sftp.isfile(path)
 
-        return await self._with_reconnect(_is_file)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_is_file)
 
     async def is_symlink(self, path: str) -> bool:
         """Check if path is a symlink."""
@@ -186,7 +186,7 @@ class SSHFilesystem:
             except Exception:
                 return False
 
-        return await self._with_reconnect(_is_symlink)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_is_symlink)
 
     async def stat(self, path: str) -> FileStat:
         """Get file metadata via SFTP."""
@@ -203,7 +203,7 @@ class SSHFilesystem:
                 is_dir=stat_module.S_ISDIR(mode),
             )
 
-        return await self._with_reconnect(_stat)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_stat)
 
     async def glob(self, directory: str, pattern: str) -> list[str]:
         """List filenames matching glob pattern in remote directory.
@@ -223,7 +223,7 @@ class SSHFilesystem:
             matched = fnmatch.filter(filenames, pattern)
             return sorted(matched)
 
-        return await self._with_reconnect(_glob)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_glob)
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
         """Create directory on remote server."""
@@ -275,7 +275,7 @@ class SSHFilesystem:
             except Exception:
                 return None
 
-        return await self._with_reconnect(_statvfs)  # type: ignore[no-any-return]
+        return await self._with_reconnect(_statvfs)
 
     async def read_tail_lines(self, path: str, n: int) -> list[str]:
         """Read last N lines of a remote file.
