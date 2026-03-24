@@ -325,32 +325,33 @@ def register_tools(mcp: FastMCP) -> None:
         try:
             match action:
                 case SwagAction.LIST:
-                    return await _handle_list_action(
-                        ctx, swag_service, formatter, list_filter
-                    )
+                    return await _handle_list_action(ctx, swag_service, formatter, list_filter)
                 case SwagAction.CREATE:
                     return await _handle_create_action(
-                        ctx, swag_service, formatter, config_name, server_name,
-                        upstream_app, upstream_port, upstream_proto, auth_method,
-                        enable_quic, mcp_enabled
+                        ctx,
+                        swag_service,
+                        formatter,
+                        config_name,
+                        server_name,
+                        upstream_app,
+                        upstream_port,
+                        upstream_proto,
+                        auth_method,
+                        enable_quic,
+                        mcp_enabled,
                     )
                 case SwagAction.VIEW:
-                    return await _handle_view_action(
-                        ctx, swag_service, formatter, config_name
-                    )
+                    return await _handle_view_action(ctx, swag_service, formatter, config_name)
                 case SwagAction.EDIT:
                     return await _handle_edit_action(
-                        ctx, swag_service, formatter, config_name, new_content,
-                        create_backup
+                        ctx, swag_service, formatter, config_name, new_content, create_backup
                     )
                 case SwagAction.REMOVE:
                     return await _handle_remove_action(
                         ctx, swag_service, formatter, config_name, create_backup
                     )
                 case SwagAction.LOGS:
-                    return await _handle_logs_action(
-                        ctx, swag_service, formatter, log_type, lines
-                    )
+                    return await _handle_logs_action(ctx, swag_service, formatter, log_type, lines)
                 case SwagAction.BACKUPS:
                     return await _handle_backups_action(
                         ctx, swag_service, formatter, retention_days
@@ -361,8 +362,13 @@ def register_tools(mcp: FastMCP) -> None:
                     )
                 case SwagAction.UPDATE:
                     return await _handle_update_action(
-                        ctx, swag_service, formatter, config_name, update_field,
-                        update_value, create_backup
+                        ctx,
+                        swag_service,
+                        formatter,
+                        config_name,
+                        update_field,
+                        update_value,
+                        create_backup,
                     )
                 case _:
                     raise ValueError(f"Unhandled action: {action}")
@@ -379,9 +385,10 @@ async def _handle_list_action(
     await log_action_start(ctx, "Listing SWAG configurations", list_filter)
 
     if error := validate_list_filter(cast("Literal['all', 'active', 'samples']", list_filter)):
-        return cast("ToolResult", formatter.format_error_result(
-            error.get("message", "Invalid list filter"), "list"
-        ))
+        return cast(
+            "ToolResult",
+            formatter.format_error_result(error.get("message", "Invalid list filter"), "list"),
+        )
 
     result = await swag_service.list_configs(list_filter)
 
@@ -397,9 +404,17 @@ async def _handle_list_action(
 
 
 async def _handle_create_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    config_name: str, server_name: str, upstream_app: str, upstream_port: int,
-    upstream_proto: str, auth_method: str, enable_quic: bool, mcp_enabled: bool
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    config_name: str,
+    server_name: str,
+    upstream_app: str,
+    upstream_port: int,
+    upstream_proto: str,
+    auth_method: str,
+    enable_quic: bool,
+    mcp_enabled: bool,
 ) -> ToolResult:
     """Handle CREATE action with comprehensive progress reporting."""
     # Validate required parameters
@@ -441,7 +456,7 @@ async def _handle_create_action(
         await ctx.info("Creating proxy configuration...")
         result = await asyncio.wait_for(
             swag_service.create_config(config_request),
-            timeout=180  # 3 minute timeout for creation
+            timeout=180,  # 3 minute timeout for creation
         )
 
         await ctx.info("Running health verification...")
@@ -469,9 +484,7 @@ async def _handle_create_action(
         raise
     except TimeoutError:
         await ctx.info("Configuration creation timed out")
-        return formatter.format_error_result(
-            "Create operation timed out", "create"
-        )
+        return formatter.format_error_result("Create operation timed out", "create")
 
 
 async def _handle_view_action(
@@ -480,12 +493,11 @@ async def _handle_view_action(
     """Handle VIEW action."""
     await log_action_start(ctx, "Viewing configuration", config_name)
 
-    if error := validate_required_params(
-        {"config_name": (config_name, "config_name")}, "view"
-    ):
-        return cast("ToolResult", formatter.format_error_result(
-            error.get("message", "Missing config name"), "view"
-        ))
+    if error := validate_required_params({"config_name": (config_name, "config_name")}, "view"):
+        return cast(
+            "ToolResult",
+            formatter.format_error_result(error.get("message", "Missing config name"), "view"),
+        )
 
     try:
         content = await swag_service.read_config(config_name)
@@ -494,14 +506,19 @@ async def _handle_view_action(
         result_data = {"filename": config_name, "content": content}
         return cast("ToolResult", formatter.format_view_result(result_data, config_name))
     except FileNotFoundError:
-        return cast("ToolResult", formatter.format_error_result(
-            f"Configuration '{config_name}' not found", "view"
-        ))
+        return cast(
+            "ToolResult",
+            formatter.format_error_result(f"Configuration '{config_name}' not found", "view"),
+        )
 
 
 async def _handle_edit_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    config_name: str, new_content: str, create_backup: bool
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    config_name: str,
+    new_content: str,
+    create_backup: bool,
 ) -> ToolResult:
     """Handle EDIT action with progress reporting and cancellation support."""
     await log_action_start(ctx, "Editing configuration", config_name)
@@ -532,7 +549,7 @@ async def _handle_edit_action(
         await ctx.info("Applying configuration changes...")
         edit_result = await asyncio.wait_for(
             swag_service.update_config(edit_request),
-            timeout=300  # 5 minute timeout for large configs
+            timeout=300,  # 5 minute timeout for large configs
         )
 
         await log_action_success(ctx, f"Successfully edited {config_name}")
@@ -551,32 +568,27 @@ async def _handle_edit_action(
         raise
     except TimeoutError:
         await ctx.info("Configuration edit timed out")
-        return formatter.format_error_result(
-            "Edit operation timed out", "edit"
-        )
+        return formatter.format_error_result("Edit operation timed out", "edit")
 
 
 async def _handle_remove_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    config_name: str, create_backup: bool
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    config_name: str,
+    create_backup: bool,
 ) -> ToolResult:
     """Handle REMOVE action with progress reporting."""
     await log_action_start(ctx, "Removing configuration", config_name)
 
-    if error := validate_required_params(
-        {"config_name": (config_name, "config_name")}, "remove"
-    ):
-        return formatter.format_error_result(
-            error.get("message", "Missing config_name"), "remove"
-        )
+    if error := validate_required_params({"config_name": (config_name, "config_name")}, "remove"):
+        return formatter.format_error_result(error.get("message", "Missing config_name"), "remove")
 
     try:
         await ctx.info("Preparing to remove configuration...")
 
         remove_request = SwagRemoveRequest(
-            action=SwagAction.REMOVE,
-            config_name=config_name,
-            create_backup=create_backup
+            action=SwagAction.REMOVE, config_name=config_name, create_backup=create_backup
         )
 
         await ctx.info("Removing configuration file...")
@@ -599,8 +611,11 @@ async def _handle_remove_action(
 
 
 async def _handle_logs_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    log_type: str, lines: int
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    log_type: str,
+    lines: int,
 ) -> ToolResult:
     """Handle LOGS action with streaming capability for large log files."""
     await log_action_start(ctx, f"Retrieving SWAG {log_type} logs", f"{lines} lines")
@@ -612,15 +627,15 @@ async def _handle_logs_action(
             action=SwagAction.LOGS,
             log_type=cast(
                 "Literal['nginx-access', 'nginx-error', 'fail2ban', 'letsencrypt', 'renewal']",
-                log_type
+                log_type,
             ),
-            lines=lines
+            lines=lines,
         )
 
         # Use timeout for log operations
         logs_output = await asyncio.wait_for(
             swag_service.get_swag_logs(logs_request),
-            timeout=60  # 1 minute timeout for log retrieval
+            timeout=60,  # 1 minute timeout for log retrieval
         )
 
         await log_action_success(
@@ -642,14 +657,14 @@ async def _handle_logs_action(
         raise
     except TimeoutError:
         await ctx.info("Log retrieval timed out")
-        return formatter.format_error_result(
-            "Log retrieval operation timed out", "logs"
-        )
+        return formatter.format_error_result("Log retrieval operation timed out", "logs")
 
 
 async def _handle_backups_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    retention_days: int
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    retention_days: int,
 ) -> ToolResult:
     """Handle BACKUPS action with cleanup progress reporting."""
     backup_action = BackupSubAction.CLEANUP if retention_days > 0 else BackupSubAction.LIST
@@ -657,9 +672,7 @@ async def _handle_backups_action(
     try:
         if backup_action == BackupSubAction.CLEANUP:
             retention_msg = (
-                f"{retention_days} days retention"
-                if retention_days > 0
-                else "default retention"
+                f"{retention_days} days retention" if retention_days > 0 else "default retention"
             )
             await log_action_start(ctx, "Running backup cleanup", retention_msg)
             await ctx.info("Scanning for old backup files...")
@@ -712,16 +725,16 @@ async def _handle_backups_action(
 
 
 async def _handle_health_check_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    domain: str, timeout: int, follow_redirects: bool
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    domain: str,
+    timeout: int,
+    follow_redirects: bool,
 ) -> ToolResult:
     """Handle HEALTH_CHECK action with progress reporting."""
-    if error := validate_required_params(
-        {"domain": (domain, "domain")}, "health_check"
-    ):
-        return formatter.format_error_result(
-            error.get("message", "Missing domain"), "health_check"
-        )
+    if error := validate_required_params({"domain": (domain, "domain")}, "health_check"):
+        return formatter.format_error_result(error.get("message", "Missing domain"), "health_check")
 
     await log_action_start(ctx, "Starting health check", domain)
 
@@ -739,7 +752,7 @@ async def _handle_health_check_action(
         # Perform health check with timeout
         health_result = await asyncio.wait_for(
             swag_service.health_check(health_request),
-            timeout=timeout + 10  # Add buffer to service timeout
+            timeout=timeout + 10,  # Add buffer to service timeout
         )
 
         await log_action_success(ctx, f"Health check completed for {domain}")
@@ -765,14 +778,17 @@ async def _handle_health_check_action(
         raise
     except TimeoutError:
         await ctx.info("Health check timed out")
-        return formatter.format_error_result(
-            f"Health check for {domain} timed out", "health_check"
-        )
+        return formatter.format_error_result(f"Health check for {domain} timed out", "health_check")
 
 
 async def _handle_update_action(
-    ctx: Context, swag_service: SwagManagerService, formatter: TokenEfficientFormatter,
-    config_name: str, update_field: str, update_value: str, create_backup: bool
+    ctx: Context,
+    swag_service: SwagManagerService,
+    formatter: TokenEfficientFormatter,
+    config_name: str,
+    update_field: str,
+    update_value: str,
+    create_backup: bool,
 ) -> ToolResult:
     """Handle UPDATE action with progress reporting and health check."""
     if error := validate_required_params(
@@ -787,9 +803,7 @@ async def _handle_update_action(
             error.get("message", "Missing required parameters"), "update"
         )
 
-    await log_action_start(
-        ctx, f"Updating {update_field}", f"{config_name} to {update_value}"
-    )
+    await log_action_start(ctx, f"Updating {update_field}", f"{config_name} to {update_value}")
 
     try:
         # Validate update_field is a valid value
@@ -817,7 +831,7 @@ async def _handle_update_action(
         await ctx.info(f"Applying {update_field} update...")
         update_result = await asyncio.wait_for(
             swag_service.update_config_field(update_request),
-            timeout=120  # 2 minute timeout for updates
+            timeout=120,  # 2 minute timeout for updates
         )
 
         await ctx.info("Running post-update health check...")
@@ -844,7 +858,4 @@ async def _handle_update_action(
         raise
     except TimeoutError:
         await ctx.info("Configuration update timed out")
-        return formatter.format_error_result(
-            "Update operation timed out", "update"
-        )
-
+        return formatter.format_error_result("Update operation timed out", "update")

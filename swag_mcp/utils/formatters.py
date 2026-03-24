@@ -266,7 +266,7 @@ def build_template_filename(config_type: str) -> str:
     # Validate against SWAG-compliant CONFIG_TYPES only
     if config_type not in CONFIG_TYPES:
         raise ValueError(
-            f"Invalid config type '{config_type}'. " f"Must be one of: {', '.join(CONFIG_TYPES)}"
+            f"Invalid config type '{config_type}'. Must be one of: {', '.join(CONFIG_TYPES)}"
         )
 
     # All SWAG-compliant templates follow the standard naming convention

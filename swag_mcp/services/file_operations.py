@@ -294,22 +294,6 @@ class FileOperations:
                     errno.EIO, f"Unexpected error during {operation_name}: {str(e)}"
                 ) from e
 
-            # Verify the file was written correctly
-            try:
-                written_content = await self.fs.read_text(path_str)
-                if written_content != normalized_content:
-                    raise OSError(
-                        errno.EIO,
-                        f"Content verification failed after {operation_name}. "
-                        "File may be corrupted or partially written.",
-                    )
-            except OSError:
-                raise
-            except Exception as e:
-                raise OSError(
-                    errno.EIO, f"File verification failed after {operation_name}: {str(e)}"
-                ) from e
-
             logger.debug(f"Successfully completed atomic {operation_name} to {file_path}")
 
         # Execute write with or without file locking
@@ -325,3 +309,38 @@ class FileOperations:
         if not self._directory_checked:
             await self.fs.mkdir(str(self.config_path), parents=True)
             self._directory_checked = True
+
+    async def read_text_safe(self, path: str, context: str = "file") -> str:
+        """Read a file as text with binary detection, encoding handling, and error wrapping.
+
+        Args:
+            path: Filesystem path to read
+            context: Description of the file for error messages
+
+        Returns:
+            Decoded and Unicode-normalized text content
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If file contains binary content or invalid encoding
+            OSError: For filesystem errors
+
+        """
+        raw_content = await self.fs.read_bytes(path)
+        if b"\0" in raw_content[:512]:
+            raise ValueError(f"{context} contains binary content or is unsafe to read")
+
+        try:
+            return detect_and_handle_encoding(raw_content)
+        except OSError as e:
+            handle_os_error(e, f"reading {context}")
+            raise  # handle_os_error may not always raise
+        except (ValueError, UnicodeDecodeError) as e:
+            raise ValueError(
+                f"{context} has invalid text encoding or Unicode characters: {e}"
+            ) from e
+        except Exception as e:
+            raise OSError(
+                errno.EIO,
+                f"Unexpected error reading {context}: {e}",
+            ) from e

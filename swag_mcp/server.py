@@ -129,7 +129,7 @@ def register_resources(mcp: FastMCP) -> None:
                 "name": f"Config Change: {change.get('type', 'unknown')}",
                 "description": f"Real-time configuration change: {change.get('message', '')}",
                 "mimeType": "application/json",
-                "text": str(change)
+                "text": str(change),
             }
 
     @mcp.resource("swag://health/stream")
@@ -157,7 +157,7 @@ def register_resources(mcp: FastMCP) -> None:
                         "name": f"Health Monitor ({len(domains)} services)",
                         "description": "Real-time health monitoring for active SWAG services",
                         "mimeType": "text/plain",
-                        "text": health_update
+                        "text": health_update,
                     }
         except Exception as e:
             yield {
@@ -165,7 +165,7 @@ def register_resources(mcp: FastMCP) -> None:
                 "name": "Health Monitor Error",
                 "description": f"Error starting health monitoring: {str(e)}",
                 "mimeType": "text/plain",
-                "text": f"Health monitoring error: {str(e)}"
+                "text": f"Health monitoring error: {str(e)}",
             }
 
     @mcp.resource("swag://logs/stream")
@@ -180,7 +180,7 @@ def register_resources(mcp: FastMCP) -> None:
                 "name": "SWAG Nginx Error Logs",
                 "description": "Real-time SWAG nginx error log stream",
                 "mimeType": "text/plain",
-                "text": log_entry
+                "text": log_entry,
             }
 
 
@@ -226,7 +226,9 @@ async def create_mcp_server() -> FastMCP:
     auth_provider = None
     if os.getenv("FASTMCP_SERVER_AUTH") == "fastmcp.server.auth.providers.google.GoogleProvider":
         try:
-            from fastmcp.server.auth.providers.google import GoogleProvider
+            from fastmcp.server.auth.providers.google import (  # type: ignore[import-not-found]
+                GoogleProvider,
+            )
 
             # Configure GoogleProvider with environment variables
             client_id = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID")
@@ -247,9 +249,7 @@ async def create_mcp_server() -> FastMCP:
                 )
                 raise ValueError("Missing required OAuth credentials")
 
-            redirect_path = os.getenv(
-                "FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback"
-            )
+            redirect_path = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REDIRECT_PATH", "/auth/callback")
             auth_provider = GoogleProvider(
                 client_id=client_id,
                 client_secret=client_secret,

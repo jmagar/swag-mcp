@@ -40,13 +40,13 @@ class TestSwagToolIntegration:
 
         assert result.structured_content is not None
         total_count = result.structured_content["total_count"]
-        assert isinstance(total_count, int), (
-            f"'total_count' should be an integer, got {type(total_count)}"
-        )
+        assert isinstance(
+            total_count, int
+        ), f"'total_count' should be an integer, got {type(total_count)}"
         assert total_count >= 0, f"'total_count' should be non-negative, got {total_count}"
-        assert total_count == len(configs), (
-            f"'total_count' ({total_count}) should match config list length ({len(configs)})"
-        )
+        assert total_count == len(
+            configs
+        ), f"'total_count' ({total_count}) should match config list length ({len(configs)})"
 
         assert result.structured_content is not None
         list_filter = result.structured_content["list_filter"]
@@ -205,9 +205,9 @@ class TestSwagToolIntegration:
 
         # Check structured content for validation error with specific validation
         assert result.structured_content is not None
-        assert result.structured_content.get("success") is False, (
-            "Operation should fail for missing parameters"
-        )
+        assert (
+            result.structured_content.get("success") is False
+        ), "Operation should fail for missing parameters"
 
         # Ensure error message is present and informative
         assert result.structured_content is not None
@@ -374,24 +374,24 @@ class TestSwagToolIntegration:
         # Backup created should be a valid filename string with proper validation
         assert edit_result.structured_content is not None
         backup_created = edit_result.structured_content["backup_created"]
-        assert isinstance(backup_created, str), (
-            f"Expected backup filename as string, got: {type(backup_created)} = {backup_created}"
-        )
+        assert isinstance(
+            backup_created, str
+        ), f"Expected backup filename as string, got: {type(backup_created)} = {backup_created}"
         assert len(backup_created) > 0, "Backup filename should not be empty"
 
         # Backup filename should contain reference to original config
-        config_base_name = config_name.replace('.conf', '')
+        config_base_name = config_name.replace(".conf", "")
         assert config_base_name in backup_created, (
             f"Expected backup filename to reference original config "
             f"'{config_base_name}', got: {backup_created}"
         )
 
         # Backup should have a timestamp or backup extension
-        backup_indicators = ['.backup', '_backup', '.bak', '202']
+        backup_indicators = [".backup", "_backup", ".bak", "202"]
         has_backup_indicator = any(indicator in backup_created for indicator in backup_indicators)
-        assert has_backup_indicator, (
-            f"Backup filename should contain timestamp or backup indicator, got: {backup_created}"
-        )
+        assert (
+            has_backup_indicator
+        ), f"Backup filename should contain timestamp or backup indicator, got: {backup_created}"
 
     async def test_edit_missing_parameters(self, mcp_client: Client) -> None:
         """Test editing with missing parameters."""
@@ -969,11 +969,7 @@ class TestSwagToolIntegration:
 
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
-        assert (
-            "validation" in error_msg
-            or "invalid" in error_msg
-            or "not one of" in error_msg
-        )
+        assert "validation" in error_msg or "invalid" in error_msg or "not one of" in error_msg
 
     async def test_empty_parameters(self, mcp_client: Client) -> None:
         """Test with minimal parameters."""
@@ -985,11 +981,7 @@ class TestSwagToolIntegration:
 
         # Check that the error message is about validation
         error_msg = str(exc_info.value).lower()
-        assert (
-            "required" in error_msg
-            or "missing" in error_msg
-            or "action" in error_msg
-        )
+        assert "required" in error_msg or "missing" in error_msg or "action" in error_msg
 
     # Integration Tests
 
@@ -1039,9 +1031,9 @@ class TestSwagToolIntegration:
         )
         assert view_updated_result.is_error is False
         # Should contain the updated port with comprehensive validation
-        assert isinstance(view_updated_result.content[0], TextContent), (
-            "Expected TextContent in view result"
-        )
+        assert isinstance(
+            view_updated_result.content[0], TextContent
+        ), "Expected TextContent in view result"
         updated_content = view_updated_result.content[0].text
 
         # Check that new port is present

@@ -169,6 +169,9 @@ class SwagManagerService:
             updaters=self.config_updaters,
         )
 
+        # Wire up config_ops reference to avoid duplicate read_config in MCPOperations
+        self.mcp_operations._config_ops = self.config_operations
+
         logger.info("Successfully initialized all sub-managers")
 
     async def __aenter__(self) -> "SwagManagerService":

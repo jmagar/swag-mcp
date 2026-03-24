@@ -65,21 +65,17 @@ class SSHFilesystem:
                 import asyncssh  # type: ignore[import-not-found]
             except ImportError as e:
                 raise ImportError(
-                    "asyncssh is required for remote SSH support. "
-                    "Install it with: uv add asyncssh"
+                    "asyncssh is required for remote SSH support. Install it with: uv add asyncssh"
                 ) from e
 
             try:
-                logger.info(
-                    f"Connecting to "
-                    f"{self._username + '@' if self._username else ''}"
-                    f"{self._host}:{self._port} via SSH"
-                )
+                user_prefix = f"{self._username}@" if self._username else ""
+                logger.info(f"Connecting to {user_prefix}{self._host}:{self._port} via SSH")
                 self._conn = await asyncssh.connect(
                     self._host,
                     port=self._port,
                     username=self._username,
-                    known_hosts=None,  # Use system known_hosts
+                    known_hosts=(),  # Use system default known_hosts
                 )
                 self._sftp = await self._conn.start_sftp_client()
                 logger.info(f"SSH connection established to {self._host}")
@@ -87,9 +83,7 @@ class SSHFilesystem:
             except Exception as e:
                 self._conn = None
                 self._sftp = None
-                raise ConnectionError(
-                    f"Failed to connect to " f"{self._host}:{self._port}: {e}"
-                ) from e
+                raise ConnectionError(f"Failed to connect to {self._host}:{self._port}: {e}") from e
 
     async def _get_sftp(self) -> Any:
         """Get SFTP client, reconnecting if needed."""
@@ -129,10 +123,6 @@ class SSHFilesystem:
     async def read_bytes(self, path: str) -> bytes:
         """Read file contents as bytes via SFTP."""
 
-        async def _read(sftp: Any) -> bytes:
-            return await sftp.getl(path)  # type: ignore[no-any-return]
-
-        # Use raw SFTP read
         async def _read_raw(sftp: Any) -> bytes:
             async with sftp.open(path, "rb") as f:
                 return await f.read()  # type: ignore[no-any-return]
@@ -303,7 +293,7 @@ class SSHFilesystem:
                 lines: list[str] = result.stdout.splitlines(keepends=True)
                 return lines
             except Exception:
-                logger.debug(f"SSH tail command failed for {path}, " "falling back to SFTP read")
+                logger.debug(f"SSH tail command failed for {path}, falling back to SFTP read")
 
         # Fallback: read entire file via SFTP and take last N lines
         try:

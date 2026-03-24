@@ -38,6 +38,7 @@ def _get_token_formatter() -> "TokenEfficientFormatter":
     if _cached_formatter is None:
         try:
             from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
+
             _cached_formatter = TokenEfficientFormatter()
         except ImportError as e:
             logger.error(f"Failed to import TokenEfficientFormatter: {e}")
@@ -53,6 +54,7 @@ def _create_fallback_formatter() -> "TokenEfficientFormatter":
         A minimal formatter-like object with basic error formatting capability
 
     """
+
     class FallbackFormatter:
         def format_error_result(self, error_message: str, action: str) -> ToolResult:
             """Format error result without dependencies."""
@@ -114,7 +116,7 @@ def handle_tool_errors(
 
         except FileNotFoundError as e:
             # Provide helpful context for missing files
-            filename = getattr(e, 'filename', 'unknown file')
+            filename = getattr(e, "filename", "unknown file")
             error_msg = f"File not found: {filename}. Check the path and ensure the file exists."
             logger.error(f"File not found in {func.__name__}: {filename}", exc_info=True)
             formatter = _get_token_formatter()
@@ -122,7 +124,7 @@ def handle_tool_errors(
 
         except PermissionError as e:
             # Provide actionable advice for permission errors
-            filename = getattr(e, 'filename', 'file')
+            filename = getattr(e, "filename", "file")
             error_msg = (
                 f"Permission denied accessing '{filename}'. "
                 f"Check file permissions and Docker volume mounts."

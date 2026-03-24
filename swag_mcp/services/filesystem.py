@@ -161,8 +161,8 @@ class LocalFilesystem:
 
     async def stat(self, path: str) -> FileStat:
         """Get file metadata."""
-        st = Path(path).stat()
         p = Path(path)
+        st = p.stat()
         return FileStat(
             st_size=st.st_size,
             st_mtime=st.st_mtime,
@@ -196,13 +196,28 @@ class LocalFilesystem:
             return None
 
     async def read_tail_lines(self, path: str, n: int) -> list[str]:
-        """Read last N lines of a file using memory-efficient streaming."""
-        line_buffer: deque[str] = deque(maxlen=n)
+        """Read last N lines of a file using tail subprocess for efficiency."""
+        try:
+            # Safe: n is an int, path is validated upstream
+            proc = await asyncio.create_subprocess_exec(
+                "tail",
+                "-n",
+                str(n),
+                path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0 and stdout:
+                return stdout.decode("utf-8", errors="ignore").splitlines(keepends=True)
+        except (OSError, FileNotFoundError):
+            pass
 
+        # Fallback: streaming deque for systems without tail
+        line_buffer: deque[str] = deque(maxlen=n)
         async with aiofiles.open(path, encoding="utf-8", errors="ignore") as f:
             async for line in f:
                 line_buffer.append(line)
-
         return list(line_buffer)
 
     async def close(self) -> None:

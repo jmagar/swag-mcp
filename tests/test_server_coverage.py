@@ -164,12 +164,12 @@ class TestMainModuleExecution:
         import inspect
 
         # Verify the module has the expected structure
-        assert hasattr(swag_mcp.__main__, 'main'), "__main__ module should import main function"
+        assert hasattr(swag_mcp.__main__, "main"), "__main__ module should import main function"
 
         # Verify the __name__ check exists in the module source
         source = inspect.getsource(swag_mcp.__main__)
         assert 'if __name__ == "__main__":' in source, "Module should have __main__ execution block"
-        assert 'asyncio.run(main())' in source, "Module should call asyncio.run(main())"
+        assert "asyncio.run(main())" in source, "Module should call asyncio.run(main())"
 
 
 class TestConfigurationIntegration:
@@ -351,7 +351,7 @@ class TestErrorScenarios:
         with (
             patch(
                 "swag_mcp.tools.swag.register_tools",
-                side_effect=Exception("Tool registration error")
+                side_effect=Exception("Tool registration error"),
             ),
             contextlib.suppress(Exception),
         ):

@@ -375,9 +375,9 @@ class TestSwagManagerMiscMethods:
         assert isinstance(basic_service.file_ops._active_transactions, dict)
 
     def test_directory_checked_flag(self, basic_service):
-        """Test directory checked flag initialization."""
-        assert hasattr(basic_service.config_operations, "_directory_checked")
-        assert isinstance(basic_service.config_operations._directory_checked, bool)
+        """Test directory checked flag initialization (delegated to file_ops)."""
+        assert hasattr(basic_service.file_ops, "_directory_checked")
+        assert isinstance(basic_service.file_ops._directory_checked, bool)
 
     def test_template_env_initialization(self, basic_service):
         """Test template environment is properly initialized."""
@@ -409,7 +409,7 @@ class TestSwagManagerIntegration:
 
             # Test transaction creation
             tx = service.begin_transaction()
-            assert tx.transaction_id.startswith("txn_")
+            assert tx.transaction_id.startswith("tx_")
 
             # Test file lock creation
             test_path = config_dir / "test.conf"

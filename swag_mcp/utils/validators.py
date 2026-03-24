@@ -597,23 +597,26 @@ def _is_reasonable_text(text: str, encoding_name: str) -> bool:
     if len(text) <= 10:
         # Check for high percentage of non-ASCII characters in short strings
         non_ascii_count = sum(1 for c in text if ord(c) > 127)
-        if (non_ascii_count / len(text) > 0.5 and
-            encoding_name in ("UTF-16", "UTF-32") and not (
-                text.startswith('\ufeff') or '\ufeff' in text
-            )):
+        if (
+            non_ascii_count / len(text) > 0.5
+            and encoding_name in ("UTF-16", "UTF-32")
+            and not (text.startswith("\ufeff") or "\ufeff" in text)
+        ):
             return False
 
     # Check for null bytes (common in misinterpreted binary data)
-    if '\x00' in text:
+    if "\x00" in text:
         return False
 
     # Check for private use characters (often indicates misinterpretation)
     for char in text:
         code_point = ord(char)
         # Private Use Areas
-        if (0xE000 <= code_point <= 0xF8FF or  # Basic Multilingual Plane
-            0xF0000 <= code_point <= 0xFFFFD or  # Plane 15
-            0x100000 <= code_point <= 0x10FFFD):  # Plane 16
+        if (
+            0xE000 <= code_point <= 0xF8FF  # Basic Multilingual Plane
+            or 0xF0000 <= code_point <= 0xFFFFD  # Plane 15
+            or 0x100000 <= code_point <= 0x10FFFD
+        ):  # Plane 16
             return False
 
     return True

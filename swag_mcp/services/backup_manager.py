@@ -14,8 +14,7 @@ if TYPE_CHECKING:
 
 from swag_mcp.core.config import config
 from swag_mcp.services.filesystem import FilesystemBackend
-from swag_mcp.utils.error_handlers import handle_os_error
-from swag_mcp.utils.validators import detect_and_handle_encoding, validate_config_filename
+from swag_mcp.utils.validators import validate_config_filename
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +42,14 @@ class BackupManager:
         """Access the filesystem backend."""
         return self.file_ops.fs
 
-    async def create_backup(self, config_name: str) -> str:
-        """Create timestamped backup of configuration file with proper locking."""
-        # Security validation: ensure config name is safe (should already be validated by caller)
+    async def create_backup(self, config_name: str, content: str | None = None) -> str:
+        """Create timestamped backup of configuration file with proper locking.
+
+        Args:
+            config_name: Name of the configuration file to back up
+            content: Pre-read content to avoid double file reads. If None, reads from disk.
+
+        """
         validated_name = validate_config_filename(config_name)
 
         config_file = self.config_path / validated_name
@@ -81,29 +85,11 @@ class BackupManager:
                         errno.EEXIST, "Could not generate unique backup name after 1000 attempts"
                     )
 
-                # Read original content with error handling and Unicode normalization
-                try:
-                    # Read file with proper encoding detection and Unicode normalization
-                    raw_content = await self.fs.read_bytes(str(config_file))
-
-                    # Detect encoding and normalize Unicode
-                    content = detect_and_handle_encoding(raw_content)
-
-                except OSError as e:
-                    handle_os_error(e, "reading configuration file for backup", validated_name)
-                except (ValueError, UnicodeDecodeError) as e:
-                    raise ValueError(
-                        f"Configuration file has invalid text encoding or Unicode characters "
-                        f"for backup: {validated_name}: {str(e)}"
-                    ) from e
-                except Exception as e:
-                    raise OSError(
-                        errno.EIO,
-                        (
-                            f"Unexpected error reading configuration file for backup: "
-                            f"{validated_name}: {str(e)}"
-                        ),
-                    ) from e
+                # Use pre-read content if provided, otherwise read from disk
+                if content is None:
+                    content = await self.file_ops.read_text_safe(
+                        str(config_file), f"configuration file {validated_name}"
+                    )
 
                 # Write backup safely with proper error handling
                 # (no lock since we're already in one)

@@ -11,13 +11,13 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
-    detect_and_handle_encoding,
     validate_config_filename,
     validate_mcp_path,
 )
 
 if TYPE_CHECKING:
     from swag_mcp.services.backup_manager import BackupManager
+    from swag_mcp.services.config_operations import ConfigOperations
     from swag_mcp.services.file_operations import FileOperations
     from swag_mcp.services.filesystem import FilesystemBackend
     from swag_mcp.services.template_manager import TemplateManager
@@ -36,6 +36,7 @@ class MCPOperations:
         validation: "ValidationService",
         file_ops: "FileOperations",
         backup_manager: "BackupManager | None" = None,
+        config_ops: "ConfigOperations | None" = None,
     ) -> None:
         """Initialize MCP operations.
 
@@ -45,6 +46,7 @@ class MCPOperations:
             validation: ValidationService instance for validation operations
             file_ops: FileOperations instance for file operations
             backup_manager: Optional BackupManager instance for backup operations
+            config_ops: Optional ConfigOperations instance to delegate read_config
 
         """
         self.config_path = config_path
@@ -52,6 +54,7 @@ class MCPOperations:
         self.validation = validation
         self.file_ops = file_ops
         self.backup_manager = backup_manager
+        self._config_ops = config_ops
 
     @property
     def fs(self) -> "FilesystemBackend":
@@ -60,6 +63,8 @@ class MCPOperations:
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content.
+
+        Delegates to ConfigOperations if available, otherwise reads directly.
 
         Args:
             config_name: Name of the configuration file to read
@@ -72,33 +77,19 @@ class MCPOperations:
             ValueError: If file content is not safe to read
 
         """
-        logger.info(f"Reading configuration: {config_name}")
+        if self._config_ops is not None:
+            return await self._config_ops.read_config(config_name)
 
-        # Validate config name directly (must be full filename)
+        # Fallback: read directly via file_ops
         validated_name = validate_config_filename(config_name)
         config_file = self.config_path / validated_name
 
-        # Check if file exists first
         if not await self.fs.exists(str(config_file)):
             raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
-        # Security validation: ensure file is safe to read as text
-        raw_content = await self.fs.read_bytes(str(config_file))
-        if b"\0" in raw_content[:512]:
-            raise ValueError(f"Configuration file {validated_name} is not safe to read as text")
-
-        # Read file with proper encoding detection and Unicode normalization
-        try:
-            # Detect encoding and normalize Unicode
-            content = detect_and_handle_encoding(raw_content)
-            logger.debug(f"Successfully read configuration {validated_name}")
-            return content
-
-        except (ValueError, UnicodeDecodeError) as e:
-            raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters: "
-                f"{validated_name}: {str(e)}"
-            ) from e
+        return await self.file_ops.read_text_safe(
+            str(config_file), f"configuration file {validated_name}"
+        )
 
     async def add_mcp_location(
         self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
