@@ -120,8 +120,9 @@ class TestValidators:
         assert normalize_unicode_text("") == ""
         # Disallowed characters should raise
         import pytest
+
         with pytest.raises(ValueError):
-            normalize_unicode_text("\u202E")  # RLO (Right-to-Left Override)
+            normalize_unicode_text("\u202e")  # RLO (Right-to-Left Override)
 
     def test_detect_and_handle_encoding(self):
         """Test encoding detection."""
@@ -144,8 +145,14 @@ class TestFormatters:
 
     def test_build_template_filename(self):
         """Test template filename building with SWAG-compliant types."""
-        assert build_template_filename("swag-compliant-mcp-subdomain") == "swag-compliant-mcp-subdomain.conf.j2"
-        assert build_template_filename("swag-compliant-mcp-subfolder") == "swag-compliant-mcp-subfolder.conf.j2"
+        assert (
+            build_template_filename("swag-compliant-mcp-subdomain")
+            == "swag-compliant-mcp-subdomain.conf.j2"
+        )
+        assert (
+            build_template_filename("swag-compliant-mcp-subfolder")
+            == "swag-compliant-mcp-subfolder.conf.j2"
+        )
 
         with pytest.raises(ValueError):
             build_template_filename("invalid")
@@ -271,13 +278,13 @@ class TestSwagManagerBasics:
         tx = service.begin_transaction("test")
         assert hasattr(tx, "transaction_id")
 
-    def test_ensure_config_directory(self, temp_dirs):
+    async def test_ensure_config_directory(self, temp_dirs):
         """Test directory creation."""
         config_dir, template_dir = temp_dirs
         service = SwagManagerService(config_dir, template_dir)
 
         # Should not raise exception
-        service.config_operations._ensure_config_directory()
+        await service.config_operations._ensure_config_directory()
         assert config_dir.exists()
 
     def test_validate_template_variables(self, temp_dirs):

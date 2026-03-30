@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, Generic, TypeVar, cast
 
 logger = logging.getLogger(__name__)
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class ServiceLifetime:
@@ -103,7 +103,7 @@ class ServiceContainer:
         with self._lock:
             # Check if instance already exists (singleton)
             if service_type in self._services:
-                return cast('T', self._services[service_type])
+                return cast("T", self._services[service_type])
 
             # Check if factory exists
             if service_type not in self._factories:
@@ -117,12 +117,12 @@ class ServiceContainer:
                 if service_type not in self._services:
                     logger.debug(f"Creating singleton service: {service_type.__name__}")
                     self._services[service_type] = factory()
-                return cast('T', self._services[service_type])
+                return cast("T", self._services[service_type])
 
             elif lifetime == ServiceLifetime.TRANSIENT:
                 # Always create new instance
                 logger.debug(f"Creating transient service: {service_type.__name__}")
-                return cast('T', factory())
+                return cast("T", factory())
 
             elif lifetime == ServiceLifetime.SCOPED:
                 # Create per scope
@@ -131,7 +131,7 @@ class ServiceContainer:
                         f"Creating scoped service: {service_type.__name__} (scope: {scope})"
                     )
                     self._scoped_services[scope][service_type] = factory()
-                return cast('T', self._scoped_services[scope][service_type])
+                return cast("T", self._scoped_services[scope][service_type])
 
             else:
                 raise ValueError(f"Unknown service lifetime: {lifetime}")
@@ -160,8 +160,7 @@ class ServiceContainer:
 
         """
         with self._lock:
-            return (service_type in self._services or
-                   service_type in self._factories)
+            return service_type in self._services or service_type in self._factories
 
     def get_registered_services(self) -> dict[str, str]:
         """Get information about registered services.
@@ -202,22 +201,22 @@ class ServiceRegistration(Generic[T]):
         self._container = container
         self._service_type = service_type
 
-    def as_singleton(self, factory: Callable[[], T]) -> 'ServiceRegistration[T]':
+    def as_singleton(self, factory: Callable[[], T]) -> "ServiceRegistration[T]":
         """Register as singleton service."""
         self._container.register_singleton(self._service_type, factory)
         return self
 
-    def as_transient(self, factory: Callable[[], T]) -> 'ServiceRegistration[T]':
+    def as_transient(self, factory: Callable[[], T]) -> "ServiceRegistration[T]":
         """Register as transient service."""
         self._container.register_transient(self._service_type, factory)
         return self
 
-    def as_scoped(self, factory: Callable[[], T]) -> 'ServiceRegistration[T]':
+    def as_scoped(self, factory: Callable[[], T]) -> "ServiceRegistration[T]":
         """Register as scoped service."""
         self._container.register_scoped(self._service_type, factory)
         return self
 
-    def as_instance(self, instance: T) -> 'ServiceRegistration[T]':
+    def as_instance(self, instance: T) -> "ServiceRegistration[T]":
         """Register as instance."""
         self._container.register_instance(self._service_type, instance)
         return self
@@ -269,9 +268,11 @@ def service(lifetime: str = ServiceLifetime.SINGLETON) -> Callable[[type[T]], ty
         ...     pass
 
     """
+
     def decorator(cls: type[T]) -> type[T]:
         def factory() -> T:
             return cls()
+
         if lifetime == ServiceLifetime.SINGLETON:
             container.register_singleton(cls, factory)
         elif lifetime == ServiceLifetime.TRANSIENT:
@@ -282,4 +283,5 @@ def service(lifetime: str = ServiceLifetime.SINGLETON) -> Callable[[type[T]], ty
             raise ValueError(f"Unknown service lifetime: {lifetime}")
 
         return cls
+
     return decorator

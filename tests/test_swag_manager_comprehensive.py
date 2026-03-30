@@ -245,7 +245,9 @@ class TestFileOperations:
         test_file = temp_service.config_path / "lock_test.conf"
         content = "locked write test"
 
-        await temp_service.file_ops.safe_write_file(test_file, content, "locked operation", use_lock=True)
+        await temp_service.file_ops.safe_write_file(
+            test_file, content, "locked operation", use_lock=True
+        )
 
         assert test_file.exists()
         assert test_file.read_text() == content
@@ -263,18 +265,20 @@ class TestFileOperations:
 
         try:
             with pytest.raises(OSError):
-                await temp_service.file_ops.safe_write_file(test_file, "new content", "permission test")
+                await temp_service.file_ops.safe_write_file(
+                    test_file, "new content", "permission test"
+                )
         finally:
             # Clean up - restore directory permissions
             temp_service.config_path.chmod(original_perms)
 
-    def test_ensure_config_directory_exists(self, temp_service):
+    async def test_ensure_config_directory_exists(self, temp_service):
         """Test directory creation when it exists."""
         # Directory should already exist from fixture
-        temp_service.config_operations._ensure_config_directory()
+        await temp_service.config_operations._ensure_config_directory()
         assert temp_service.config_path.exists()
 
-    def test_ensure_config_directory_creates(self):
+    async def test_ensure_config_directory_creates(self):
         """Test directory creation when it doesn't exist."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir) / "new_config"
@@ -285,7 +289,7 @@ class TestFileOperations:
             assert not config_dir.exists()
 
             service = SwagManagerService(config_dir, template_dir)
-            service.config_operations._ensure_config_directory()
+            await service.config_operations._ensure_config_directory()
 
             assert config_dir.exists()
 

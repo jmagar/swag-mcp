@@ -324,27 +324,27 @@ class MCPErrorEnhancementMiddleware(Middleware):
             ErrorCode.INVALID_SERVICE_NAME: [
                 "Use format: service.subdomain.conf or service.subfolder.conf",
                 "Only use letters, numbers, hyphens, and underscores",
-                "Ensure the filename ends with .conf"
+                "Ensure the filename ends with .conf",
             ],
             ErrorCode.INVALID_DOMAIN_FORMAT: [
                 "Use a valid domain format like 'app.example.com'",
                 "Check for typos in the domain name",
-                "Ensure the domain follows DNS naming conventions"
+                "Ensure the domain follows DNS naming conventions",
             ],
             ErrorCode.INVALID_PORT_NUMBER: [
                 "Port numbers must be between 1 and 65535",
                 "Common ports: HTTP (80), HTTPS (443), custom apps (8080, 3000, etc.)",
-                "Avoid system ports (1-1023) for custom applications"
+                "Avoid system ports (1-1023) for custom applications",
             ],
             ErrorCode.INVALID_UPSTREAM_APP: [
                 "Use container name or IP address",
                 "Examples: 'jellyfin', 'myapp', '192.168.1.100'",
-                "Avoid special characters except dots and hyphens"
+                "Avoid special characters except dots and hyphens",
             ],
             ErrorCode.INVALID_FILE_CONTENT: [
                 "Check nginx configuration syntax",
                 "Ensure proper server block structure",
-                "Verify all braces and semicolons are balanced"
+                "Verify all braces and semicolons are balanced",
             ],
         }
 

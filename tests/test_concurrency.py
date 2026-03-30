@@ -26,10 +26,7 @@ class TestDeadlockPrevention:
     @pytest.fixture
     def swag_service(self, temp_dir):
         """Create SwagManagerService instance for testing."""
-        return SwagManagerService(
-            config_path=temp_dir,
-            template_path=Path("templates")
-        )
+        return SwagManagerService(config_path=temp_dir, template_path=Path("templates"))
 
     @pytest.mark.asyncio
     async def test_deadlock_prevention_cleanup_backup_locks(self, swag_service):
@@ -116,9 +113,9 @@ class TestDeadlockPrevention:
         cleanup_acquire_idx = lock_acquisition_order.index("acquire_cleanup")
         backup_acquire_idx = lock_acquisition_order.index("acquire_backup")
 
-        assert cleanup_acquire_idx < backup_acquire_idx, (
-            "Cleanup lock should be acquired before backup lock to prevent deadlock"
-        )
+        assert (
+            cleanup_acquire_idx < backup_acquire_idx
+        ), "Cleanup lock should be acquired before backup lock to prevent deadlock"
 
 
 class TestRaceConditionHandling:
@@ -133,10 +130,7 @@ class TestRaceConditionHandling:
     @pytest.fixture
     def swag_service(self, temp_dir):
         """Create SwagManagerService instance for testing."""
-        return SwagManagerService(
-            config_path=temp_dir,
-            template_path=Path("templates")
-        )
+        return SwagManagerService(config_path=temp_dir, template_path=Path("templates"))
 
     @pytest.mark.asyncio
     async def test_concurrent_file_operations_no_corruption(self, swag_service):
@@ -157,19 +151,14 @@ class TestRaceConditionHandling:
 
             # Use the service's file writing mechanism
             await swag_service.file_ops.safe_write_file(
-                config_file,
-                content,
-                f"test operation {operation_id}"
+                config_file, content, f"test operation {operation_id}"
             )
 
             write_operations.append(f"end_{operation_id}")
             return operation_id
 
         # Run multiple concurrent write operations
-        tasks = [
-            write_operation(f"content from operation {i}", i)
-            for i in range(5)
-        ]
+        tasks = [write_operation(f"content from operation {i}", i) for i in range(5)]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -208,20 +197,21 @@ class TestRaceConditionHandling:
 
         # Filter out any exceptions (some might fail due to missing original file)
         successful_backups = [
-            name for name in backup_names
+            name
+            for name in backup_names
             if isinstance(name, str) and not isinstance(name, Exception)
         ]
 
         # If any succeeded, they should all have unique names
         if successful_backups:
-            assert len(successful_backups) == len(set(successful_backups)), (
-                "All backup names should be unique (race condition test)"
-            )
+            assert len(successful_backups) == len(
+                set(successful_backups)
+            ), "All backup names should be unique (race condition test)"
 
             # Each backup name should contain a UUID suffix
             for backup_name in successful_backups:
                 # Format: filename.backup.YYYYMMDD_HHMMSS_microseconds_uuid
-                parts = backup_name.split('_')
+                parts = backup_name.split("_")
                 assert len(parts) >= 4, f"Backup name should have UUID suffix: {backup_name}"
 
                 # The last part should be an 8-character UUID
@@ -242,10 +232,7 @@ class TestResourceManagement:
     @pytest.fixture
     def swag_service(self, temp_dir):
         """Create SwagManagerService instance for testing."""
-        return SwagManagerService(
-            config_path=temp_dir,
-            template_path=Path("templates")
-        )
+        return SwagManagerService(config_path=temp_dir, template_path=Path("templates"))
 
     @pytest.mark.asyncio
     async def test_http_session_cleanup(self, swag_service):
@@ -374,7 +361,7 @@ class TestConcurrencyUtilities:
     async def test_async_line_reader_memory_efficiency(self):
         """Test AsyncLineReader handles large files efficiently."""
         # Create a test file with many lines
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             for i in range(1000):
                 f.write(f"Line {i}: This is a test line with some content\n")
             temp_file = Path(f.name)

@@ -1,11 +1,11 @@
 """Comprehensive error code system for SWAG MCP."""
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Structured error codes for better error categorization and handling."""
 
     # Validation errors (E001-E099)
@@ -83,9 +83,7 @@ class SwagOperationError(Exception):
 
 
 def create_validation_error(
-    code: ErrorCode,
-    message: str,
-    context: dict[str, Any] | None = None
+    code: ErrorCode, message: str, context: dict[str, Any] | None = None
 ) -> SwagValidationError:
     """Create validation errors with structured error codes."""
     return SwagValidationError(code=code, message=message, context=context)
@@ -95,12 +93,9 @@ def create_operation_error(
     code: ErrorCode,
     message: str,
     context: dict[str, Any] | None = None,
-    original_error: Exception | None = None
+    original_error: Exception | None = None,
 ) -> SwagOperationError:
     """Create operation errors with structured error codes."""
     return SwagOperationError(
-        code=code,
-        message=message,
-        context=context,
-        original_error=original_error
+        code=code, message=message, context=context, original_error=original_error
     )

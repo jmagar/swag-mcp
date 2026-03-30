@@ -56,6 +56,7 @@ class TestErrorHandlingUtils:
 
     def test_create_user_friendly_error_validation(self):
         """Test user-friendly error creation for validation errors."""
+
         # Test with a ValidationError-like error
         # (the function checks for "ValidationError" in type name)
         class ValidationError(Exception):
@@ -104,6 +105,7 @@ class TestErrorHandlingUtils:
     def test_create_user_friendly_error_toolerror_inner(self):
         """ToolError with inner message should be unwrapped and mapped/sanitized."""
         from fastmcp.exceptions import ToolError
+
         err = ToolError("Error calling tool 'swag': ValueError: invalid domain format")
         result = create_user_friendly_error(err)
         assert isinstance(result, str)

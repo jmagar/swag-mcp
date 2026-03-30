@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 import aiofiles
 
 logger = logging.getLogger(__name__)
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 async def bounded_gather(*coros: Awaitable[T], limit: int = 10) -> list[T]:
@@ -88,7 +88,7 @@ class AsyncLineReader:
         lines_read = 0
 
         try:
-            async with aiofiles.open(self.file_path, encoding='utf-8', errors='replace') as f:
+            async with aiofiles.open(self.file_path, encoding="utf-8", errors="replace") as f:
                 buffer = ""
 
                 while lines_read < max_lines:
@@ -96,15 +96,15 @@ class AsyncLineReader:
                     if not chunk:
                         # Handle last line if buffer has content
                         if buffer and lines_read < max_lines:
-                            yield buffer + '\n'
+                            yield buffer + "\n"
                             lines_read += 1
                         break
 
                     buffer += chunk
 
-                    while '\n' in buffer and lines_read < max_lines:
-                        line, buffer = buffer.split('\n', 1)
-                        yield line + '\n'
+                    while "\n" in buffer and lines_read < max_lines:
+                        line, buffer = buffer.split("\n", 1)
+                        yield line + "\n"
                         lines_read += 1
 
                     # Yield control to event loop periodically
@@ -127,7 +127,7 @@ class AsyncResourceManager:
         self._resources: list[tuple] = []
         self._entered = False
 
-    def add_resource(self, resource: Any, cleanup_method: str = '__aexit__') -> None:
+    def add_resource(self, resource: Any, cleanup_method: str = "__aexit__") -> None:
         """Add a resource to be managed.
 
         Args:
@@ -143,7 +143,7 @@ class AsyncResourceManager:
 
         try:
             for resource, _ in self._resources:
-                if hasattr(resource, '__aenter__'):
+                if hasattr(resource, "__aenter__"):
                     entered_resource = await resource.__aenter__()
                     entered_resources.append(entered_resource)
                 else:
@@ -188,9 +188,7 @@ class AsyncResourceManager:
 
 
 async def with_timeout_and_fallback(
-    coro: Awaitable[T],
-    timeout_seconds: float,
-    fallback_value: T | None = None
+    coro: Awaitable[T], timeout_seconds: float, fallback_value: T | None = None
 ) -> T | None:
     """Execute coroutine with timeout and fallback value.
 
@@ -225,7 +223,7 @@ async def retry_with_backoff(
     max_retries: int = 3,
     initial_delay: float = 1.0,
     backoff_multiplier: float = 2.0,
-    max_delay: float = 60.0
+    max_delay: float = 60.0,
 ) -> T:
     """Retry coroutine with exponential backoff.
 

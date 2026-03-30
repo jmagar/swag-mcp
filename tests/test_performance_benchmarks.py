@@ -144,7 +144,7 @@ class TestAsyncUtilityPerformance:
         """Compare AsyncLineReader performance vs traditional file reading."""
 
         # Create a large test file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             for i in range(10000):
                 f.write(f"Line {i:05d}: This is a test line with some content for benchmarking\n")
             temp_file = Path(f.name)
@@ -192,8 +192,8 @@ class TestAsyncUtilityPerformance:
             assert performance_ratio < 3.0, f"Async reader too slow: {performance_ratio:.2f}x"
 
             # Memory usage should be similar or better
-            memory_ratio = (
-                abs(tracker_async.memory_delta_mb) / max(abs(tracker_sync.memory_delta_mb), 1)
+            memory_ratio = abs(tracker_async.memory_delta_mb) / max(
+                abs(tracker_sync.memory_delta_mb), 1
             )
             assert memory_ratio < 2.0, f"Async reader uses too much memory: {memory_ratio:.2f}x"
 
@@ -214,10 +214,7 @@ class TestSwagManagerPerformance:
     @pytest.fixture
     def swag_service(self, temp_dir):
         """Create SwagManagerService instance for testing."""
-        return SwagManagerService(
-            config_path=temp_dir,
-            template_path=Path("templates")
-        )
+        return SwagManagerService(config_path=temp_dir, template_path=Path("templates"))
 
     @pytest.mark.asyncio
     async def test_config_listing_performance_scaling(self, swag_service):
@@ -241,12 +238,14 @@ class TestSwagManagerPerformance:
 
             tracker.stop()
 
-            performance_data.append({
-                'count': count,
-                'time': tracker.elapsed_time,
-                'memory': tracker.memory_delta_mb,
-                'found': result.total_count
-            })
+            performance_data.append(
+                {
+                    "count": count,
+                    "time": tracker.elapsed_time,
+                    "memory": tracker.memory_delta_mb,
+                    "found": result.total_count,
+                }
+            )
 
             print(f"{count} files: {tracker.elapsed_time:.3f}s, {tracker.memory_delta_mb:.2f}MB")
 
@@ -254,8 +253,8 @@ class TestSwagManagerPerformance:
             assert result.total_count >= count
 
         # Performance should scale reasonably (not exponentially)
-        times = [data['time'] for data in performance_data]
-        counts = [data['count'] for data in performance_data]
+        times = [data["time"] for data in performance_data]
+        counts = [data["count"] for data in performance_data]
 
         # Calculate scaling factor (time ratio vs count ratio)
         if len(times) >= 2:
@@ -264,8 +263,7 @@ class TestSwagManagerPerformance:
             scaling_factor = time_ratio / count_ratio
 
             print(
-                f"Scaling factor: {scaling_factor:.2f} "
-                f"(should be close to 1.0 for linear scaling)"
+                f"Scaling factor: {scaling_factor:.2f} (should be close to 1.0 for linear scaling)"
             )
 
             # Should scale better than quadratically
@@ -291,8 +289,7 @@ class TestSwagManagerPerformance:
         tracker.start()
 
         read_tasks = [
-            concurrent_read_operation(f"concurrent{i:02d}.subdomain.conf")
-            for i in range(20)
+            concurrent_read_operation(f"concurrent{i:02d}.subdomain.conf") for i in range(20)
         ]
         results = await asyncio.gather(*read_tasks, return_exceptions=True)
 
@@ -351,10 +348,7 @@ class TestMemoryLeakDetection:
     @pytest.fixture
     def swag_service(self, temp_dir):
         """Create SwagManagerService instance for testing."""
-        return SwagManagerService(
-            config_path=temp_dir,
-            template_path=Path("templates")
-        )
+        return SwagManagerService(config_path=temp_dir, template_path=Path("templates"))
 
     @pytest.mark.asyncio
     async def test_repeated_operations_memory_stability(self, swag_service):
@@ -441,9 +435,9 @@ class TestMemoryLeakDetection:
 
         # Locks should not accumulate indefinitely
         # Some may remain if they're still in use, but not all 100
-        assert final_lock_count < after_ops_count or final_lock_count < 50, (
-            "File locks may be accumulating without cleanup"
-        )
+        assert (
+            final_lock_count < after_ops_count or final_lock_count < 50
+        ), "File locks may be accumulating without cleanup"
 
 
 @pytest.mark.benchmark

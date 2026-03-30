@@ -4,14 +4,14 @@ This module provides core configuration file operations including create, read,
 update, and delete (CRUD) functionality with automatic nginx syntax validation.
 """
 
+import errno
 import logging
 import re
 import tempfile
 from pathlib import Path
 
-import aiofiles
-
-from swag_mcp.core.constants import LIST_FILTERS
+from swag_mcp.core.config import config
+from swag_mcp.core.constants import LIST_FILTERS, VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import (
     ListFilterType,
     SwagConfigRequest,
@@ -24,15 +24,14 @@ from swag_mcp.models.config import (
 from swag_mcp.services.backup_manager import BackupManager
 from swag_mcp.services.config_updaters import ConfigFieldUpdaters
 from swag_mcp.services.file_operations import FileOperations
+from swag_mcp.services.filesystem import FilesystemBackend
 from swag_mcp.services.template_manager import TemplateManager
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.formatters import build_template_filename
 from swag_mcp.utils.validators import (
-    detect_and_handle_encoding,
     validate_config_filename,
     validate_domain_format,
-    validate_file_content_safety_async,
     validate_service_name,
     validate_upstream_port,
 )
@@ -73,6 +72,7 @@ class ConfigOperations:
             backup_manager: Backup creation and management service
             file_ops: File operation utilities
             updaters: Configuration field update handlers
+
         """
         self.config_path = config_path
         self.template_manager = template_manager
@@ -80,15 +80,17 @@ class ConfigOperations:
         self.backup_manager = backup_manager
         self.file_ops = file_ops
         self.updaters = updaters
-        self._directory_checked = False
 
         logger.info(f"Initialized ConfigOperations with path: {config_path}")
 
-    def _ensure_config_directory(self) -> None:
-        """Ensure the configuration directory exists."""
-        if not self._directory_checked:
-            self.config_path.mkdir(parents=True, exist_ok=True)
-            self._directory_checked = True
+    @property
+    def fs(self) -> FilesystemBackend:
+        """Access filesystem backend via file_ops."""
+        return self.file_ops.fs
+
+    async def _ensure_config_directory(self) -> None:
+        """Ensure the configuration directory exists (delegates to file_ops)."""
+        await self.file_ops.ensure_config_directory()
 
     async def list_configs(self, list_filter: ListFilterType = "all") -> SwagListResult:
         """List configuration files based on filter type.
@@ -101,6 +103,7 @@ class ConfigOperations:
 
         Raises:
             ValueError: If list_filter is invalid
+
         """
         # Validate filter parameter
         if list_filter not in LIST_FILTERS:
@@ -110,20 +113,19 @@ class ConfigOperations:
             )
 
         logger.info(f"Listing configurations of type: {list_filter}")
-        self._ensure_config_directory()
+        await self._ensure_config_directory()
 
         configs = []
 
         if list_filter in ["all", "active"]:
             # List active configurations (.conf files, not .sample)
-            active_configs = [
-                f.name for f in self.config_path.glob("*.conf") if not f.name.endswith(".sample")
-            ]
+            active_files = await self.fs.glob(str(self.config_path), "*.conf")
+            active_configs = [f for f in active_files if not f.endswith(".sample")]
             configs.extend(active_configs)
 
         if list_filter in ["all", "samples"]:
             # List sample configurations (.sample files)
-            sample_configs = [f.name for f in self.config_path.glob("*.sample")]
+            sample_configs = await self.fs.glob(str(self.config_path), "*.sample")
             configs.extend(sample_configs)
 
         # Remove duplicates and sort
@@ -146,47 +148,20 @@ class ConfigOperations:
             FileNotFoundError: If configuration file doesn't exist
             ValueError: If file contains binary content or invalid encoding
             OSError: For file system errors
+
         """
         logger.info(f"Reading configuration: {config_name}")
-        self._ensure_config_directory()
+        await self._ensure_config_directory()
 
-        # Validate config name directly (must be full filename)
         validated_name = validate_config_filename(config_name)
-
         config_file = self.config_path / validated_name
 
-        # Check if file exists first
-        if not config_file.exists():
+        if not await self.fs.exists(str(config_file)):
             raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
-        # Security validation: ensure file is safe to read as text
-        if not await validate_file_content_safety_async(config_file):
-            raise ValueError(
-                f"Configuration file {validated_name} contains binary content or is unsafe to read"
-            )
-
-        try:
-            # Read file with proper encoding detection and Unicode normalization
-            async with aiofiles.open(config_file, "rb") as f:
-                raw_content = await f.read()
-
-            # Detect encoding and normalize Unicode
-            content = detect_and_handle_encoding(raw_content)
-
-        except OSError as e:
-            handle_os_error(e, "reading configuration file", validated_name)
-        except (ValueError, UnicodeDecodeError) as e:
-            raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters: "
-                f"{validated_name}: {str(e)}"
-            ) from e
-        except Exception as e:
-            import errno
-
-            raise OSError(
-                errno.EIO,
-                f"Unexpected error reading configuration file: {validated_name}: {str(e)}",
-            ) from e
+        content = await self.file_ops.read_text_safe(
+            str(config_file), f"configuration file {validated_name}"
+        )
 
         logger.info(f"Successfully read {len(content)} characters from {validated_name}")
         return content
@@ -206,6 +181,7 @@ class ConfigOperations:
         Raises:
             ValueError: If template rendering or validation fails
             OSError: For file system errors
+
         """
         # Extract service_name and base_type from config_name
         config_name = request.config_name  # e.g., "jellyfin.subdomain.conf"
@@ -226,14 +202,14 @@ class ConfigOperations:
         template_type = f"swag-compliant-mcp-{base_type}"
 
         logger.info(f"Creating {template_type} configuration for {service_name} ({config_name})")
-        self._ensure_config_directory()
+        await self._ensure_config_directory()
 
         # Security validation: validate all input parameters
         validated_service_name = validate_service_name(service_name)
         validated_server_name = validate_domain_format(request.server_name)
         validated_port = validate_upstream_port(request.upstream_port)
-        # Validate upstream_app with regex pattern
-        if not re.match(r"^[A-Za-z0-9_.-]+$", request.upstream_app):
+        # Validate upstream_app with canonical VALID_UPSTREAM_PATTERN from constants
+        if not re.match(VALID_UPSTREAM_PATTERN, request.upstream_app):
             raise ValueError(f"Invalid upstream app name: {request.upstream_app}")
 
         # Determine template and filename
@@ -245,7 +221,7 @@ class ConfigOperations:
         file_lock = await self.file_ops.get_file_lock(config_file)
         async with file_lock:
             # Check if configuration already exists
-            if config_file.exists():
+            if await self.fs.exists(str(config_file)):
                 raise ValueError(f"Configuration {filename} already exists")
 
             try:
@@ -262,6 +238,9 @@ class ConfigOperations:
                     "mcp_upstream_proto": request.mcp_upstream_proto,
                     "auth_method": request.auth_method,
                     "enable_quic": request.enable_quic,
+                    # OAuth gateway variables
+                    "oauth_upstream": config.oauth_upstream,
+                    "auth_server_url": config.auth_server_url,
                 }
 
                 # Render template with validated variables
@@ -272,9 +251,7 @@ class ConfigOperations:
 
             # CRITICAL SAFETY FEATURE: Validate nginx syntax before writing
             # Write to temporary file first for validation
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".conf", delete=False
-            ) as temp_file:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as temp_file:
                 temp_file.write(content)
                 temp_path = Path(temp_file.name)
 
@@ -308,6 +285,7 @@ class ConfigOperations:
         Raises:
             ValueError: If validation fails or content is invalid
             OSError: For file system errors
+
         """
         logger.info(f"Updating configuration: {edit_request.config_name}")
 
@@ -323,7 +301,7 @@ class ConfigOperations:
         backup_name = None
 
         # Create backup if requested and file exists
-        if edit_request.create_backup and config_file.exists():
+        if edit_request.create_backup and await self.fs.exists(str(config_file)):
             backup_name = await self.backup_manager.create_backup(validated_name)
             logger.info(f"Created backup: {backup_name}")
 
@@ -367,16 +345,19 @@ class ConfigOperations:
         Raises:
             ValueError: If update field is unsupported or validation fails
             FileNotFoundError: If configuration file doesn't exist
+
         """
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
         content = await self.read_config(update_request.config_name)
 
-        # Create backup if requested
+        # Create backup if requested (pass content to avoid double read)
         backup_name = None
         if update_request.create_backup:
-            backup_name = await self.backup_manager.create_backup(update_request.config_name)
+            backup_name = await self.backup_manager.create_backup(
+                update_request.config_name, content=content
+            )
 
         # Delegate to ConfigFieldUpdaters service
         return await self.updaters.update_field(
@@ -399,6 +380,7 @@ class ConfigOperations:
             FileNotFoundError: If configuration file doesn't exist
             ValueError: If file is unsafe to read
             OSError: For file system errors
+
         """
         logger.info(f"Removing configuration: {remove_request.config_name}")
 
@@ -407,54 +389,24 @@ class ConfigOperations:
 
         config_file = self.config_path / validated_name
 
-        # Security validation: ensure file is safe to read as text
-        if not await validate_file_content_safety_async(config_file):
-            raise ValueError(
-                f"Configuration file {validated_name} contains binary content or is unsafe to read"
-            )
+        if not await self.fs.exists(str(config_file)):
+            raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
-        # Read content for backup and response with error handling and Unicode normalization
-        try:
-            # Read file with proper encoding detection and Unicode normalization
-            async with aiofiles.open(config_file, "rb") as f:
-                raw_content = await f.read()
-
-            # Detect encoding and normalize Unicode
-            content = detect_and_handle_encoding(raw_content)
-
-        except OSError as e:
-            handle_os_error(e, "reading configuration file for removal", validated_name)
-        except (ValueError, UnicodeDecodeError) as e:
-            raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters "
-                f"for removal: {validated_name}: {str(e)}"
-            ) from e
-        except Exception as e:
-            import errno
-
-            raise OSError(
-                errno.EIO,
-                (
-                    f"Unexpected error reading configuration file for removal: "
-                    f"{validated_name}: {str(e)}"
-                ),
-            ) from e
+        content = await self.file_ops.read_text_safe(
+            str(config_file), f"configuration file {validated_name}"
+        )
 
         backup_name = None
-
-        # Create backup if requested
         if remove_request.create_backup:
-            backup_name = await self.backup_manager.create_backup(validated_name)
+            backup_name = await self.backup_manager.create_backup(validated_name, content=content)
             logger.info(f"Created backup: {backup_name}")
 
         # Remove the configuration file with proper error handling
         try:
-            config_file.unlink()
+            await self.fs.unlink(str(config_file))
         except OSError as e:
             handle_os_error(e, "removing configuration file", validated_name)
         except Exception as e:
-            import errno
-
             raise OSError(
                 errno.EIO,
                 f"Unexpected error removing configuration file: {validated_name}: {str(e)}",

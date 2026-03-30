@@ -161,7 +161,8 @@ class PluginRegistry:
         """
         if enabled_only:
             return {
-                name: plugin for name, plugin in self._plugins.items()
+                name: plugin
+                for name, plugin in self._plugins.items()
                 if name in self._enabled_plugins
             }
         return self._plugins.copy()
@@ -210,12 +211,7 @@ class PluginRegistry:
         """
         return plugin_name in self._enabled_plugins
 
-    async def execute_plugin(
-        self,
-        plugin_name: str,
-        ctx: Context,
-        **kwargs: Any
-    ) -> str:
+    async def execute_plugin(self, plugin_name: str, ctx: Context, **kwargs: Any) -> str:
         """Execute a plugin by name.
 
         Args:

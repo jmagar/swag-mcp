@@ -83,4 +83,3 @@ class TestServerFunctions:
         for filename, expected in edge_cases:
             result = _extract_service_name(filename)
             assert result == expected
-

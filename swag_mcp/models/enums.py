@@ -1,9 +1,9 @@
 """Enum definitions for SWAG MCP server."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class SwagAction(str, Enum):
+class SwagAction(StrEnum):
     """Actions for SWAG configuration management."""
 
     LIST = "list"
@@ -17,7 +17,7 @@ class SwagAction(str, Enum):
     HEALTH_CHECK = "health_check"
 
 
-class BackupSubAction(str, Enum):
+class BackupSubAction(StrEnum):
     """Sub-actions for backup management."""
 
     CLEANUP = "cleanup"

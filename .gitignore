@@ -146,9 +146,24 @@ Thumbs.db
 
 # Project specific
 *.log
+logs/*
+!logs/.gitkeep
+backups/*
+!backups/.gitkeep
 /.swag-mcp/
 tests/test-proxy-confs/*.backup.*
 tests/test-proxy-confs/*.conf
 
 # AI review and fix documentation
 *-fixes.md
+
+# Generated plans, reports, and superpowers docs
+docs/plans/
+docs/reports/
+docs/superpowers/
+docs/sessions
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

@@ -32,7 +32,7 @@ class StreamingResponse:
 
         """
         for i in range(0, len(text), self.chunk_size):
-            chunk = text[i:i + self.chunk_size]
+            chunk = text[i : i + self.chunk_size]
             yield chunk
             # Small delay to prevent overwhelming the client
             await asyncio.sleep(0.001)
@@ -75,9 +75,7 @@ class ConfigurationStreamer(StreamingResponse):
             logger.error(f"Error streaming config {config_name}: {e}")
             yield f"\nError reading configuration: {str(e)}"
 
-    async def stream_multiple_configs(
-        self, config_names: list[str]
-    ) -> AsyncIterator[str]:
+    async def stream_multiple_configs(self, config_names: list[str]) -> AsyncIterator[str]:
         """Stream multiple configuration files with separators.
 
         Args:
@@ -139,9 +137,7 @@ class LogStreamer(StreamingResponse):
             logger.error(f"Error streaming {log_type} logs: {e}")
             yield f"Error streaming logs: {str(e)}\n"
 
-    async def stream_live_logs(
-        self, log_type: str, duration: int = 60
-    ) -> AsyncIterator[str]:
+    async def stream_live_logs(self, log_type: str, duration: int = 60) -> AsyncIterator[str]:
         """Stream live logs for a specified duration.
 
         Args:
@@ -231,7 +227,7 @@ class ConfigurationWatcher:
             "type": "watcher_started",
             "path": str(self.config_path),
             "timestamp": datetime.now().isoformat(),
-            "message": "Configuration watcher started"
+            "message": "Configuration watcher started",
         }
 
         # Simulate periodic checks
@@ -249,18 +245,15 @@ class ConfigurationWatcher:
                     "timestamp": current_time.isoformat(),
                     "details": {
                         "size_change": "+150 bytes",
-                        "last_modified": current_time.isoformat()
-                    }
+                        "last_modified": current_time.isoformat(),
+                    },
                 }
-
 
 
 class BackupStreamer(StreamingResponse):
     """Streamer for backup operations with progress tracking."""
 
-    async def stream_backup_progress(
-        self, operation: str, files: list[str]
-    ) -> AsyncIterator[str]:
+    async def stream_backup_progress(self, operation: str, files: list[str]) -> AsyncIterator[str]:
         """Stream backup operation progress.
 
         Args:
@@ -291,6 +284,7 @@ class BackupStreamer(StreamingResponse):
 
 # Factory functions for easy streamer creation
 
+
 def create_config_streamer(chunk_size: int = 8192) -> ConfigurationStreamer:
     """Create a configuration streamer instance.
 
@@ -304,9 +298,7 @@ def create_config_streamer(chunk_size: int = 8192) -> ConfigurationStreamer:
     return ConfigurationStreamer(chunk_size)
 
 
-def create_log_streamer(
-    chunk_size: int = 8192, follow: bool = False
-) -> LogStreamer:
+def create_log_streamer(chunk_size: int = 8192, follow: bool = False) -> LogStreamer:
     """Create a log streamer instance.
 
     Args:
@@ -348,9 +340,8 @@ def create_backup_streamer(chunk_size: int = 8192) -> BackupStreamer:
 
 # Streaming response helper functions
 
-async def stream_large_response(
-    content: str, chunk_size: int = 8192
-) -> AsyncIterator[str]:
+
+async def stream_large_response(content: str, chunk_size: int = 8192) -> AsyncIterator[str]:
     """Stream large text content in chunks.
 
     Args:
@@ -366,9 +357,7 @@ async def stream_large_response(
         yield chunk
 
 
-async def stream_json_array(
-    items: list[Any], chunk_size: int = 10
-) -> AsyncIterator[str]:
+async def stream_json_array(items: list[Any], chunk_size: int = 10) -> AsyncIterator[str]:
     """Stream JSON array items in chunks.
 
     Args:
@@ -382,7 +371,7 @@ async def stream_json_array(
     yield "[\n"
 
     for i in range(0, len(items), chunk_size):
-        chunk = items[i:i + chunk_size]
+        chunk = items[i : i + chunk_size]
 
         for j, item in enumerate(chunk):
             if i + j > 0:  # Not the first item overall

@@ -5,7 +5,7 @@ import re
 import tempfile
 from pathlib import Path
 from re import Match
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable
 
 from swag_mcp.models.config import SwagConfigResult, SwagUpdateRequest
 from swag_mcp.services.file_operations import FileOperations
@@ -17,43 +17,27 @@ from swag_mcp.utils.error_codes import (
 )
 from swag_mcp.utils.validators import validate_mcp_path
 
-if TYPE_CHECKING:
-    from swag_mcp.services.swag_manager import SwagManagerService
-
 logger = logging.getLogger(__name__)
 
 
-class MCPOperations:
-    """Wrapper for MCP-related operations (adapter for incremental refactoring)."""
+@runtime_checkable
+class MCPOperationsProtocol(Protocol):
+    """Protocol for MCP location block operations.
 
-    def __init__(self, swag_manager: "SwagManagerService") -> None:
-        """Initialize MCP operations wrapper.
-
-        Args:
-            swag_manager: SwagManagerService instance to delegate to
-
-        """
-        self.swag_manager = swag_manager
+    eqf.20: Replaces the SwagManagerService wrapper to eliminate the circular import.
+    ConfigFieldUpdaters now accepts any object satisfying this interface instead of
+    depending on SwagManagerService directly.
+    """
 
     async def add_mcp_location(
-        self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
+        self, config_name: str, mcp_path: str, create_backup: bool
     ) -> SwagConfigResult:
-        """Add MCP location block to existing SWAG configuration.
+        """Add MCP location block to existing SWAG configuration."""
+        ...
 
-        Delegates to SwagManagerService.add_mcp_location() method.
 
-        Args:
-            config_name: Name of configuration file
-            mcp_path: Path for MCP location block (default: /mcp)
-            create_backup: Whether to create backup before modification
-
-        Returns:
-            SwagConfigResult with operation results
-
-        """
-        return await self.swag_manager.add_mcp_location(
-            config_name=config_name, mcp_path=mcp_path, create_backup=create_backup
-        )
+# Backward-compatible alias so swag_manager.py import still works during transition
+MCPOperations = MCPOperationsProtocol
 
 
 class ConfigFieldUpdaters:
@@ -64,7 +48,7 @@ class ConfigFieldUpdaters:
         config_path: Path,
         validation: ValidationService,
         file_ops: FileOperations,
-        mcp_ops: MCPOperations,
+        mcp_ops: MCPOperationsProtocol,
     ) -> None:
         """Initialize configuration field updaters.
 

@@ -73,7 +73,7 @@ class TestSwagManagerFocused:
         assert "eval" not in env.globals
         assert "exec" not in env.globals
         assert "range" not in env.globals  # Even range is not included for security
-        assert "len" not in env.globals    # Even len is not included for security
+        assert "len" not in env.globals  # Even len is not included for security
 
     def test_template_security_attribute_blocking(self, temp_service):
         """Test template security blocks dangerous attributes."""
@@ -121,10 +121,10 @@ class TestSwagManagerFocused:
         assert isinstance(result, str)
         assert content in result
 
-    def test_ensure_config_directory_existing(self, temp_service):
+    async def test_ensure_config_directory_existing(self, temp_service):
         """Test directory creation when directory exists."""
         # Should not raise error
-        temp_service.config_operations._ensure_config_directory()
+        await temp_service.config_operations._ensure_config_directory()
         assert temp_service.config_path.exists()
 
     async def test_safe_write_file_basic(self, temp_service):
@@ -279,7 +279,9 @@ class TestSwagManagerTemplateOperations:
 
     async def test_validate_template_exists_valid(self, temp_service_with_templates):
         """Test template existence validation for valid templates."""
-        result = await temp_service_with_templates.validate_template_exists("swag-compliant-mcp-subdomain")
+        result = await temp_service_with_templates.validate_template_exists(
+            "swag-compliant-mcp-subdomain"
+        )
         assert result is True
 
     async def test_validate_template_exists_invalid(self, temp_service_with_templates):
@@ -373,9 +375,9 @@ class TestSwagManagerMiscMethods:
         assert isinstance(basic_service.file_ops._active_transactions, dict)
 
     def test_directory_checked_flag(self, basic_service):
-        """Test directory checked flag initialization."""
-        assert hasattr(basic_service.config_operations, "_directory_checked")
-        assert isinstance(basic_service.config_operations._directory_checked, bool)
+        """Test directory checked flag initialization (delegated to file_ops)."""
+        assert hasattr(basic_service.file_ops, "_directory_checked")
+        assert isinstance(basic_service.file_ops._directory_checked, bool)
 
     def test_template_env_initialization(self, basic_service):
         """Test template environment is properly initialized."""
@@ -407,7 +409,7 @@ class TestSwagManagerIntegration:
 
             # Test transaction creation
             tx = service.begin_transaction()
-            assert tx.transaction_id.startswith("txn_")
+            assert tx.transaction_id.startswith("tx_")
 
             # Test file lock creation
             test_path = config_dir / "test.conf"

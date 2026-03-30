@@ -4,11 +4,7 @@ import asyncio
 import logging
 import ssl
 import time
-from collections import deque
-from pathlib import Path
-from typing import Any
 
-import aiofiles
 import aiohttp
 
 from swag_mcp.core.config import config
@@ -17,6 +13,7 @@ from swag_mcp.models.config import (
     SwagHealthCheckResult,
     SwagLogsRequest,
 )
+from swag_mcp.services.filesystem import FilesystemBackend, LocalFilesystem
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +21,21 @@ logger = logging.getLogger(__name__)
 class HealthMonitor:
     """Handles health checks and log access."""
 
-    def __init__(self) -> None:
-        """Initialize health monitor."""
+    def __init__(
+        self, fs: FilesystemBackend | None = None, swag_log_base_path: str = "/swag/log"
+    ) -> None:
+        """Initialize health monitor.
+
+        Args:
+            fs: Filesystem backend to use (defaults to LocalFilesystem)
+            swag_log_base_path: Base path for SWAG log files
+
+        """
         # HTTP session for health checks with connection pooling
         self._http_session: aiohttp.ClientSession | None = None
         self._session_lock = asyncio.Lock()
+        self.fs: FilesystemBackend = fs or LocalFilesystem()
+        self.swag_log_base_path = swag_log_base_path
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session with connection pooling.
@@ -191,56 +198,39 @@ class HealthMonitor:
         """
         logger.info(f"Getting SWAG logs: {logs_request.log_type}, {logs_request.lines} lines")
 
-        # Map log types to file paths (using /swag mount point)
+        # Map log types to file paths (using configurable base path)
         log_paths = {
-            "nginx-access": Path("/swag/log/nginx/access.log"),
-            "nginx-error": Path("/swag/log/nginx/error.log"),
-            "fail2ban": Path("/swag/log/fail2ban/fail2ban.log"),
-            "letsencrypt": Path("/swag/log/letsencrypt/letsencrypt.log"),
-            "renewal": Path("/swag/log/letsencrypt/renewal.log"),
+            "nginx-access": f"{self.swag_log_base_path}/nginx/access.log",
+            "nginx-error": f"{self.swag_log_base_path}/nginx/error.log",
+            "fail2ban": f"{self.swag_log_base_path}/fail2ban/fail2ban.log",
+            "letsencrypt": f"{self.swag_log_base_path}/letsencrypt/letsencrypt.log",
+            "renewal": f"{self.swag_log_base_path}/letsencrypt/renewal.log",
         }
 
-        log_file_path = log_paths.get(logs_request.log_type)
+        log_path = log_paths.get(logs_request.log_type)
 
-        if not log_file_path:
+        if not log_path:
             raise ValueError(f"Invalid log type: {logs_request.log_type}")
 
         try:
-            if not log_file_path.exists():
+            if not await self.fs.exists(log_path):
                 # Return helpful message if file doesn't exist
                 return (
-                    f"Log file not found: {log_file_path}\n"
+                    f"Log file not found: {log_path}\n"
                     "The log file may not exist yet or SWAG may not be running."
                 )
 
-            # Memory-efficient streaming approach using deque
-            # Read file in chunks and maintain only the requested number of lines in memory
-            max_lines = logs_request.lines
+            # Use filesystem backend to read last N lines efficiently
+            lines = await self.fs.read_tail_lines(log_path, logs_request.lines)
 
-            # Use deque with maxlen to automatically maintain only the last N lines
-            line_buffer: deque[str] = deque(maxlen=max_lines)
-
-            # Read file in streaming fashion
-            async with aiofiles.open(log_file_path, encoding="utf-8", errors="ignore") as f:
-                # For large files, we need to be memory-efficient
-                # Read the file line by line to avoid loading everything into memory
-                async for line in f:
-                    line_buffer.append(line)
-
-                    # Optional: If file is extremely large, we could add periodic yielding
-                    # This prevents blocking the event loop for too long
-                    # Every 1000 lines, yield control back to the event loop
-                    if len(line_buffer) == max_lines and len(line_buffer) % 1000 == 0:
-                        await asyncio.sleep(0)  # Yield control
-
-            if not line_buffer:
+            if not lines:
                 return f"No log entries found in {logs_request.log_type} log."
 
-            # Convert deque to string efficiently
-            result = "".join(line_buffer)
+            # Convert lines to string efficiently
+            result = "".join(lines)
             logger.info(
-                f"Successfully retrieved {len(line_buffer)} lines from {logs_request.log_type} "
-                f"(memory-efficient streaming)"
+                f"Successfully retrieved {len(lines)} lines from {logs_request.log_type} "
+                f"(filesystem backend)"
             )
             return result
 

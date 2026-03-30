@@ -9,8 +9,10 @@ from pydantic_settings import BaseSettings
 from ..utils.validators import validate_empty_string
 from .constants import (
     DEFAULT_AUTH_METHOD,
+    DEFAULT_AUTH_SERVER_URL,
     DEFAULT_HOST,
     DEFAULT_LOG_LEVEL,
+    DEFAULT_OAUTH_UPSTREAM,
 )
 
 
@@ -40,6 +42,23 @@ class SwagConfig(BaseSettings):
         description="Path to SWAG proxy configurations directory",
     )
 
+    proxy_confs_uri: str = Field(
+        default="",
+        description=(
+            "URI for proxy confs path. Supports remote SSH: "
+            "[user@]host[:port]:/path or local: /path. "
+            "If set, takes precedence over proxy_confs_path."
+        ),
+    )
+
+    swag_log_base_path: str = Field(
+        default="/swag/log",
+        description=(
+            "Base path for SWAG log files. On the same machine as proxy_confs_path "
+            "(local or remote via SSH)."
+        ),
+    )
+
     template_path: Path = Field(
         default=Path("templates"), description="Path to Jinja2 templates directory"
     )
@@ -47,6 +66,17 @@ class SwagConfig(BaseSettings):
     # Default settings
     default_auth_method: str = Field(
         default="authelia", description="Default authentication method for new configurations"
+    )
+
+    # OAuth gateway settings (used in MCP template generation)
+    oauth_upstream: str = Field(
+        default=DEFAULT_OAUTH_UPSTREAM,
+        description="OAuth gateway upstream address (Docker container name or IP:port)",
+    )
+
+    auth_server_url: str = Field(
+        default=DEFAULT_AUTH_SERVER_URL,
+        description="Public OAuth authorization server URL for Protected Resource Metadata",
     )
 
     default_quic_enabled: bool = Field(
@@ -117,7 +147,7 @@ class SwagConfig(BaseSettings):
     # Health check settings
     health_check_insecure: bool = Field(
         default=False,
-        description="Disable SSL certificate verification for health checks (not recommended)"
+        description="Disable SSL certificate verification for health checks (not recommended)",
     )
 
     # Validators to handle empty string values

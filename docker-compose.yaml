@@ -14,9 +14,19 @@ services:
     # Volume mounts
     volumes:
       # Single mount for all SWAG access (proxy-confs and logs)
+      # Not needed when using SWAG_MCP_PROXY_CONFS_URI for remote SSH access
       - /mnt/appdata/swag:/swag
       # Persistent storage for MCP server logs
       - ${SWAG_MCP_LOG_DIRECTORY}:/app/.swag-mcp/logs
+      # Docker socket for container API access
+      - /var/run/docker.sock:/var/run/docker.sock
+      # SSH keys for remote SWAG server access (optional)
+      # Uncomment if using SWAG_MCP_PROXY_CONFS_URI with SSH
+      # - ~/.ssh:/root/.ssh:ro
+
+    # Docker group access for socket permissions
+    group_add:
+      - ${DOCKER_GID:-999}  # Docker group ID (default 999)
 
     # Network configuration
     ports:
@@ -33,6 +43,10 @@ services:
 
       # MCP Server settings
       - SWAG_MCP_HOST=${SWAG_MCP_HOST}
+
+      # Remote SWAG server (optional - for SSH access)
+      # - SWAG_MCP_PROXY_CONFS_URI=${SWAG_MCP_PROXY_CONFS_URI}
+      # - SWAG_MCP_SWAG_LOG_BASE_PATH=${SWAG_MCP_SWAG_LOG_BASE_PATH}
 
       # Logging
       - SWAG_MCP_LOG_LEVEL=${SWAG_MCP_LOG_LEVEL}

@@ -199,8 +199,12 @@ class ValidationService:
             temp_path.unlink(missing_ok=True)
 
         # Count changes
-        lines_added = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
-        lines_removed = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
+        lines_added = sum(
+            1 for line in diff_lines if line.startswith("+") and not line.startswith("+++")
+        )
+        lines_removed = sum(
+            1 for line in diff_lines if line.startswith("-") and not line.startswith("---")
+        )
         lines_changed = max(lines_added, lines_removed)
 
         result = {

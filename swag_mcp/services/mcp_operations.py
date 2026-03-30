@@ -9,19 +9,19 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
-import aiofiles
-
+from swag_mcp.core.config import config as global_config
+from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
-    detect_and_handle_encoding,
     validate_config_filename,
-    validate_file_content_safety_async,
     validate_mcp_path,
 )
 
 if TYPE_CHECKING:
     from swag_mcp.services.backup_manager import BackupManager
+    from swag_mcp.services.config_operations import ConfigOperations
     from swag_mcp.services.file_operations import FileOperations
+    from swag_mcp.services.filesystem import FilesystemBackend
     from swag_mcp.services.template_manager import TemplateManager
     from swag_mcp.services.validation import ValidationService
 
@@ -38,6 +38,7 @@ class MCPOperations:
         validation: "ValidationService",
         file_ops: "FileOperations",
         backup_manager: "BackupManager | None" = None,
+        config_ops: "ConfigOperations | None" = None,
     ) -> None:
         """Initialize MCP operations.
 
@@ -47,6 +48,7 @@ class MCPOperations:
             validation: ValidationService instance for validation operations
             file_ops: FileOperations instance for file operations
             backup_manager: Optional BackupManager instance for backup operations
+            config_ops: Optional ConfigOperations instance to delegate read_config
 
         """
         self.config_path = config_path
@@ -54,9 +56,17 @@ class MCPOperations:
         self.validation = validation
         self.file_ops = file_ops
         self.backup_manager = backup_manager
+        self._config_ops = config_ops
+
+    @property
+    def fs(self) -> "FilesystemBackend":
+        """Access filesystem backend through file_ops."""
+        return self.file_ops.fs
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content.
+
+        Delegates to ConfigOperations if available, otherwise reads directly.
 
         Args:
             config_name: Name of the configuration file to read
@@ -69,35 +79,19 @@ class MCPOperations:
             ValueError: If file content is not safe to read
 
         """
-        logger.info(f"Reading configuration: {config_name}")
+        if self._config_ops is not None:
+            return await self._config_ops.read_config(config_name)
 
-        # Validate config name directly (must be full filename)
+        # Fallback: read directly via file_ops
         validated_name = validate_config_filename(config_name)
         config_file = self.config_path / validated_name
 
-        # Check if file exists first
-        if not config_file.exists():
+        if not await self.fs.exists(str(config_file)):
             raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
-        # Security validation: ensure file is safe to read as text
-        if not await validate_file_content_safety_async(config_file):
-            raise ValueError(f"Configuration file {validated_name} is not safe to read as text")
-
-        # Read file with proper encoding detection and Unicode normalization
-        try:
-            async with aiofiles.open(config_file, "rb") as f:
-                raw_content = await f.read()
-
-            # Detect encoding and normalize Unicode
-            content = detect_and_handle_encoding(raw_content)
-            logger.debug(f"Successfully read configuration {validated_name}")
-            return content
-
-        except (ValueError, UnicodeDecodeError) as e:
-            raise ValueError(
-                f"Configuration file has invalid text encoding or Unicode characters: "
-                f"{validated_name}: {str(e)}"
-            ) from e
+        return await self.file_ops.read_text_safe(
+            str(config_file), f"configuration file {validated_name}"
+        )
 
     async def add_mcp_location(
         self, config_name: str, mcp_path: str = "/mcp", create_backup: bool = True
@@ -155,10 +149,27 @@ class MCPOperations:
                 upstream_app = self.extract_upstream_value(content, "upstream_app")
                 upstream_port = self.extract_upstream_value(content, "upstream_port")
                 upstream_proto_raw = self.extract_upstream_value(content, "upstream_proto")
+
+                # Re-validate extracted values to guard against manually-edited configs
+                if not re.match(VALID_UPSTREAM_PATTERN, upstream_app):
+                    raise ValueError(
+                        f"Invalid upstream_app in existing config: {upstream_app!r}. "
+                        "The config may have been manually edited with an invalid value."
+                    )
+                try:
+                    port_int = int(upstream_port)
+                    if not (1 <= port_int <= 65535):
+                        raise ValueError(f"Port out of range: {port_int}")
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Invalid upstream_port in existing config: {upstream_port!r}. "
+                        "The config may have been manually edited with an invalid value."
+                    ) from exc
+
                 # Validate and cast upstream_proto to Literal type
                 if upstream_proto_raw not in ("http", "https"):
                     upstream_proto_raw = "http"  # Default to safe value
-                upstream_proto = cast(Literal["http", "https"], upstream_proto_raw)
+                upstream_proto = cast("Literal['http', 'https']", upstream_proto_raw)
                 auth_method = self.extract_auth_method(content)
 
                 # Render MCP location block
@@ -181,7 +192,18 @@ class MCPOperations:
                 )
 
                 # Validate nginx syntax before committing (abort on failure)
-                if not await self.validation.validate_nginx_syntax(config_file):
+                # eqf.14: Skip local nginx -t in SSH mode — local nginx cannot validate
+                # remote SWAG configs (different nginx version/modules on remote host).
+                # The remote SWAG will validate on reload; errors surface there instead.
+                from swag_mcp.services.ssh_filesystem import SSHFilesystem  # noqa: PLC0415
+
+                if isinstance(self.fs, SSHFilesystem):
+                    logger.warning(
+                        "SSH mode: skipping local nginx syntax validation for %s. "
+                        "Remote SWAG will validate on next reload.",
+                        config_name,
+                    )
+                elif not await self.validation.validate_nginx_syntax(config_file):
                     raise ValueError("Generated configuration contains invalid nginx syntax")
 
                 logger.info(f"Successfully added MCP location block to {config_name}")
@@ -236,6 +258,13 @@ class MCPOperations:
             simple_pattern = r"include\s+/config/nginx/(\w+)\.conf;"
             matches = re.findall(simple_pattern, content)
 
+        # Check for OAuth gateway pattern: auth_request /_oauth_verify
+        if (
+            "auth_request /_oauth_verify" in content
+            or "auth_request /{{ service_name }}/_oauth_verify" in content
+        ):
+            return "oauth"
+
         # Also check for basic auth
         if "auth_basic" in content and "auth_basic_user_file" in content:
             return "basic"
@@ -285,6 +314,8 @@ class MCPOperations:
                 "upstream_port": upstream_port,
                 "upstream_proto": upstream_proto,
                 "auth_method": auth_method,
+                "oauth_upstream": global_config.oauth_upstream,
+                "auth_server_url": global_config.auth_server_url,
             }
 
             # Render template with validated variables using the template manager

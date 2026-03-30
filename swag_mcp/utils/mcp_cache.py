@@ -37,10 +37,7 @@ class MCPCache:
         self._lock = asyncio.Lock()
 
     async def get_or_set(
-        self,
-        key: str,
-        factory: Callable[[], Awaitable[Any]],
-        ttl: int | None = None
+        self, key: str, factory: Callable[[], Awaitable[Any]], ttl: int | None = None
     ) -> Any:
         """Get cached value or compute and cache new value.
 
@@ -130,12 +127,7 @@ class MCPCache:
             self._access_times[key] = time.time()
             return self._cache[key]["value"]
 
-    async def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: int | None = None
-    ) -> None:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set cache value.
 
         Args:
@@ -174,10 +166,7 @@ class MCPCache:
             else:
                 regex_pattern = pattern
 
-            keys_to_remove = [
-                key for key in self._cache
-                if regex_pattern.search(key)
-            ]
+            keys_to_remove = [key for key in self._cache if regex_pattern.search(key)]
 
             for key in keys_to_remove:
                 await self._remove_key(key)
@@ -195,7 +184,8 @@ class MCPCache:
         async with self._lock:
             current_time = time.time()
             expired_keys = [
-                key for key, timestamp in self._timestamps.items()
+                key
+                for key, timestamp in self._timestamps.items()
                 if current_time - timestamp >= self._cache[key]["ttl"]
             ]
 
@@ -217,7 +207,8 @@ class MCPCache:
         current_time = time.time()
         total_entries = len(self._cache)
         expired_entries = sum(
-            1 for key, timestamp in self._timestamps.items()
+            1
+            for key, timestamp in self._timestamps.items()
             if current_time - timestamp >= self._cache[key]["ttl"]
         )
 
@@ -286,6 +277,7 @@ def cached_result(
         Decorated function
 
     """
+
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -304,7 +296,10 @@ def cached_result(
                 if kwargs:
                     kwargs_str = str(sorted(kwargs.items()))
                     # MD5 used for cache key generation only, not cryptographic purposes
-                    kwargs_hash = hashlib.md5(kwargs_str.encode(), usedforsecurity=False).hexdigest()[:8]
+                    kwargs_hash = hashlib.md5(
+                        kwargs_str.encode(),
+                        usedforsecurity=False,
+                    ).hexdigest()[:8]
                     key = f"{key}:{kwargs_hash}"
 
             # Try to get from cache or compute
@@ -314,6 +309,7 @@ def cached_result(
             return await cache.get_or_set(key, compute, ttl)
 
         return wrapper
+
     return decorator
 
 
@@ -398,13 +394,12 @@ class CacheCleanupTask:
                 expired_count = await cache.cleanup_expired()
                 if expired_count > 0:
                     stats = cache.get_stats()
-                    logger.debug(f"Cache cleanup: {expired_count} expired, "
-                               f"{stats['active_entries']} active entries")
+                    logger.debug(
+                        f"Cache cleanup: {expired_count} expired, "
+                        f"{stats['active_entries']} active entries"
+                    )
 
-                await asyncio.wait_for(
-                    self._stop_event.wait(),
-                    timeout=self.interval
-                )
+                await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval)
             except TimeoutError:
                 continue  # Normal timeout, continue cleanup loop
             except Exception as e:
