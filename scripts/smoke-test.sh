@@ -140,7 +140,11 @@ cleanup_on_exit() {
         mcp "{\"action\":\"remove\",\"config_name\":\"${TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
         mcp "{\"action\":\"remove\",\"config_name\":\"smoke-test-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
         mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authelia.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authentik.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
         mcp "{\"action\":\"remove\",\"config_name\":\"smoke-subfolder.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-mcp-sf.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-quic.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-remote-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
         cleanup_test_backups "$TEST_CONFIG"
         cleanup_test_backups "smoke-authelia"
         cleanup_test_backups "smoke-subfolder"
@@ -241,7 +245,11 @@ section "Preflight: cleanup stale test configs"
 mcp "{\"action\":\"remove\",\"config_name\":\"${TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 mcp "{\"action\":\"remove\",\"config_name\":\"smoke-test-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
 mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authelia.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authentik.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
 mcp "{\"action\":\"remove\",\"config_name\":\"smoke-subfolder.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+mcp "{\"action\":\"remove\",\"config_name\":\"smoke-mcp-sf.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+mcp "{\"action\":\"remove\",\"config_name\":\"smoke-quic.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+mcp "{\"action\":\"remove\",\"config_name\":\"smoke-remote-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
 echo "  (cleanup complete)"
 
 # Verify server is reachable before running destructive sections
@@ -297,6 +305,33 @@ assert_contains "$CONFIG_CONTENT" "$TEST_PORT" "upstream_port in nginx config"
 assert_contains "$CONFIG_CONTENT" "location /" "location block present"
 assert_contains "$CONFIG_CONTENT" "proxy_pass" "proxy_pass directive present"
 assert_not_contains "$CONFIG_CONTENT" "authelia" "no authelia (auth_method=none)"
+# All configs use swag-compliant-mcp templates — assert MCP security features present in every config
+assert_contains "$CONFIG_CONTENT" "origin_valid" "DNS rebinding protection (\$origin_valid) present"
+assert_contains "$CONFIG_CONTENT" ".well-known/oauth-protected-resource" "OAuth metadata endpoint present"
+assert_contains "$CONFIG_CONTENT" "proxy_send_timeout" "proxy_send_timeout directive present"
+assert_contains "$CONFIG_CONTENT" "chunked_transfer_encoding" "chunked transfer encoding present"
+
+section "2b. CREATE — QUIC/HTTP3 enabled"
+QUIC_CONFIG="smoke-quic.subdomain.conf"
+mcp "{\"action\":\"remove\",\"config_name\":\"${QUIC_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
+OUT=$(mcp "{
+  \"action\": \"create\",
+  \"config_name\": \"${QUIC_CONFIG}\",
+  \"server_name\": \"smoke-quic.example.com\",
+  \"upstream_app\": \"smoke-quic-app\",
+  \"upstream_port\": 9993,
+  \"auth_method\": \"none\",
+  \"enable_quic\": true
+}")
+assert_not_contains "$OUT" "error" "no error on QUIC config create"
+if [[ -f "${PROXY_CONFS_DIR}/${QUIC_CONFIG}" ]]; then
+    pass "QUIC config file exists on disk"
+    QUIC_CONTENT=$(cat "${PROXY_CONFS_DIR}/${QUIC_CONFIG}")
+    assert_contains "$QUIC_CONTENT" "quic" "listen quic directive present in config"
+else
+    fail "QUIC config file missing on disk"
+fi
+mcp "{\"action\":\"remove\",\"config_name\":\"${QUIC_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 
 # =============================================================================
 section "3. VIEW — read config content via MCP"
@@ -424,6 +459,10 @@ if [[ -f "${PROXY_CONFS_DIR}/${MCP_TEST_CONFIG}" ]]; then
     assert_contains "$MCP_CONTENT" "/mcp" "MCP endpoint location block"
     assert_contains "$MCP_CONTENT" "proxy_read_timeout" "extended timeout for AI tasks"
     assert_contains "$MCP_CONTENT" "proxy_pass" "proxy_pass directive present in MCP config"
+    assert_contains "$MCP_CONTENT" "origin_valid" "DNS rebinding protection in MCP config"
+    assert_contains "$MCP_CONTENT" ".well-known/oauth-protected-resource" "OAuth metadata endpoint in MCP config"
+    assert_contains "$MCP_CONTENT" "proxy_send_timeout 86400" "24hr send timeout for long AI ops"
+    assert_contains "$MCP_CONTENT" "chunked_transfer_encoding on" "chunked transfer encoding enabled"
 else
     fail "MCP config file missing on disk"
 fi
@@ -435,6 +474,45 @@ swag_reload_check "MCP subdomain CREATE"
 mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 
 # =============================================================================
+section "6b. CREATE — remote MCP upstream (separate mcp_upstream_app/port)"
+REMOTE_MCP_CONFIG="smoke-remote-mcp.subdomain.conf"
+mcp "{\"action\":\"remove\",\"config_name\":\"${REMOTE_MCP_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
+OUT=$(mcp "{
+  \"action\": \"create\",
+  \"config_name\": \"${REMOTE_MCP_CONFIG}\",
+  \"server_name\": \"remote-mcp.example.com\",
+  \"upstream_app\": \"main-app\",
+  \"upstream_port\": 8080,
+  \"upstream_proto\": \"http\",
+  \"mcp_upstream_app\": \"ai-gpu-server\",
+  \"mcp_upstream_port\": 9090,
+  \"mcp_upstream_proto\": \"http\",
+  \"auth_method\": \"none\"
+}")
+assert_not_contains "$OUT" "error" "no error on remote MCP upstream create"
+if [[ -f "${PROXY_CONFS_DIR}/${REMOTE_MCP_CONFIG}" ]]; then
+    pass "remote MCP config file exists on disk"
+    REMOTE_CONTENT=$(cat "${PROXY_CONFS_DIR}/${REMOTE_MCP_CONFIG}")
+    # /mcp routes to separate MCP upstream
+    assert_contains "$REMOTE_CONTENT" "ai-gpu-server" "separate MCP upstream app in config"
+    assert_contains "$REMOTE_CONTENT" "9090" "separate MCP upstream port in config"
+    # / routes to main app (both vars are set, ensure both values present)
+    assert_contains "$REMOTE_CONTENT" "main-app" "main upstream app in config"
+    assert_contains "$REMOTE_CONTENT" "8080" "main upstream port in config"
+    # Confirm they are set as distinct nginx variables
+    if echo "$REMOTE_CONTENT" | grep -q 'set \$upstream_app "main-app"' && \
+       echo "$REMOTE_CONTENT" | grep -q 'set \$mcp_upstream_app "ai-gpu-server"'; then
+        pass "upstream_app and mcp_upstream_app are distinct nginx variables"
+    else
+        fail "upstream_app / mcp_upstream_app variable separation not found"
+    fi
+    nginx_syntax_check "remote MCP upstream CREATE"
+else
+    fail "remote MCP config file missing on disk"
+fi
+mcp "{\"action\":\"remove\",\"config_name\":\"${REMOTE_MCP_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
+
+# =============================================================================
 section "7. LOGS — nginx error log"
 OUT=$(mcp '{"action":"logs","log_type":"nginx-error","lines":10}')
 assert_not_contains "$OUT" "\"error\":" "no error field in logs response"
@@ -442,6 +520,14 @@ assert_not_contains "$OUT" "\"error\":" "no error field in logs response"
 section "7a. LOGS — nginx access log"
 OUT=$(mcp '{"action":"logs","log_type":"nginx-access","lines":5}')
 assert_not_contains "$OUT" "\"error\":" "nginx-access log call succeeds"
+
+section "7b. LOGS — fail2ban log"
+OUT=$(mcp '{"action":"logs","log_type":"fail2ban","lines":5}')
+assert_not_contains "$OUT" "\"error\":" "fail2ban log call succeeds"
+
+section "7c. LOGS — letsencrypt log"
+OUT=$(mcp '{"action":"logs","log_type":"letsencrypt","lines":5}')
+assert_not_contains "$OUT" "\"error\":" "letsencrypt log call succeeds"
 
 # =============================================================================
 section "8. BACKUPS — list"
@@ -496,6 +582,30 @@ else
     fail "authelia config file missing on disk"
 fi
 
+# Authentik — different include pattern from authelia
+OUT=$(mcp "{
+  \"action\": \"create\",
+  \"config_name\": \"smoke-authentik.subdomain.conf\",
+  \"server_name\": \"smoke-authentik.example.com\",
+  \"upstream_app\": \"smoke-authentik-app\",
+  \"upstream_port\": 9996,
+  \"upstream_proto\": \"http\",
+  \"auth_method\": \"authentik\",
+  \"mcp_enabled\": false
+}")
+assert_not_contains "$OUT" "error" "no error creating authentik config"
+if [[ -f "${PROXY_CONFS_DIR}/smoke-authentik.subdomain.conf" ]]; then
+    pass "authentik config file exists on disk"
+    AUTHENTIK_CONTENT=$(cat "${PROXY_CONFS_DIR}/smoke-authentik.subdomain.conf")
+    assert_contains "$AUTHENTIK_CONTENT" "authentik-server.conf" "authentik-server.conf include present"
+    assert_contains "$AUTHENTIK_CONTENT" "authentik-location.conf" "authentik-location.conf include present"
+    assert_not_contains "$AUTHENTIK_CONTENT" "authelia" "no authelia directives in authentik config"
+    nginx_syntax_check "authentik config create"
+else
+    fail "authentik config file missing on disk"
+fi
+mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authentik.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
+
 # Verify auth_method=none has NO authelia includes (reuse existing TEST_CONFIG)
 if [[ -f "${PROXY_CONFS_DIR}/${TEST_CONFIG}" ]]; then
     NONE_CONTENT=$(cat "${PROXY_CONFS_DIR}/${TEST_CONFIG}")
@@ -524,6 +634,12 @@ if [[ -f "${PROXY_CONFS_DIR}/smoke-subfolder.subfolder.conf" ]]; then
     assert_contains "$SUBFOLDER_CONTENT" "proxy_pass" "proxy_pass present in subfolder config"
     # Subfolder shares parent vhost — should NOT have a dedicated server_name for this service
     assert_not_contains "$SUBFOLDER_CONTENT" "server_name smoke-subfolder.example.com" "no dedicated server_name in subfolder config"
+    # Path routing headers required for subfolder services
+    assert_contains "$SUBFOLDER_CONTENT" "X-Forwarded-Prefix" "X-Forwarded-Prefix header present"
+    assert_contains "$SUBFOLDER_CONTENT" "X-Script-Name" "X-Script-Name header present"
+    # MCP security features present in subfolder template too
+    assert_contains "$SUBFOLDER_CONTENT" "origin_valid" "DNS rebinding protection in subfolder config"
+    assert_contains "$SUBFOLDER_CONTENT" ".well-known/oauth-protected-resource" "OAuth metadata endpoint in subfolder config"
     # nginx_syntax_check for subfolder: the local template (365f17e) has fixed nested-if
     # blocks, but the running container image may be pre-fix. Detect and annotate.
     if command -v docker &>/dev/null; then
@@ -542,6 +658,44 @@ if [[ -f "${PROXY_CONFS_DIR}/smoke-subfolder.subfolder.conf" ]]; then
 else
     fail "subfolder config file missing on disk"
 fi
+
+section "11b. MCP-SUBFOLDER — MCP endpoint in subfolder routing"
+MCP_SUBFOLDER_CONFIG="smoke-mcp-sf.subfolder.conf"
+mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_SUBFOLDER_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
+OUT=$(mcp "{
+  \"action\": \"create\",
+  \"config_name\": \"${MCP_SUBFOLDER_CONFIG}\",
+  \"server_name\": \"swag.tootie.tv\",
+  \"upstream_app\": \"smoke-mcp-sf-app\",
+  \"upstream_port\": 9992,
+  \"upstream_proto\": \"http\",
+  \"auth_method\": \"none\",
+  \"mcp_enabled\": true
+}")
+assert_not_contains "$OUT" "error" "no error creating mcp-subfolder config"
+if [[ -f "${PROXY_CONFS_DIR}/${MCP_SUBFOLDER_CONFIG}" ]]; then
+    pass "mcp-subfolder config file exists on disk"
+    MCP_SF_CONTENT=$(cat "${PROXY_CONFS_DIR}/${MCP_SUBFOLDER_CONFIG}")
+    # MCP location block uses prefixed path
+    assert_contains "$MCP_SF_CONTENT" "location ^~ /smoke-mcp-sf/mcp" "MCP location block in subfolder (/service/mcp)"
+    assert_contains "$MCP_SF_CONTENT" "proxy_buffering off" "zero-buffering in mcp-subfolder"
+    assert_contains "$MCP_SF_CONTENT" "origin_valid" "DNS rebinding protection in mcp-subfolder"
+    assert_contains "$MCP_SF_CONTENT" "X-Forwarded-Prefix" "X-Forwarded-Prefix present in mcp-subfolder"
+    if command -v docker &>/dev/null; then
+        nginx_out=$(docker exec swag nginx -t 2>&1)
+        if echo "$nginx_out" | grep -q 'test is successful'; then
+            pass "nginx syntax valid: mcp-subfolder CREATE"
+        else
+            fail "nginx syntax error after mcp-subfolder CREATE"
+            echo "$nginx_out" | grep -v '^$' | head -5 | sed 's/^/    /'
+        fi
+    else
+        skip "nginx syntax check (docker not available): mcp-subfolder CREATE"
+    fi
+else
+    fail "mcp-subfolder config file missing on disk"
+fi
+mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_SUBFOLDER_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 
 # =============================================================================
 section "12. VALIDATION — missing required params"

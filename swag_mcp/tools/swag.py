@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal, cast
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools.tool import ToolResult
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from swag_mcp.core.constants import (
     VALID_UPSTREAM_PATTERN,
@@ -37,6 +37,23 @@ logger = logging.getLogger(__name__)
 UpdateFieldType = Literal["port", "upstream", "app", "add_mcp"]
 
 # Service will be instantiated per-invocation for stateless operation
+
+# Pre-computed valid actions string for error messages
+_VALID_ACTIONS_STR: str = ", ".join(e.value for e in SwagAction)
+
+
+def _coerce_action(v: Any) -> str:
+    """Coerce non-string types to string before enum validation.
+
+    Claude.ai sometimes serializes enum values as JSON primitives (true/false/null).
+    """
+    if v is None:
+        raise ValueError(f"action is required. Must be one of: {_VALID_ACTIONS_STR}")
+    if isinstance(v, bool):
+        raise ValueError(
+            f"action must be a string, got boolean ({v}). " f"Must be one of: {_VALID_ACTIONS_STR}"
+        )
+    return str(v)
 
 
 async def _extract_server_name_from_config(
@@ -136,7 +153,9 @@ def register_tools(mcp: FastMCP) -> None:
     @handle_tool_errors
     async def swag(
         ctx: Context,
-        action: Annotated[SwagAction, Field(description="Action to perform")],
+        action: Annotated[
+            SwagAction, BeforeValidator(_coerce_action), Field(description="Action to perform")
+        ],
         # List parameters
         list_filter: Annotated[
             Literal["all", "active", "samples"],
@@ -180,6 +199,34 @@ def register_tools(mcp: FastMCP) -> None:
             bool,
             Field(default=False, description="Enable MCP/SSE support for AI services"),
         ] = False,
+        # Remote MCP upstream parameters (optional — default to upstream_app/port/proto)
+        mcp_upstream_app: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "Container name or IP for MCP service (if different from upstream_app). "
+                    "Enables split routing: / → upstream_app, /mcp → mcp_upstream_app"
+                ),
+                max_length=100,
+            ),
+        ] = "",
+        mcp_upstream_port: Annotated[
+            int,
+            Field(
+                default=0,
+                ge=0,
+                le=65535,
+                description="Port for MCP service (if different from upstream_port)",
+            ),
+        ] = 0,
+        mcp_upstream_proto: Annotated[
+            Literal["http", "https"],
+            Field(
+                default="http",
+                description="Protocol for MCP upstream connection: 'http' | 'https'",
+            ),
+        ] = "http",
         auth_method: Annotated[
             str,
             Field(
@@ -273,7 +320,8 @@ def register_tools(mcp: FastMCP) -> None:
 
         • create: Create new reverse proxy configuration
           - Required: action, config_name, server_name, upstream_app, upstream_port
-          - Optional: upstream_proto, mcp_enabled, auth_method, enable_quic
+          - Optional: upstream_proto, mcp_enabled, auth_method, enable_quic,
+                     mcp_upstream_app, mcp_upstream_port, mcp_upstream_proto
 
         • view: View configuration file contents
           - Required: action, config_name
@@ -339,6 +387,9 @@ def register_tools(mcp: FastMCP) -> None:
                         auth_method,
                         enable_quic,
                         mcp_enabled,
+                        mcp_upstream_app or None,
+                        mcp_upstream_port or None,
+                        mcp_upstream_proto,
                     )
                 case SwagAction.VIEW:
                     return await _handle_view_action(ctx, swag_service, formatter, config_name)
@@ -415,6 +466,9 @@ async def _handle_create_action(
     auth_method: str,
     enable_quic: bool,
     mcp_enabled: bool,
+    mcp_upstream_app: str | None = None,
+    mcp_upstream_port: int | None = None,
+    mcp_upstream_proto: str = "http",
 ) -> ToolResult:
     """Handle CREATE action with comprehensive progress reporting."""
     # Validate required parameters
@@ -451,6 +505,9 @@ async def _handle_create_action(
             auth_method=auth_method,
             enable_quic=enable_quic,
             mcp_enabled=mcp_enabled,
+            mcp_upstream_app=mcp_upstream_app,
+            mcp_upstream_port=mcp_upstream_port,
+            mcp_upstream_proto=cast("Literal['http', 'https']", mcp_upstream_proto),
         )
 
         await ctx.info("Creating proxy configuration...")
