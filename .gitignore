@@ -146,6 +146,10 @@ Thumbs.db
 
 # Project specific
 *.log
+logs/*
+!logs/.gitkeep
+backups/*
+!backups/.gitkeep
 /.swag-mcp/
 tests/test-proxy-confs/*.backup.*
 tests/test-proxy-confs/*.conf
@@ -157,6 +161,7 @@ tests/test-proxy-confs/*.conf
 docs/plans/
 docs/reports/
 docs/superpowers/
+docs/sessions
 
 # Beads / Dolt files (added by bd init)
 .dolt/
