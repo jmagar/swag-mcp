@@ -148,16 +148,12 @@ class SwagManagerService:
             backup_manager=self.backup_manager,
         )
 
-        # Create temporary wrapper for ConfigFieldUpdaters (circular dependency workaround)
-        from swag_mcp.services.config_updaters import MCPOperations as MCPOperationsWrapper
-
-        mcp_ops_wrapper = MCPOperationsWrapper(swag_manager=self)
-
+        # eqf.20: Pass real MCPOperations directly — no wrapper needed after Protocol refactor
         self.config_updaters = ConfigFieldUpdaters(
             config_path=self.config_path,
             validation=self.validation_service,
             file_ops=self.file_ops,
-            mcp_ops=mcp_ops_wrapper,
+            mcp_ops=self.mcp_operations,
         )
 
         # ===== PHASE 4: Instantiate top-level managers =====

@@ -453,7 +453,6 @@ class TestPropertyBasedIntegration:
                 upstream_port=port,
                 auth_method="authelia",
                 enable_quic=False,
-                mcp_enabled=False,
             )
 
             # Basic properties

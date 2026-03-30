@@ -34,7 +34,6 @@ class TestMCPRemoteUpstream:
             upstream_app="testapp",
             upstream_port=8080,
             upstream_proto="http",
-            mcp_enabled=True,
         )
 
         # Model validator should set defaults
@@ -72,7 +71,6 @@ class TestMCPRemoteUpstream:
             upstream_app="jellyfin",
             upstream_port=8096,
             upstream_proto="http",
-            mcp_enabled=True,
             # MCP runs on different server
             mcp_upstream_app="ai-gpu-server",
             mcp_upstream_port=8080,
@@ -117,7 +115,6 @@ class TestMCPRemoteUpstream:
             upstream_app="plex",
             upstream_port=32400,
             upstream_proto="https",
-            mcp_enabled=True,
             mcp_upstream_app="transcoder",
             mcp_upstream_port=9000,
             mcp_upstream_proto="http",

@@ -170,7 +170,6 @@ class TestSwagToolIntegration:
                 "server_name": f"mcp-{test_domain}",
                 "upstream_app": test_upstream["app"],
                 "upstream_port": test_upstream["port"],
-                "mcp_enabled": True,
             },
         )
 

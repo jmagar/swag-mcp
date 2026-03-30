@@ -8,12 +8,24 @@ set -uo pipefail
 # Configuration
 MCP_URL="${SWAG_MCP_URL:-http://localhost:8012/mcp}"
 TOOL="swag"
-PROXY_CONFS_DIR="/mnt/appdata/swag/nginx/proxy-confs"
+PROXY_CONFS_DIR="${PROXY_CONFS_DIR:-/mnt/appdata/swag/nginx/proxy-confs}"
 TEST_CONFIG="smoke-test.subdomain.conf"
 TEST_SERVICE="smoke-test"
 TEST_DOMAIN="smoke-test.example.com"
 TEST_UPSTREAM="smoke-test-app"
 TEST_PORT=9999
+
+# Single source of truth for test config names (eqf.21 — prevents eqf.16 recurrence)
+TEST_CONFIGS=(
+    "smoke-test.subdomain.conf"
+    "smoke-test-mcp.subdomain.conf"
+    "smoke-authelia.subdomain.conf"
+    "smoke-authentik.subdomain.conf"
+    "smoke-quic.subdomain.conf"
+    "smoke-remote-mcp.subdomain.conf"
+    "smoke-subfolder.subfolder.conf"
+    "smoke-mcp-sf.subfolder.conf"
+)
 
 # Colors
 RED='\033[0;31m'
@@ -91,12 +103,17 @@ swag_reload_check() {
         fail "HUP signal failed: $label"
         return
     fi
-    sleep 1
-    if docker exec swag nginx -t 2>&1 | grep -q 'test is successful'; then
-        pass "SWAG reloaded and nginx healthy: $label"
-    else
-        fail "SWAG nginx unhealthy post-reload: $label"
-    fi
+    # eqf.15: Poll loop instead of flat sleep — faster on fast systems, reliable on slow ones
+    local attempts=0 max_attempts=20  # 20 × 0.5s = 10s timeout
+    while [[ $attempts -lt $max_attempts ]]; do
+        if docker exec swag nginx -t 2>&1 | grep -q 'test is successful'; then
+            pass "SWAG reloaded and nginx healthy: $label"
+            return
+        fi
+        sleep 0.5
+        ((attempts++))
+    done
+    fail "SWAG nginx unhealthy post-reload (timeout 10s): $label"
 }
 
 # bead .4 — real 2xx HTTP status assertion (accepts 2xx and 3xx — redirects are valid)
@@ -133,21 +150,17 @@ cleanup_test_backups() {
 }
 
 # EXIT trap — guaranteed cleanup even if script is killed mid-run
+# eqf.16/21: Uses TEST_CONFIGS array — single source of truth, no manual list to maintain
 cleanup_on_exit() {
     local exit_code=$?
     if [[ $exit_code -ne 0 ]]; then
         echo -e "\n${YELLOW}Script exiting (code $exit_code) — running emergency cleanup${NC}"
-        mcp "{\"action\":\"remove\",\"config_name\":\"${TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-test-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authelia.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-authentik.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-subfolder.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-mcp-sf.subfolder.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-quic.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        mcp "{\"action\":\"remove\",\"config_name\":\"smoke-remote-mcp.subdomain.conf\",\"create_backup\":false}" > /dev/null 2>&1 || true
-        cleanup_test_backups "$TEST_CONFIG"
-        cleanup_test_backups "smoke-authelia"
-        cleanup_test_backups "smoke-subfolder"
+        for cfg in "${TEST_CONFIGS[@]}"; do
+            mcp "{\"action\":\"remove\",\"config_name\":\"${cfg}\",\"create_backup\":false}" > /dev/null 2>&1 || true
+            # Clean up backup files using service name (strip extension)
+            local svc_name="${cfg%%.*}"
+            cleanup_test_backups "$svc_name"
+        done
     fi
 }
 trap 'cleanup_on_exit' EXIT
@@ -361,7 +374,7 @@ else
     fail "upstream_port variable not updated"
 fi
 
-section "4b. UPDATE — change upstream"
+section "4a. UPDATE — change upstream"
 NEW_UPSTREAM="new-upstream-app"
 OUT=$(mcp "{
   \"action\": \"update\",
@@ -387,7 +400,7 @@ CONFIG_CONTENT=$(cat "${PROXY_CONFS_DIR}/${TEST_CONFIG}" 2>/dev/null || echo "")
 assert_contains "$CONFIG_CONTENT" "$TEST_UPSTREAM" "app name restored"
 assert_contains "$CONFIG_CONTENT" "$TEST_PORT" "port restored"
 
-section "4d. UPDATE — add_mcp location block"
+section "4d. UPDATE — add_mcp location block"  # 4d intentional: smoke suite skipped 4a→4b port-only test
 OUT=$(mcp "{
   \"action\": \"update\",
   \"config_name\": \"${TEST_CONFIG}\",
@@ -429,7 +442,7 @@ cleanup_test_backups "$TEST_CONFIG"
 nginx_syntax_check "full content EDIT"
 
 # =============================================================================
-section "6. CREATE MCP — mcp-subdomain template with mcp_enabled"
+section "6. CREATE MCP — mcp-subdomain template (all configs have MCP headers unconditionally)"
 MCP_TEST_CONFIG="smoke-test-mcp.subdomain.conf"
 # cleanup any residual
 mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
@@ -440,8 +453,7 @@ OUT=$(mcp "{
   \"server_name\": \"mcp-smoke.example.com\",
   \"upstream_app\": \"mcp-smoke-app\",
   \"upstream_port\": 8080,
-  \"auth_method\": \"none\",
-  \"mcp_enabled\": true
+  \"auth_method\": \"none\"
 }")
 assert_not_contains "$OUT" "error" "no error on MCP config create"
 
@@ -474,7 +486,7 @@ swag_reload_check "MCP subdomain CREATE"
 mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_TEST_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 
 # =============================================================================
-section "6b. CREATE — remote MCP upstream (separate mcp_upstream_app/port)"
+section "6a. CREATE — remote MCP upstream (separate mcp_upstream_app/port)"
 REMOTE_MCP_CONFIG="smoke-remote-mcp.subdomain.conf"
 mcp "{\"action\":\"remove\",\"config_name\":\"${REMOTE_MCP_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 OUT=$(mcp "{
@@ -621,8 +633,7 @@ OUT=$(mcp "{
   \"upstream_app\": \"smoke-subfolder-app\",
   \"upstream_port\": 9998,
   \"upstream_proto\": \"http\",
-  \"auth_method\": \"none\",
-  \"mcp_enabled\": false
+  \"auth_method\": \"none\"
 }")
 assert_not_contains "$OUT" "error" "no error creating subfolder config"
 
@@ -640,26 +651,14 @@ if [[ -f "${PROXY_CONFS_DIR}/smoke-subfolder.subfolder.conf" ]]; then
     # MCP security features present in subfolder template too
     assert_contains "$SUBFOLDER_CONTENT" "origin_valid" "DNS rebinding protection in subfolder config"
     assert_contains "$SUBFOLDER_CONTENT" ".well-known/oauth-protected-resource" "OAuth metadata endpoint in subfolder config"
-    # nginx_syntax_check for subfolder: the local template (365f17e) has fixed nested-if
-    # blocks, but the running container image may be pre-fix. Detect and annotate.
-    if command -v docker &>/dev/null; then
-        nginx_out=$(docker exec swag nginx -t 2>&1)
-        if echo "$nginx_out" | grep -q 'test is successful'; then
-            pass "nginx syntax valid: subfolder config create"
-        elif echo "$nginx_out" | grep -qE 'smoke-subfolder.*if.*not allowed|if.*not allowed.*smoke-subfolder'; then
-            skip "nginx subfolder syntax — nested-if template bug in deployed image (rebuild container to fix)"
-        else
-            fail "nginx syntax error after subfolder config create"
-            echo "$nginx_out" | grep -v '^$' | head -5 | sed 's/^/    /'
-        fi
-    else
-        skip "nginx syntax check (docker not available): subfolder config create"
-    fi
+    # eqf.22: use nginx_syntax_check helper (consistent format with all other sections)
+    # Note: nested-if template bug in older images may cause skip rather than fail
+    nginx_syntax_check "subfolder config create"
 else
     fail "subfolder config file missing on disk"
 fi
 
-section "11b. MCP-SUBFOLDER — MCP endpoint in subfolder routing"
+section "11a. MCP-SUBFOLDER — MCP endpoint in subfolder routing"
 MCP_SUBFOLDER_CONFIG="smoke-mcp-sf.subfolder.conf"
 mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_SUBFOLDER_CONFIG}\",\"create_backup\":false}" > /dev/null 2>&1 || true
 OUT=$(mcp "{
@@ -669,8 +668,7 @@ OUT=$(mcp "{
   \"upstream_app\": \"smoke-mcp-sf-app\",
   \"upstream_port\": 9992,
   \"upstream_proto\": \"http\",
-  \"auth_method\": \"none\",
-  \"mcp_enabled\": true
+  \"auth_method\": \"none\"
 }")
 assert_not_contains "$OUT" "error" "no error creating mcp-subfolder config"
 if [[ -f "${PROXY_CONFS_DIR}/${MCP_SUBFOLDER_CONFIG}" ]]; then
@@ -681,17 +679,8 @@ if [[ -f "${PROXY_CONFS_DIR}/${MCP_SUBFOLDER_CONFIG}" ]]; then
     assert_contains "$MCP_SF_CONTENT" "proxy_buffering off" "zero-buffering in mcp-subfolder"
     assert_contains "$MCP_SF_CONTENT" "origin_valid" "DNS rebinding protection in mcp-subfolder"
     assert_contains "$MCP_SF_CONTENT" "X-Forwarded-Prefix" "X-Forwarded-Prefix present in mcp-subfolder"
-    if command -v docker &>/dev/null; then
-        nginx_out=$(docker exec swag nginx -t 2>&1)
-        if echo "$nginx_out" | grep -q 'test is successful'; then
-            pass "nginx syntax valid: mcp-subfolder CREATE"
-        else
-            fail "nginx syntax error after mcp-subfolder CREATE"
-            echo "$nginx_out" | grep -v '^$' | head -5 | sed 's/^/    /'
-        fi
-    else
-        skip "nginx syntax check (docker not available): mcp-subfolder CREATE"
-    fi
+    # eqf.22: use nginx_syntax_check helper (consistent format with all other sections)
+    nginx_syntax_check "mcp-subfolder CREATE"
 else
     fail "mcp-subfolder config file missing on disk"
 fi

@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from swag_mcp.core.config import config as global_config
+from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
     validate_config_filename,
@@ -147,6 +149,23 @@ class MCPOperations:
                 upstream_app = self.extract_upstream_value(content, "upstream_app")
                 upstream_port = self.extract_upstream_value(content, "upstream_port")
                 upstream_proto_raw = self.extract_upstream_value(content, "upstream_proto")
+
+                # Re-validate extracted values to guard against manually-edited configs
+                if not re.match(VALID_UPSTREAM_PATTERN, upstream_app):
+                    raise ValueError(
+                        f"Invalid upstream_app in existing config: {upstream_app!r}. "
+                        "The config may have been manually edited with an invalid value."
+                    )
+                try:
+                    port_int = int(upstream_port)
+                    if not (1 <= port_int <= 65535):
+                        raise ValueError(f"Port out of range: {port_int}")
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Invalid upstream_port in existing config: {upstream_port!r}. "
+                        "The config may have been manually edited with an invalid value."
+                    ) from exc
+
                 # Validate and cast upstream_proto to Literal type
                 if upstream_proto_raw not in ("http", "https"):
                     upstream_proto_raw = "http"  # Default to safe value
@@ -173,7 +192,18 @@ class MCPOperations:
                 )
 
                 # Validate nginx syntax before committing (abort on failure)
-                if not await self.validation.validate_nginx_syntax(config_file):
+                # eqf.14: Skip local nginx -t in SSH mode — local nginx cannot validate
+                # remote SWAG configs (different nginx version/modules on remote host).
+                # The remote SWAG will validate on reload; errors surface there instead.
+                from swag_mcp.services.ssh_filesystem import SSHFilesystem  # noqa: PLC0415
+
+                if isinstance(self.fs, SSHFilesystem):
+                    logger.warning(
+                        "SSH mode: skipping local nginx syntax validation for %s. "
+                        "Remote SWAG will validate on next reload.",
+                        config_name,
+                    )
+                elif not await self.validation.validate_nginx_syntax(config_file):
                     raise ValueError("Generated configuration contains invalid nginx syntax")
 
                 logger.info(f"Successfully added MCP location block to {config_name}")
@@ -228,6 +258,13 @@ class MCPOperations:
             simple_pattern = r"include\s+/config/nginx/(\w+)\.conf;"
             matches = re.findall(simple_pattern, content)
 
+        # Check for OAuth gateway pattern: auth_request /_oauth_verify
+        if (
+            "auth_request /_oauth_verify" in content
+            or "auth_request /{{ service_name }}/_oauth_verify" in content
+        ):
+            return "oauth"
+
         # Also check for basic auth
         if "auth_basic" in content and "auth_basic_user_file" in content:
             return "basic"
@@ -277,6 +314,8 @@ class MCPOperations:
                 "upstream_port": upstream_port,
                 "upstream_proto": upstream_proto,
                 "auth_method": auth_method,
+                "oauth_upstream": global_config.oauth_upstream,
+                "auth_server_url": global_config.auth_server_url,
             }
 
             # Render template with validated variables using the template manager

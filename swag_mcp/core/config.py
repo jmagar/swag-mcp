@@ -9,8 +9,10 @@ from pydantic_settings import BaseSettings
 from ..utils.validators import validate_empty_string
 from .constants import (
     DEFAULT_AUTH_METHOD,
+    DEFAULT_AUTH_SERVER_URL,
     DEFAULT_HOST,
     DEFAULT_LOG_LEVEL,
+    DEFAULT_OAUTH_UPSTREAM,
 )
 
 
@@ -64,6 +66,17 @@ class SwagConfig(BaseSettings):
     # Default settings
     default_auth_method: str = Field(
         default="authelia", description="Default authentication method for new configurations"
+    )
+
+    # OAuth gateway settings (used in MCP template generation)
+    oauth_upstream: str = Field(
+        default=DEFAULT_OAUTH_UPSTREAM,
+        description="OAuth gateway upstream address (Docker container name or IP:port)",
+    )
+
+    auth_server_url: str = Field(
+        default=DEFAULT_AUTH_SERVER_URL,
+        description="Public OAuth authorization server URL for Protected Resource Metadata",
     )
 
     default_quic_enabled: bool = Field(

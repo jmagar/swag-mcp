@@ -10,7 +10,8 @@ import re
 import tempfile
 from pathlib import Path
 
-from swag_mcp.core.constants import LIST_FILTERS
+from swag_mcp.core.config import config
+from swag_mcp.core.constants import LIST_FILTERS, VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import (
     ListFilterType,
     SwagConfigRequest,
@@ -207,8 +208,8 @@ class ConfigOperations:
         validated_service_name = validate_service_name(service_name)
         validated_server_name = validate_domain_format(request.server_name)
         validated_port = validate_upstream_port(request.upstream_port)
-        # Validate upstream_app with regex pattern
-        if not re.match(r"^[A-Za-z0-9_.-]+$", request.upstream_app):
+        # Validate upstream_app with canonical VALID_UPSTREAM_PATTERN from constants
+        if not re.match(VALID_UPSTREAM_PATTERN, request.upstream_app):
             raise ValueError(f"Invalid upstream app name: {request.upstream_app}")
 
         # Determine template and filename
@@ -237,6 +238,9 @@ class ConfigOperations:
                     "mcp_upstream_proto": request.mcp_upstream_proto,
                     "auth_method": request.auth_method,
                     "enable_quic": request.enable_quic,
+                    # OAuth gateway variables
+                    "oauth_upstream": config.oauth_upstream,
+                    "auth_server_url": config.auth_server_url,
                 }
 
                 # Render template with validated variables

@@ -57,6 +57,7 @@ MIME_TYPE_APPLICATION_JSON = "application/json"
 # Authentication methods
 AUTH_METHOD_NONE = "none"
 AUTH_METHOD_BASIC = "basic"
+AUTH_METHOD_OAUTH = "oauth"  # OAuth 2.1 gateway (mcp-oauth) protects all locations
 AUTH_METHOD_AUTHELIA = "authelia"
 AUTH_METHOD_LDAP = "ldap"
 AUTH_METHOD_AUTHENTIK = "authentik"
@@ -66,11 +67,16 @@ AUTH_METHOD_TINYAUTH = "tinyauth"
 AUTH_METHODS = (
     AUTH_METHOD_NONE,
     AUTH_METHOD_BASIC,
+    AUTH_METHOD_OAUTH,
     AUTH_METHOD_AUTHELIA,
     AUTH_METHOD_LDAP,
     AUTH_METHOD_AUTHENTIK,
     AUTH_METHOD_TINYAUTH,
 )
+
+# OAuth gateway defaults
+DEFAULT_OAUTH_UPSTREAM = "http://mcp-oauth:8000"  # Docker network name for OAuth gateway
+DEFAULT_AUTH_SERVER_URL = "https://mcp-auth.tootie.tv"  # Public OAuth authorization server
 
 # List filter options
 LIST_FILTERS = ("all", "active", "samples")  # Tuple for immutability

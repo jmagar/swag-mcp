@@ -195,11 +195,9 @@ def register_tools(mcp: FastMCP) -> None:
             Literal["http", "https"],
             Field(default="http", description="Protocol for upstream connection: 'http' | 'https'"),
         ] = "http",
-        mcp_enabled: Annotated[
-            bool,
-            Field(default=False, description="Enable MCP/SSE support for AI services"),
-        ] = False,
         # Remote MCP upstream parameters (optional — default to upstream_app/port/proto)
+        # All configs include MCP-compatible security headers regardless of these values.
+        # Set mcp_upstream_app to enable split routing: / → upstream_app, /mcp → mcp_upstream_app
         mcp_upstream_app: Annotated[
             str,
             Field(
@@ -209,6 +207,7 @@ def register_tools(mcp: FastMCP) -> None:
                     "Enables split routing: / → upstream_app, /mcp → mcp_upstream_app"
                 ),
                 max_length=100,
+                pattern=VALID_UPSTREAM_PATTERN.replace("+", "*"),  # Optional field
             ),
         ] = "",
         mcp_upstream_port: Annotated[
@@ -217,16 +216,22 @@ def register_tools(mcp: FastMCP) -> None:
                 default=0,
                 ge=0,
                 le=65535,
-                description="Port for MCP service (if different from upstream_port)",
+                description=(
+                    "Port for MCP service (if different from upstream_port). "
+                    "Use 0 or omit to inherit from upstream_port."
+                ),
             ),
         ] = 0,
         mcp_upstream_proto: Annotated[
-            Literal["http", "https"],
+            Literal["http", "https"] | None,
             Field(
-                default="http",
-                description="Protocol for MCP upstream connection: 'http' | 'https'",
+                default=None,
+                description=(
+                    "Protocol for MCP upstream connection: 'http' | 'https'. "
+                    "Omit to inherit from upstream_proto."
+                ),
             ),
-        ] = "http",
+        ] = None,
         auth_method: Annotated[
             str,
             Field(
@@ -320,8 +325,9 @@ def register_tools(mcp: FastMCP) -> None:
 
         • create: Create new reverse proxy configuration
           - Required: action, config_name, server_name, upstream_app, upstream_port
-          - Optional: upstream_proto, mcp_enabled, auth_method, enable_quic,
+          - Optional: upstream_proto, auth_method, enable_quic,
                      mcp_upstream_app, mcp_upstream_port, mcp_upstream_proto
+          - Note: All configs include MCP-compatible security headers unconditionally.
 
         • view: View configuration file contents
           - Required: action, config_name
@@ -362,6 +368,12 @@ def register_tools(mcp: FastMCP) -> None:
           "Clean up backup files older than 7 days"
           "List all backup files"
 
+        Split-routing example (main app on one server, MCP/AI service on a GPU server):
+          action=create, config_name=jellyfin.subdomain.conf,
+          server_name=jellyfin.example.com, upstream_app=jellyfin, upstream_port=8096,
+          mcp_upstream_app=ai-gpu-server, mcp_upstream_port=8080
+          → Routes: / → jellyfin:8096, /mcp → ai-gpu-server:8080
+
         """
         # Create service instance per-invocation for stateless operation
         swag_service = SwagManagerService()
@@ -375,6 +387,12 @@ def register_tools(mcp: FastMCP) -> None:
                 case SwagAction.LIST:
                     return await _handle_list_action(ctx, swag_service, formatter, list_filter)
                 case SwagAction.CREATE:
+                    # eqf.10: Emit note when mcp_upstream_port inherits from upstream_port
+                    effective_mcp_port = mcp_upstream_port or None
+                    if not mcp_upstream_port and mcp_upstream_app:
+                        await ctx.info(
+                            f"mcp_upstream_port not set — inheriting upstream_port: {upstream_port}"
+                        )
                     return await _handle_create_action(
                         ctx,
                         swag_service,
@@ -386,10 +404,9 @@ def register_tools(mcp: FastMCP) -> None:
                         upstream_proto,
                         auth_method,
                         enable_quic,
-                        mcp_enabled,
                         mcp_upstream_app or None,
-                        mcp_upstream_port or None,
-                        mcp_upstream_proto,
+                        effective_mcp_port,
+                        mcp_upstream_proto or None,  # eqf.9: coerce → model-validator inherits
                     )
                 case SwagAction.VIEW:
                     return await _handle_view_action(ctx, swag_service, formatter, config_name)
@@ -405,7 +422,7 @@ def register_tools(mcp: FastMCP) -> None:
                     return await _handle_logs_action(ctx, swag_service, formatter, log_type, lines)
                 case SwagAction.BACKUPS:
                     return await _handle_backups_action(
-                        ctx, swag_service, formatter, retention_days
+                        ctx, swag_service, formatter, backup_action, retention_days
                     )
                 case SwagAction.HEALTH_CHECK:
                     return await _handle_health_check_action(
@@ -465,10 +482,9 @@ async def _handle_create_action(
     upstream_proto: str,
     auth_method: str,
     enable_quic: bool,
-    mcp_enabled: bool,
     mcp_upstream_app: str | None = None,
     mcp_upstream_port: int | None = None,
-    mcp_upstream_proto: str = "http",
+    mcp_upstream_proto: str | None = None,
 ) -> ToolResult:
     """Handle CREATE action with comprehensive progress reporting."""
     # Validate required parameters
@@ -504,10 +520,11 @@ async def _handle_create_action(
             upstream_proto=cast("Literal['http', 'https']", upstream_proto),
             auth_method=auth_method,
             enable_quic=enable_quic,
-            mcp_enabled=mcp_enabled,
             mcp_upstream_app=mcp_upstream_app,
             mcp_upstream_port=mcp_upstream_port,
-            mcp_upstream_proto=cast("Literal['http', 'https']", mcp_upstream_proto),
+            mcp_upstream_proto=(
+                cast("Literal['http', 'https']", mcp_upstream_proto) if mcp_upstream_proto else None
+            ),
         )
 
         await ctx.info("Creating proxy configuration...")
@@ -721,10 +738,12 @@ async def _handle_backups_action(
     ctx: Context,
     swag_service: SwagManagerService,
     formatter: TokenEfficientFormatter,
+    backup_action: BackupSubAction,
     retention_days: int,
 ) -> ToolResult:
     """Handle BACKUPS action with cleanup progress reporting."""
-    backup_action = BackupSubAction.CLEANUP if retention_days > 0 else BackupSubAction.LIST
+    # eqf.18: backup_action is now the primary signal (not derived from retention_days)
+    # retention_days is only used when backup_action=cleanup to set the retention window
 
     try:
         if backup_action == BackupSubAction.CLEANUP:

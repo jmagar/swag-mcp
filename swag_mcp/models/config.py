@@ -107,8 +107,6 @@ class SwagConfigRequest(SwagBaseRequest):
         default="http", description="Protocol for upstream connection"
     )
 
-    mcp_enabled: bool = Field(default=False, description="Enable MCP/SSE support for AI services")
-
     # MCP-specific upstream configuration (optional - defaults to main upstream)
     mcp_upstream_app: str | None = Field(
         default=None,
@@ -207,9 +205,8 @@ class SwagConfigRequest(SwagBaseRequest):
         This ensures backward compatibility - if MCP fields are not provided,
         they automatically use the same upstream as the main service.
 
-        Note: Defaults are set regardless of mcp_enabled because the templates
-        always render these variables. If left as None, Jinja2 would render
-        "None" as a string, breaking nginx configuration.
+        Note: Defaults are always set because all templates render MCP variables.
+        If left as None, Jinja2 would render "None" as a string, breaking nginx configuration.
         """
         if self.mcp_upstream_app is None:
             self.mcp_upstream_app = self.upstream_app
