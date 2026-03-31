@@ -1,65 +1,46 @@
+networks:
+  mcp-net:
+    name: ${DOCKER_NETWORK:-mcp-net}
+    external: true
+
 services:
   swag-mcp:
-    # Build locally (uncomment to build from source)
     build:
       context: .
       dockerfile: Dockerfile
 
-    # Use pre-built image from GitHub Container Registry
-    # image: ghcr.io/jmagar/swag-mcp:latest
-
     container_name: swag-mcp
     restart: unless-stopped
 
-    # Volume mounts
+    user: "${PUID:-1000}:${PGID:-1000}"
+
     volumes:
-      # Single mount for all SWAG access (proxy-confs and logs)
-      # Not needed when using SWAG_MCP_PROXY_CONFS_URI for remote SSH access
       - /mnt/appdata/swag:/swag
-      # Persistent storage for MCP server logs
-      - ${SWAG_MCP_LOG_DIRECTORY}:/app/.swag-mcp/logs
-      # Docker socket for container API access
+      - ${SWAG_MCP_LOG_DIRECTORY:-/tmp/swag-mcp/logs}:/app/.swag-mcp/logs
       - /var/run/docker.sock:/var/run/docker.sock
-      # SSH keys for remote SWAG server access (optional)
-      # Uncomment if using SWAG_MCP_PROXY_CONFS_URI with SSH
-      # - ~/.ssh:/root/.ssh:ro
 
-    # Docker group access for socket permissions
     group_add:
-      - ${DOCKER_GID:-999}  # Docker group ID (default 999)
+      - ${DOCKER_GID:-999}
 
-    # Network configuration
     ports:
-      - "${SWAG_MCP_PORT}:8000"  # Map to container port 8000
+      - "${SWAG_MCP_PORT:-8000}:8000"
 
-    # Environment variables
-    environment:
-      # Default settings
-      - SWAG_MCP_DEFAULT_AUTH_METHOD=${SWAG_MCP_DEFAULT_AUTH_METHOD}
-      - SWAG_MCP_DEFAULT_QUIC_ENABLED=${SWAG_MCP_DEFAULT_QUIC_ENABLED}
+    env_file:
+      - path: .env
+        required: false
 
-      # Backup settings
-      - SWAG_MCP_BACKUP_RETENTION_DAYS=${SWAG_MCP_BACKUP_RETENTION_DAYS}
+    networks:
+      - mcp-net
 
-      # MCP Server settings
-      - SWAG_MCP_HOST=${SWAG_MCP_HOST}
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "1"
 
-      # Remote SWAG server (optional - for SSH access)
-      # - SWAG_MCP_PROXY_CONFS_URI=${SWAG_MCP_PROXY_CONFS_URI}
-      # - SWAG_MCP_SWAG_LOG_BASE_PATH=${SWAG_MCP_SWAG_LOG_BASE_PATH}
-
-      # Logging
-      - SWAG_MCP_LOG_LEVEL=${SWAG_MCP_LOG_LEVEL}
-
-    # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-
-
-networks:
-  default:
-    name: swag-mcp-network
+      start_period: 30s

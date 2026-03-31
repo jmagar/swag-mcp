@@ -27,6 +27,12 @@
       "title": "SWAG Proxy Configs URI (Remote/SSH)",
       "description": "SSH URI to remote SWAG proxy-confs, e.g. user@host:/path/to/proxy-confs. Overrides path if set. Requires passwordless SSH keys.",
       "sensitive": false
+    },
+    "swag_mcp_token": {
+      "type": "string",
+      "title": "MCP Server Bearer Token",
+      "description": "Bearer token for authenticating with the MCP server. Must match SWAG_MCP_TOKEN in the server's .env. Generate with: openssl rand -hex 32",
+      "sensitive": true
     }
   }
 }

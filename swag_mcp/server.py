@@ -331,10 +331,30 @@ async def cleanup_old_backups() -> None:
         logger.error(f"Failed to cleanup old backups on startup: {e}", exc_info=True)
 
 
+def _validate_bearer_token() -> None:
+    """Fail startup if SWAG_MCP_TOKEN is not set and auth is not explicitly disabled."""
+    token = os.getenv("SWAG_MCP_TOKEN")
+    no_auth = os.getenv("SWAG_MCP_NO_AUTH", "").lower() in ("true", "1", "yes")
+    if not token and not no_auth:
+        logger.error(
+            "CRITICAL: SWAG_MCP_TOKEN is not set.\n"
+            "Set SWAG_MCP_TOKEN to a secure random token, or set SWAG_MCP_NO_AUTH=true\n"
+            "to disable auth (only appropriate when secured at the network/proxy level).\n\n"
+            "Generate a token with: openssl rand -hex 32"
+        )
+        sys.exit(1)
+    if no_auth and not token:
+        logger.warning(
+            "SWAG_MCP_NO_AUTH=true — bearer auth disabled. Not recommended for shared servers."
+        )
+
+
 async def main() -> None:
     """Async entry point for when called from within an async context."""
     # Load environment variables from .env file if present
     load_dotenv()
+
+    _validate_bearer_token()
 
     logger.info("Starting SWAG MCP Server with streamable-http transport (async mode)...")
 
@@ -354,6 +374,8 @@ async def main() -> None:
 
 def main_sync() -> None:
     """Run server in synchronous mode for direct execution."""
+    load_dotenv()
+    _validate_bearer_token()
     logger.info("Starting SWAG MCP Server with streamable-http transport (sync mode)...")
 
     setup_templates()

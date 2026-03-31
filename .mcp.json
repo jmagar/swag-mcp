@@ -2,7 +2,10 @@
   "mcpServers": {
     "swag-mcp": {
       "type": "http",
-      "url": "${user_config.swag_mcp_url}/mcp"
+      "url": "${user_config.swag_mcp_url}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.swag_mcp_token}"
+      }
     }
   }
 }
