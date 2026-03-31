@@ -39,7 +39,14 @@ env/
 
 # Documentation
 docs/
-# Keep README.md for build
+*.md
+!README.md
+
+# AI/tooling metadata
+.lavra/
+.omc/
+Makefile
+Justfile
 
 # Testing
 tests/
