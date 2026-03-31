@@ -16,76 +16,34 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_test_environment():
-    """Set up test environment variables."""
-    # Use environment-specific paths for testing
-    # Default to CI-friendly paths if not set, fallback to local dev paths
-    proxy_confs_path = os.environ.get("SWAG_MCP_PROXY_CONFS_PATH")
-    if not proxy_confs_path:
-        # Check if we're in CI environment
-        ci_env_vars = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "TRAVIS", "CIRCLECI", "BUILD_NUMBER"]
-        is_ci = any(os.environ.get(var) for var in ci_env_vars)
+def setup_test_environment(tmp_path_factory):
+    """Set up test environment variables.
 
-        if is_ci:
-            # Use CI-friendly temp directory
-            temp_dirs = [
-                os.environ.get("TMPDIR"),
-                os.environ.get("TEMP"),
-                os.environ.get("TMP"),
-                "/tmp",
-            ]
-            base_temp = next(
-                (d for d in temp_dirs if d and Path(d).exists() and os.access(d, os.W_OK)), "/tmp"
-            )
-            proxy_confs_path = str(Path(base_temp) / "swag-test" / "proxy-confs")
-        else:
-            # Local development environment - try multiple common paths
-            local_paths = [
-                "/mnt/appdata/swag/nginx/proxy-confs",
-                "/opt/swag/nginx/proxy-confs",
-                "/var/lib/swag/nginx/proxy-confs",
-                str(Path.home() / ".swag-mcp-test" / "proxy-confs"),
-            ]
-            # Use first existing path or fallback to home directory
-            proxy_confs_path = next((p for p in local_paths if Path(p).exists()), local_paths[-1])
+    IMPORTANT: Always uses an isolated temp directory for proxy-confs to prevent
+    tests from writing to the real SWAG proxy-confs directory (which triggers
+    SWAG's inotify watcher and nginx reload).
+    """
 
-        # Ensure the chosen path exists
-        proxy_path = Path(proxy_confs_path)
-        proxy_path.mkdir(parents=True, exist_ok=True)
+    # Always use an isolated temp directory — never write to real proxy-confs
+    test_base = tmp_path_factory.mktemp("swag-test")
+    proxy_confs_path = str(test_base / "proxy-confs")
+    log_dir_path = str(test_base / "logs")
 
-        # Verify the path is accessible
-        if not proxy_path.exists() or not os.access(proxy_path, os.W_OK):
-            # Fallback to temp directory if path is not accessible
-            fallback_path = Path("/tmp") / "swag-test" / "proxy-confs"
-            fallback_path.mkdir(parents=True, exist_ok=True)
-            proxy_confs_path = str(fallback_path)
-
-        os.environ["SWAG_MCP_PROXY_CONFS_PATH"] = proxy_confs_path
-
-    # Set log directory
-    os.environ["SWAG_MCP_LOG_DIRECTORY"] = "/tmp/.swag-mcp-test/logs"
-
-    # Create necessary directories
     proxy_path = Path(proxy_confs_path)
-    log_dir = Path("/tmp/.swag-mcp-test/logs")
+    log_dir = Path(log_dir_path)
 
     proxy_path.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create sample configuration files for testing if they don't exist
+    os.environ["SWAG_MCP_PROXY_CONFS_PATH"] = proxy_confs_path
+    os.environ["SWAG_MCP_LOG_DIRECTORY"] = log_dir_path
+
+    # Create sample configuration files for testing
     _create_sample_configs(proxy_path)
 
     yield
 
-    # Cleanup test directories only if we created them
-    try:
-        import shutil
-
-        if proxy_confs_path.startswith("/tmp/"):
-            shutil.rmtree(proxy_path, ignore_errors=True)
-        shutil.rmtree("/tmp/.swag-mcp-test", ignore_errors=True)
-    except Exception:
-        pass
+    # tmp_path_factory handles cleanup automatically
 
 
 def _create_sample_configs(proxy_path: Path) -> None:

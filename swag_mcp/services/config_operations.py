@@ -192,16 +192,12 @@ class ConfigOperations:
             )
 
         service_name = parts[0]
-        base_type = parts[1]  # 'subdomain' or 'subfolder'
+        base_type = parts[1]  # 'subdomain'
 
-        if base_type not in ["subdomain", "subfolder"]:
-            raise ValueError(f"Invalid base type '{base_type}'. Must be 'subdomain' or 'subfolder'")
+        if base_type != "subdomain":
+            raise ValueError(f"Invalid base type '{base_type}'. Must be 'subdomain'")
 
-        # Use SWAG-compliant MCP templates (consolidated in commit 64547f5)
-        # All templates now support MCP/SSE streaming with include /config/nginx/mcp.conf
-        template_type = f"swag-compliant-mcp-{base_type}"
-
-        logger.info(f"Creating {template_type} configuration for {service_name} ({config_name})")
+        logger.info(f"Creating MCP subdomain configuration for {service_name} ({config_name})")
         await self._ensure_config_directory()
 
         # Security validation: validate all input parameters
@@ -213,7 +209,7 @@ class ConfigOperations:
             raise ValueError(f"Invalid upstream app name: {request.upstream_app}")
 
         # Determine template and filename
-        template_name = build_template_filename(template_type)
+        template_name = build_template_filename(base_type)
         filename = config_name  # Use the provided config_name directly
 
         # Perform configuration creation with proper locking to prevent race conditions

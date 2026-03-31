@@ -344,15 +344,14 @@ class TestTemplateValidation:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create template files with SWAG-compliant names
-            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text("subdomain template")
-            (template_dir / "swag-compliant-mcp-subfolder.conf.j2").write_text("subfolder template")
+            # Create template file with new naming
+            (template_dir / "mcp.subdomain.conf.j2").write_text("subdomain template")
 
             yield SwagManagerService(config_dir, template_dir)
 
     async def test_validate_template_exists_true(self, temp_service):
         """Test template validation when template exists."""
-        result = await temp_service.validate_template_exists("swag-compliant-mcp-subdomain")
+        result = await temp_service.validate_template_exists("subdomain")
         assert result is True
 
     async def test_validate_template_exists_false(self, temp_service):
@@ -365,10 +364,8 @@ class TestTemplateValidation:
         result = await temp_service.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert "swag-compliant-mcp-subdomain" in result
-        assert "swag-compliant-mcp-subfolder" in result
-        assert result["swag-compliant-mcp-subdomain"] is True
-        assert result["swag-compliant-mcp-subfolder"] is True
+        assert "subdomain" in result
+        assert result["subdomain"] is True
 
 
 class TestBackupOperations:
@@ -500,29 +497,22 @@ class TestMCPFunctionality:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create MCP template
-            mcp_template = """
-location {{ mcp_path }} {
-    proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }}{{ mcp_path }};
-}
-            """.strip()
-            (template_dir / "mcp_location_block.j2").write_text(mcp_template)
+            # Create MCP template (new naming)
+            (template_dir / "mcp.subdomain.conf.j2").write_text("subdomain template")
 
             yield SwagManagerService(config_dir, template_dir)
 
     async def test_render_mcp_location_block(self, temp_service):
-        """Test rendering MCP location block."""
+        """Test rendering MCP location block raises NotImplementedError."""
 
-        result = await temp_service.mcp_operations.render_mcp_location_block(
-            mcp_path="/ai-service",
-            upstream_app="mcp-server",
-            upstream_port="8080",
-            upstream_proto="http",
-            auth_method="none",
-        )
-
-        assert isinstance(result, str)
-        assert len(result) > 0
+        with pytest.raises(NotImplementedError):
+            await temp_service.mcp_operations.render_mcp_location_block(
+                mcp_path="/ai-service",
+                upstream_app="mcp-server",
+                upstream_port="8080",
+                upstream_proto="http",
+                auth_method="none",
+            )
 
     def test_insert_location_block(self, temp_service):
         """Test inserting location block into configuration."""
@@ -551,8 +541,8 @@ server {
         assert "location /" in result
         assert "location /mcp" in result
 
-    async def test_add_mcp_location_success(self, temp_service):
-        """Test successful MCP location addition."""
+    async def test_add_mcp_location_not_supported(self, temp_service):
+        """Test that add_mcp_location raises ValueError (NotImplementedError internally)."""
         # Create existing config file
         config_file = temp_service.config_path / "test.subdomain.conf"
         original_content = """
@@ -571,19 +561,11 @@ server {
         """.strip()
         config_file.write_text(original_content)
 
-        result = await temp_service.add_mcp_location(
-            config_name="test.subdomain.conf",
-            mcp_path="/ai-service",
-        )
-
-        # add_mcp_location returns SwagConfigResult
-        assert result.filename == "test.subdomain.conf"
-        assert result.backup_created is not None
-
-        # Verify file was updated
-        updated_content = config_file.read_text()
-        assert original_content != updated_content
-        assert "/ai-service" in updated_content
+        with pytest.raises(ValueError, match="Failed to add MCP location"):
+            await temp_service.add_mcp_location(
+                config_name="test.subdomain.conf",
+                mcp_path="/ai-service",
+            )
 
     async def test_add_mcp_location_file_not_found(self, temp_service):
         """Test MCP location addition when file doesn't exist."""

@@ -130,7 +130,7 @@ async def _handle_create_action(service: SwagManagerService, params: Dict) -> st
 
     Optional Parameters:
     - upstream_proto: "http" or "https" (default: "http")
-    - config_type_create: Template type (default: "subdomain")
+    - config_type_create: Only "subdomain" is supported
     - auth_method: Authentication method (default: "authelia")
     - enable_quic: QUIC support (default: false)
 
@@ -148,7 +148,7 @@ async def _handle_create_action(service: SwagManagerService, params: Dict) -> st
         upstream_app=request.upstream_app,
         upstream_port=request.upstream_port,
         upstream_proto=request.upstream_proto,
-        config_type=request.config_type_create,
+        config_type=request.config_type_create,  # Always "subdomain"
         auth_method=request.auth_method,
         enable_quic=request.enable_quic
     )

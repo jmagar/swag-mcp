@@ -298,22 +298,20 @@ def format_duration(milliseconds: float) -> str:
         seconds = (milliseconds % 60000) / 1000
         return f"{minutes}m {seconds:.1f}s"
 
-def build_template_filename(service_name: str, config_type: str) -> str:
+def build_template_filename(config_type: str) -> str:
     """
-    Build template filename from service name and configuration type.
+    Build template filename from configuration type.
 
-    Template naming convention:
-    - subdomain: service.subdomain.conf
-    - subfolder: service.subfolder.conf
-    - mcp-subdomain: service.mcp-subdomain.conf
-    - mcp-subfolder: service.mcp-subfolder.conf
+    Only "subdomain" is supported. Returns the single unified template name.
+
+    build_template_filename("subdomain") -> "mcp.subdomain.conf.j2"
     """
-    valid_config_types = ["subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"]
+    valid_config_types = ["subdomain"]
 
     if config_type not in valid_config_types:
         raise ValueError(f"Invalid config type. Must be one of: {valid_config_types}")
 
-    return f"{service_name}.{config_type}.conf"
+    return "mcp.subdomain.conf.j2"
 
 def format_health_check_result(result: Dict[str, Any]) -> str:
     """Format health check results for user display"""

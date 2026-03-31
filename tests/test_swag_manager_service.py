@@ -382,8 +382,7 @@ server {
 
     async def test_validate_template_exists_true(self, service):
         """Test template validation when template exists."""
-        # Use actual SWAG-compliant template name
-        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
+        result = await service.validate_template_exists("subdomain")
 
         assert result is True
 
@@ -398,10 +397,8 @@ server {
         result = await service.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert "swag-compliant-mcp-subdomain" in result
-        assert "swag-compliant-mcp-subfolder" in result
-        assert result["swag-compliant-mcp-subdomain"] is True
-        assert result["swag-compliant-mcp-subfolder"] is True
+        assert "subdomain" in result
+        assert result["subdomain"] is True
 
     # Health Check Tests
 

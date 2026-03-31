@@ -48,7 +48,7 @@ async def create_configuration(
     upstream_app: str,
     upstream_port: int,
     upstream_proto: str = "http",
-    config_type: str = "subdomain",
+    config_type: str = "subdomain",  # Only "subdomain" is supported
     auth_method: str = "authelia",
     enable_quic: bool = False
 ) -> Dict[str, Any]:
@@ -56,7 +56,7 @@ async def create_configuration(
     Creates new SWAG configuration with atomic transaction support.
 
     Process:
-    1. Validate inputs and resolve template
+    1. Validate inputs and resolve template (always mcp.subdomain.conf.j2)
     2. Render template with security checks
     3. Write file atomically with backup
     4. Verify configuration syntax
@@ -408,7 +408,7 @@ asyncio.run(test())
 
 ### Configuration Dependencies
 - Service requires valid `SwagConfig` with accessible paths
-- Template directory must exist with valid templates
+- Template directory must exist with `mcp.subdomain.conf.j2`
 - Proxy configurations directory must be writable
 - Log directory must be accessible for cleanup operations
 

@@ -17,7 +17,7 @@ See @README.md for complete project documentation and @.env.example for configur
 ### Key Components
 
 - **`swag_mcp/`**: Core application package with modular architecture
-- **`templates/`**: Nginx configuration templates (4 types: subdomain, subfolder, mcp-subdomain, mcp-subfolder)
+- **`templates/`**: Single unified nginx configuration template (`mcp.subdomain.conf.j2`) with nginx includes (`mcp.conf`, `oauth.conf`)
 - **`tests/`**: Comprehensive test suite with performance, integration, and validation tests
 - **`docs/`**: Test command documentation with 600+ examples
 
@@ -125,10 +125,10 @@ When creating a config, you can now specify separate upstream servers for MCP en
 
 When using remote MCP servers, traffic is routed as follows:
 
-- **Main Service** (`/`): Routes to `upstream_app:upstream_port`
-- **MCP Endpoints** (`/mcp`, OAuth paths): Route to `mcp_upstream_app:mcp_upstream_port`
-- **Health Checks** (`/health`): Routes to main service
-- **Sessions** (`/session*`): Routes to MCP service
+- **Main Service** (`/`): Routes to `upstream_app:upstream_port`, protected by Authelia
+- **MCP Endpoints** (`/mcp`): Routes to `mcp_upstream_app:mcp_upstream_port`, protected by OAuth (`auth_request /_oauth_verify`)
+- **OAuth Endpoints** (`/_oauth_verify`, etc.): Included via `oauth.conf` at server level
+- **Health Checks** (`/health`): Routes to main service, no authentication
 
 ## Environment Variables
 
@@ -144,7 +144,7 @@ All configuration uses `SWAG_MCP_*` prefix:
 
 ### Defaults
 - `SWAG_MCP_DEFAULT_AUTH_METHOD`: Default auth (authelia, ldap, authentik, tinyauth, none)
-- `SWAG_MCP_DEFAULT_CONFIG_TYPE`: Config type (subdomain, subfolder, mcp-subdomain, mcp-subfolder)
+- `SWAG_MCP_DEFAULT_CONFIG_TYPE`: Config type (subdomain only)
 - `SWAG_MCP_DEFAULT_QUIC_ENABLED`: Enable QUIC by default (true/false)
 
 ### Performance & Logging
@@ -163,7 +163,11 @@ swag-mcp/
 │   ├── tools/         # @swag_mcp/tools/CLAUDE.md - MCP tool implementation
 │   ├── middleware/    # @swag_mcp/middleware/CLAUDE.md - Request processing
 │   └── utils/         # @swag_mcp/utils/CLAUDE.md - Utility functions
-├── templates/         # @templates/CLAUDE.md - Nginx config templates
+├── templates/         # @templates/CLAUDE.md - Single unified Jinja2 template
+│   └── mcp.subdomain.conf.j2  # The only template file
+├── nginx/             # Nginx include snippets
+│   ├── mcp.conf       # Location-level MCP overrides (buffering, timeouts, SSE)
+│   └── oauth.conf     # Server-level OAuth 2.1 endpoints (/_oauth_verify, etc.)
 └── tests/            # @tests/CLAUDE.md - Testing strategies & commands
 ```
 

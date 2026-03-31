@@ -13,12 +13,12 @@ The `swag_mcp` package implements a FastMCP server that provides AI assistants w
 - **`server.py`**: FastMCP server setup, middleware registration, resource discovery
 
 ### Core Subdirectories
-- **`core/`**: @core/CLAUDE.md - Configuration management, constants, logging setup
+- **`core/`**: @core/CLAUDE.md - Configuration management, constants (subdomain-only config type), logging setup
 - **`models/`**: @models/CLAUDE.md - Pydantic data models, validation, request/response schemas
-- **`services/`**: @services/CLAUDE.md - Business logic layer, SwagManagerService (1494 lines)
-- **`tools/`**: @tools/CLAUDE.md - MCP tool implementation, unified `swag` tool (621 lines)
+- **`services/`**: @services/CLAUDE.md - Business logic layer, SwagManagerService (single template: `mcp.subdomain.conf.j2`)
+- **`tools/`**: @tools/CLAUDE.md - MCP tool implementation, unified `swag` tool
 - **`middleware/`**: @middleware/CLAUDE.md - Request processing pipeline, error handling, rate limiting
-- **`utils/`**: @utils/CLAUDE.md - Utility functions, validators, formatters, helpers
+- **`utils/`**: @utils/CLAUDE.md - Utility functions, validators, formatters (build_template_filename returns `mcp.subdomain.conf.j2`)
 
 ## Key Files Deep Dive
 

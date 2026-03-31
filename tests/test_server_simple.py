@@ -20,7 +20,6 @@ class TestServerFunctions:
         """Test service name extraction from filename."""
         test_cases = [
             ("test.subdomain.conf", "test"),
-            ("example-service.subfolder.conf", "example-service"),
             ("my_app.subdomain.conf.sample", "my_app"),
             ("simple.conf", "simple"),
         ]
@@ -53,7 +52,7 @@ class TestServerFunctions:
 
             result = await create_mcp_server()
             assert result == mock_app
-            mock_fastmcp.assert_called_once_with("SWAG Configuration Manager")
+            mock_fastmcp.assert_called_once_with("SWAG Configuration Manager", auth=None)
 
     async def test_register_resources(self):
         """Test resource registration function."""

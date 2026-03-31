@@ -1,7 +1,4 @@
-"""Formatting utilities for SWAG MCP server.
-
-Updated September 29, 2025 to support SWAG-compliant MCP template mapping.
-"""
+"""Formatting utilities for SWAG MCP server."""
 
 from datetime import datetime
 from typing import Any, Literal
@@ -9,7 +6,6 @@ from urllib.parse import urlsplit
 
 from swag_mcp.core.constants import (
     CONFIG_TYPE_SUBDOMAIN,
-    CONFIG_TYPE_SUBFOLDER,
     CONFIG_TYPES,
     SAMPLE_EXTENSION,
 )
@@ -243,34 +239,21 @@ def build_template_filename(config_type: str) -> str:
     """Build a template filename from config type.
 
     Args:
-        config_type: Type of configuration (SWAG-compliant types only)
+        config_type: Base config type ("subdomain")
 
     Returns:
-        Template filename with .j2 extension
-
-    Examples:
-        build_template_filename("swag-compliant-mcp-subdomain")
-            -> "swag-compliant-mcp-subdomain.conf.j2"
-        build_template_filename("swag-compliant-mcp-subfolder")
-            -> "swag-compliant-mcp-subfolder.conf.j2"
+        Template filename: "mcp.subdomain.conf.j2"
 
     Raises:
-        ValueError: If config_type is not one of the valid SWAG-compliant types
-
-    Note:
-        Legacy template types (subdomain, subfolder, mcp-subdomain, mcp-subfolder)
-        were removed in commit 64547f5. All templates now use SWAG-compliant format
-        with include /config/nginx/mcp.conf for DRY configuration.
+        ValueError: If config_type is not valid
 
     """
-    # Validate against SWAG-compliant CONFIG_TYPES only
     if config_type not in CONFIG_TYPES:
         raise ValueError(
             f"Invalid config type '{config_type}'. Must be one of: {', '.join(CONFIG_TYPES)}"
         )
 
-    # All SWAG-compliant templates follow the standard naming convention
-    return f"{config_type}.conf.j2"
+    return f"mcp.{config_type}.conf.j2"
 
 
 def get_possible_sample_filenames(service_name: str) -> list[str]:
@@ -285,7 +268,6 @@ def get_possible_sample_filenames(service_name: str) -> list[str]:
     """
     return [
         f"{service_name}.{CONFIG_TYPE_SUBDOMAIN}.conf{SAMPLE_EXTENSION}",
-        f"{service_name}.{CONFIG_TYPE_SUBFOLDER}.conf{SAMPLE_EXTENSION}",
     ]
 
 

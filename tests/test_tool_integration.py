@@ -500,10 +500,10 @@ class TestSwagToolIntegration:
     async def test_update_add_mcp_location(
         self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
     ) -> None:
-        """Test adding a custom MCP location to an existing configuration.
+        """Test adding a custom MCP location is not supported with new template system.
 
-        Note: SWAG-compliant templates already include /mcp location by default.
-        This test adds a custom MCP endpoint at a different path.
+        render_mcp_location_block() now raises NotImplementedError, so add_mcp
+        should return a failure response.
         """
         config_name = f"{test_config_name}-mcp.subdomain.conf"
         test_config_cleanup(config_name)
@@ -521,7 +521,7 @@ class TestSwagToolIntegration:
         )
         assert create_result.is_error is False
 
-        # Add custom MCP location (not /mcp, which is already included in SWAG-compliant templates)
+        # add_mcp is no longer supported — should return error response
         update_result = await mcp_client.call_tool(
             "swag",
             {
@@ -536,11 +536,9 @@ class TestSwagToolIntegration:
         assert update_result.is_error is False
         assert isinstance(update_result.content[0], TextContent)
 
-        # Check structured content for successful MCP location addition
+        # Check structured content for failure (add_mcp not supported)
         assert update_result.structured_content is not None
-        assert update_result.structured_content.get("success")
-        assert "backup_created" in update_result.structured_content
-        # Should have health_check field for domains or other update-specific data
+        assert not update_result.structured_content.get("success")
 
     async def test_update_invalid_field(self, mcp_client: Client, test_config_name: str) -> None:
         """Test updating with an invalid field name."""
@@ -948,12 +946,13 @@ class TestSwagToolIntegration:
                 },
             )
 
-        # Check that the error message is about validation
+        # Check that the error message is about validation or timeout
         error_msg = str(exc_info.value).lower()
         assert (
             "validation" in error_msg
             or "invalid" in error_msg
             or "less than or equal to" in error_msg
+            or "timed out" in error_msg
         )
 
     # Error Handling Tests

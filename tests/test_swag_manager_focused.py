@@ -265,23 +265,14 @@ class TestSwagManagerTemplateOperations:
             config_dir.mkdir()
             template_dir.mkdir()
 
-            # Create template files with SWAG-compliant names
-            templates = {
-                "swag-compliant-mcp-subdomain.conf.j2": "subdomain template content",
-                "swag-compliant-mcp-subfolder.conf.j2": "subfolder template content",
-                "mcp_location_block.j2": "mcp location template",
-            }
-
-            for name, content in templates.items():
-                (template_dir / name).write_text(content)
+            # Create template file with new naming
+            (template_dir / "mcp.subdomain.conf.j2").write_text("subdomain template content")
 
             yield SwagManagerService(config_dir, template_dir)
 
     async def test_validate_template_exists_valid(self, temp_service_with_templates):
         """Test template existence validation for valid templates."""
-        result = await temp_service_with_templates.validate_template_exists(
-            "swag-compliant-mcp-subdomain"
-        )
+        result = await temp_service_with_templates.validate_template_exists("subdomain")
         assert result is True
 
     async def test_validate_template_exists_invalid(self, temp_service_with_templates):
@@ -294,8 +285,7 @@ class TestSwagManagerTemplateOperations:
         result = await temp_service_with_templates.validate_all_templates()
 
         assert isinstance(result, dict)
-        assert result.get("swag-compliant-mcp-subdomain") is True
-        assert result.get("swag-compliant-mcp-subfolder") is True
+        assert result.get("subdomain") is True
 
 
 class TestSwagManagerBackupOperations:

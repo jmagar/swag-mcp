@@ -106,33 +106,6 @@ class TestMCPRemoteUpstream:
         assert "location / {" in result.content
 
     @pytest.mark.asyncio
-    async def test_subfolder_template_with_remote_mcp(self, swag_manager):
-        """Test subfolder template with remote MCP server."""
-        request = SwagConfigRequest(
-            action="create",
-            config_name="plex.subfolder.conf",
-            server_name="example.com",
-            upstream_app="plex",
-            upstream_port=32400,
-            upstream_proto="https",
-            mcp_upstream_app="transcoder",
-            mcp_upstream_port=9000,
-            mcp_upstream_proto="http",
-        )
-
-        result = await swag_manager.create_config(request)
-        assert result.filename == "plex.subfolder.conf"
-
-        # Verify both upstreams are configured
-        assert 'set $upstream_app "plex"' in result.content
-        assert 'set $upstream_port "32400"' in result.content
-        assert 'set $mcp_upstream_app "transcoder"' in result.content
-        assert 'set $mcp_upstream_port "9000"' in result.content
-
-        # Verify MCP location uses remote transcoder
-        assert "location ^~ /plex/mcp {" in result.content or "location /mcp {" in result.content
-
-    @pytest.mark.asyncio
     async def test_mcp_upstream_validation(self):
         """Test that MCP upstream fields are validated."""
         from pydantic import ValidationError

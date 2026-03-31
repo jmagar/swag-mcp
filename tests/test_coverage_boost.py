@@ -144,22 +144,17 @@ class TestFormatters:
         assert "s" in format_duration(1500)
 
     def test_build_template_filename(self):
-        """Test template filename building with SWAG-compliant types."""
-        assert (
-            build_template_filename("swag-compliant-mcp-subdomain")
-            == "swag-compliant-mcp-subdomain.conf.j2"
-        )
-        assert (
-            build_template_filename("swag-compliant-mcp-subfolder")
-            == "swag-compliant-mcp-subfolder.conf.j2"
-        )
+        """Test template filename building with new template system."""
+        assert build_template_filename("subdomain") == "mcp.subdomain.conf.j2"
 
         with pytest.raises(ValueError):
             build_template_filename("invalid")
 
-        # Legacy template types should raise ValueError
+        # Removed template types should raise ValueError
         with pytest.raises(ValueError):
-            build_template_filename("subdomain")
+            build_template_filename("subfolder")
+        with pytest.raises(ValueError):
+            build_template_filename("swag-compliant-mcp-subdomain")
 
     def test_format_health_check_result(self):
         """Test health check result formatting."""
@@ -172,7 +167,7 @@ class TestFormatters:
     def test_get_possible_sample_filenames(self):
         """Test sample filename generation."""
         filenames = get_possible_sample_filenames("test")
-        assert filenames == ["test.subdomain.conf.sample", "test.subfolder.conf.sample"]
+        assert filenames == ["test.subdomain.conf.sample"]
 
     def test_format_config_list(self):
         """Test config list formatting."""
@@ -211,12 +206,12 @@ class TestConstants:
     """Test constants are properly defined."""
 
     def test_config_types(self):
-        """Test config types constant for SWAG-compliant types only."""
-        assert "swag-compliant-mcp-subdomain" in CONFIG_TYPES
-        assert "swag-compliant-mcp-subfolder" in CONFIG_TYPES
-        # Legacy types should not be in CONFIG_TYPES
-        assert "subdomain" not in CONFIG_TYPES
+        """Test config types constant — only subdomain supported."""
+        assert "subdomain" in CONFIG_TYPES
+        # Removed types should not be in CONFIG_TYPES
         assert "subfolder" not in CONFIG_TYPES
+        assert "swag-compliant-mcp-subdomain" not in CONFIG_TYPES
+        assert "swag-compliant-mcp-subfolder" not in CONFIG_TYPES
 
     def test_auth_methods(self):
         """Test auth methods constant."""
@@ -387,8 +382,8 @@ class TestSwagManagerAdvanced:
             config_path = Path(config_dir)
             template_path = Path(template_dir)
 
-            # Create SWAG-compliant template
-            (template_path / "swag-compliant-mcp-subdomain.conf.j2").write_text(
+            # Create template with new naming
+            (template_path / "mcp.subdomain.conf.j2").write_text(
                 "server_name {{ server_name }}; "
                 "proxy_pass {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }};"
             )
@@ -416,7 +411,7 @@ class TestSwagManagerAdvanced:
         """Test template existence validation."""
         service, _ = service_with_files
 
-        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
+        result = await service.validate_template_exists("subdomain")
         assert result is True
 
     @pytest.mark.asyncio
@@ -425,7 +420,7 @@ class TestSwagManagerAdvanced:
         """Test template non-existence."""
         service, _ = service_with_files
 
-        result = await service.validate_template_exists("swag-compliant-mcp-subfolder")
+        result = await service.validate_template_exists("nonexistent")
         assert result is False
 
     @pytest.mark.asyncio
@@ -435,5 +430,5 @@ class TestSwagManagerAdvanced:
 
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
-        assert "swag-compliant-mcp-subdomain" in result
-        assert result["swag-compliant-mcp-subdomain"] is True
+        assert "subdomain" in result
+        assert result["subdomain"] is True

@@ -45,8 +45,8 @@ class SwagConfig(BaseSettings):
 Defines validation patterns, configuration options, and default values:
 
 ```python
-# Configuration Types
-CONFIG_TYPES = ["subdomain", "subfolder", "mcp-subdomain", "mcp-subfolder"]
+# Configuration Types (simplified - subdomain only)
+CONFIG_TYPES = ["subdomain"]
 
 # Authentication Methods
 AUTH_METHODS = ["none", "ldap", "authelia", "authentik", "tinyauth"]
@@ -68,7 +68,7 @@ DEFAULT_HEALTH_CHECK_TIMEOUT = 30
 
 **Usage Patterns:**
 - Import for validation: `from swag_mcp.core.constants import DOMAIN_PATTERN`
-- Configuration validation: Check against `CONFIG_TYPES` and `AUTH_METHODS`
+- Configuration validation: Check against `CONFIG_TYPES` (subdomain only) and `AUTH_METHODS`
 - File naming: Use `NGINX_CONF_EXTENSION` for consistent file handling
 
 ### `logging_config.py` - Structured Logging Setup

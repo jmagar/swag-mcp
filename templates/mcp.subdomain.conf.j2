@@ -1,0 +1,101 @@
+## Version 2026/03/30 - MCP 2025-11-25 SWAG Compatible
+# MCP Streamable-HTTP Reverse Proxy
+# Service: {{ service_name }}
+# Domain: {{ server_name }}
+# Upstream: {{ upstream_proto }}://{{ upstream_app }}:{{ upstream_port }}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+
+    server_name {{ server_name }};
+
+    include /config/nginx/ssl.conf;
+
+    client_max_body_size 0;
+
+    set $upstream_app "{{ upstream_app }}";
+    set $upstream_port "{{ upstream_port }}";
+    set $upstream_proto "{{ upstream_proto }}";
+
+    set $mcp_upstream_app "{{ mcp_upstream_app }}";
+    set $mcp_upstream_port "{{ mcp_upstream_port }}";
+    set $mcp_upstream_proto "{{ mcp_upstream_proto }}";
+
+    # DNS rebinding protection
+    set $origin_valid 0;
+    if ($http_origin = "") { set $origin_valid 1; }
+    if ($http_origin = "https://$server_name") { set $origin_valid 1; }
+    if ($http_origin ~ "^https://(localhost|127\.0\.0\.1)(:[0-9]+)?$") { set $origin_valid 1; }
+    if ($http_origin ~ "^https://(.*\.)?anthropic\.com$") { set $origin_valid 1; }
+    if ($http_origin ~ "^https://(.*\.)?claude\.ai$") { set $origin_valid 1; }
+
+    add_header X-MCP-Version "2025-11-25" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+{% if auth_method != "none" %}
+    include /config/nginx/{{ auth_method }}-server.conf;
+{% endif %}
+
+    # OAuth 2.1: /_oauth_verify, /.well-known/*, /jwks, /register,
+    #            /authorize, /token, /revoke, /callback, /success, error pages
+    include /config/nginx/oauth.conf;
+
+    location /mcp {
+        if ($origin_valid = 0) {
+            add_header Content-Type "application/json" always;
+            return 403 '{"error":"origin_not_allowed","message":"Origin header validation failed"}';
+        }
+
+        auth_request /_oauth_verify;
+        auth_request_set $auth_status $upstream_status;
+
+        include /config/nginx/resolver.conf;
+        include /config/nginx/proxy.conf;
+        include /config/nginx/mcp.conf;
+
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
+    }
+
+    location /health {
+        include /config/nginx/resolver.conf;
+
+        proxy_set_header Accept "application/json";
+        proxy_set_header X-Health-Check "nginx-mcp-proxy";
+
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
+
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+
+        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+    }
+
+    location ~* ^/(session|sessions) {
+        auth_request /_oauth_verify;
+        auth_request_set $auth_status $upstream_status;
+
+        include /config/nginx/resolver.conf;
+        include /config/nginx/proxy.conf;
+
+        proxy_set_header MCP-Protocol-Version $http_mcp_protocol_version;
+        proxy_set_header Mcp-Session-Id $http_mcp_session_id;
+
+        add_header Cache-Control "no-store" always;
+        add_header Pragma "no-cache" always;
+
+        proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
+    }
+
+    location / {
+{% if auth_method != "none" %}
+        include /config/nginx/{{ auth_method }}-location.conf;
+{% endif %}
+        include /config/nginx/resolver.conf;
+        include /config/nginx/proxy.conf;
+
+        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+    }
+}

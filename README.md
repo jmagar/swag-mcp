@@ -190,7 +190,7 @@ swag create jellyfin jellyfin.example.com jellyfin 8096
 
 **Shorthand:**
 ```
-swag create claude-mcp ai.example.com claude-mcp-server 8080 mcp-subdomain
+swag create claude-mcp ai.example.com claude-mcp-server 8080
 ```
 
 ### Remote MCP Server Support (NEW!)
@@ -309,8 +309,8 @@ Creates a new reverse proxy configuration with automatic health check verificati
 
 **Key Options:**
 
-- **Config Type**: Automatically inferred from filename (service.subdomain.conf or service.subfolder.conf)
-- **MCP Support**: Add `mcp_enabled=true` for streaming/SSE features
+- **Config Type**: Subdomain only (`service.subdomain.conf`)
+- **MCP Support**: Built-in via unified template with `/mcp` endpoint and OAuth
 - **Authentication**: none, basic, ldap, authelia, authentik, tinyauth (default: authelia)
 - **Protocols**: http, https (default: http)
 - **QUIC Support**: Available for enhanced performance
@@ -372,35 +372,43 @@ View SWAG container logs for debugging.
 
 ## 🏗️ Template System
 
-The template system automatically selects the appropriate template based on the configuration filename format and the `mcp_enabled` parameter:
+The template system uses a single unified template with modular nginx includes:
 
-### Standard Templates
+### Single Template Architecture
 
-Perfect for traditional web applications:
+All configurations are generated from one template:
 
-- **`subdomain`** - `service.subdomain.conf` → `app.example.com` → `container:port`
-- **`subfolder`** - `service.subfolder.conf` → `example.com/app` → `container:port`
+- **`mcp.subdomain.conf.j2`** - Unified subdomain template with MCP + OAuth support
 
-### MCP Templates
+`build_template_filename("subdomain")` returns `"mcp.subdomain.conf.j2"`. Subfolder support has been removed.
 
-Optimized for remote MCP services with streaming (enabled with `mcp_enabled=true`):
+### Nginx Includes
 
-- **`mcp-subdomain`** - `service.subdomain.conf` + MCP features → Streamable-HTTP/SSE support
-- **`mcp-subfolder`** - `service.subfolder.conf` + MCP features → path-based with SSE support
+Two nginx include files provide modular functionality:
 
-#### Template Selection
+- **`nginx/mcp.conf`** - Location-level MCP overrides: zero-buffering, extended timeouts, SSE/streaming headers
+- **`nginx/oauth.conf`** - Server-level OAuth 2.1 endpoints: `/_oauth_verify` and related OAuth callback routes
 
-- Base type inferred from filename: `.subdomain.conf` or `.subfolder.conf`
-- MCP features added when `mcp_enabled=true` parameter is used
-- No need to specify template type separately — it's determined automatically
+### How It Works
 
-#### MCP Template Features
+The template includes `oauth.conf` at the server level and uses `proxy.conf` then `mcp.conf` inside the `/mcp` location block:
 
-- 🚀 Zero-buffering for real-time streaming
-- ⏱️ 24-hour timeouts for long AI tasks
-- 🔄 Server-Sent Events (SSE) support
-- 📡 WebSocket upgrade capability
-- 🛡️ Authelia integration by default
+- **`/`** (main service) - Protected by Authelia authentication
+- **`/mcp`** (MCP endpoint) - Protected by OAuth via `auth_request /_oauth_verify`
+- **`/health`** (health check) - No authentication required
+
+### Template Features
+
+- Zero-buffering for real-time streaming on `/mcp`
+- 24-hour timeouts for long AI tasks
+- Server-Sent Events (SSE) support
+- OAuth 2.1 authentication for MCP endpoints
+- Authelia integration for main service routes
+- QUIC/HTTP3 support (optional)
+
+### Deprecated
+
+`render_mcp_location_block()` is deprecated and raises `NotImplementedError`.
 
 ---
 
@@ -492,10 +500,10 @@ swag-mcp/
 │       ├── tool_helpers.py   # Tool helper functions
 │       └── validators.py     # Input validation
 ├── 📝 templates/             # Jinja2 templates
-│   ├── subdomain.conf.j2     # Standard subdomain proxy
-│   ├── subfolder.conf.j2     # Path-based routing
-│   ├── mcp-subdomain.conf.j2 # AI service with SSE support
-│   └── mcp-subfolder.conf.j2 # AI service on path with SSE
+│   └── mcp.subdomain.conf.j2 # Unified subdomain template with MCP + OAuth
+├── 🔧 nginx/                # Nginx include snippets
+│   ├── mcp.conf              # Location-level MCP overrides (buffering, timeouts, SSE)
+│   └── oauth.conf            # Server-level OAuth 2.1 endpoints
 ├── 📚 docs/                  # Documentation
 │   └── swag-test-commands.md # Comprehensive test commands (600+ examples)
 ├── 🧪 tests/                 # Test suite

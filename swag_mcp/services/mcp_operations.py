@@ -9,7 +9,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
-from swag_mcp.core.config import config as global_config
 from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
@@ -290,44 +289,18 @@ class MCPOperations:
         upstream_proto: Literal["http", "https"],
         auth_method: str,
     ) -> str:
-        """Render MCP location block template with provided variables.
+        """Render MCP location block for insertion into existing configs.
 
-        Args:
-            mcp_path: URL path for the MCP endpoint
-            upstream_app: Upstream application name or IP
-            upstream_port: Upstream port number
-            upstream_proto: Protocol for upstream connection ("http" or "https")
-            auth_method: Authentication method to use
-
-        Returns:
-            Rendered MCP location block as string
-
-        Raises:
-            ValueError: If template rendering fails
+        Note: The standalone mcp_location_block.j2 template was removed.
+        New MCP configs should be created from mcp.subdomain.conf.j2 instead.
+        This method is retained for add_mcp_location but raises NotImplementedError
+        until a replacement inline template is provided.
 
         """
-        try:
-            # Prepare template variables
-            template_vars = {
-                "mcp_path": mcp_path,
-                "upstream_app": upstream_app,
-                "upstream_port": upstream_port,
-                "upstream_proto": upstream_proto,
-                "auth_method": auth_method,
-                "oauth_upstream": global_config.oauth_upstream,
-                "auth_server_url": global_config.auth_server_url,
-            }
-
-            # Render template with validated variables using the template manager
-            template_name = "mcp_location_block.j2"
-            rendered = await self.template_manager.render_template(template_name, template_vars)
-            return rendered
-
-        except ValueError as e:
-            # Template manager already provides detailed error messages
-            raise e
-        except Exception as e:
-            raise ValueError(f"Failed to render MCP location block template: {str(e)}") from e
+        raise NotImplementedError(
+            "add_mcp_location is not yet supported with the new template system. "
+            "Create a new MCP config using the 'create' action instead."
+        )
 
     def insert_location_block(self, content: str, location_block: str) -> str:
         """Insert location block before the closing brace of the outermost server block.

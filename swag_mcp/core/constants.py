@@ -1,7 +1,4 @@
-"""Constants used throughout the SWAG MCP server.
-
-Updated September 29, 2025 to support SWAG-compliant MCP templates.
-"""
+"""Constants used throughout the SWAG MCP server."""
 
 # File patterns and extensions
 CONF_PATTERN = "*.conf"
@@ -15,33 +12,16 @@ VALID_NAME_PATTERN = r"^[\w-]+$"  # Service names, alphanumeric + hyphens/unders
 VALID_UPSTREAM_PATTERN = r"^[a-zA-Z0-9_.\[\]:-]+$"  # Container names/IP addresses, IPv6 support
 VALID_CONFIG_NAME_PATTERN = r"^[a-zA-Z0-9_.-]+\.(conf|sample)$"  # Config filenames
 VALID_CONFIG_ONLY_PATTERN = r"^[a-zA-Z0-9_.-]+\.conf$"  # Only .conf files
-# Support both legacy short format and SWAG-compliant format
-VALID_CONFIG_NAME_FORMAT = (
-    r"^[a-zA-Z0-9_-]+\."
-    r"(subdomain|subfolder"
-    r"|swag-compliant-mcp-subdomain"
-    r"|swag-compliant-mcp-subfolder)\.conf$"
-)
+# Config name format: service.subdomain.conf
+VALID_CONFIG_NAME_FORMAT = r"^[a-zA-Z0-9_-]+\.subdomain\.conf$"
 
-# Configuration types - SWAG-compliant only (templates consolidated in commit 64547f5)
-# Legacy types removed: subdomain, subfolder, mcp-subdomain, mcp-subfolder
-CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN = "swag-compliant-mcp-subdomain"
-CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER = "swag-compliant-mcp-subfolder"
-
-# Configuration types tuple for efficient validation and iteration
-CONFIG_TYPES = (
-    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBDOMAIN,
-    CONFIG_TYPE_SWAG_COMPLIANT_MCP_SUBFOLDER,
-)
-
-# Backwards-compat alias (if referenced elsewhere)
+# Configuration type — only subdomain supported (subfolder template removed)
+CONFIG_TYPE_SUBDOMAIN = "subdomain"
+CONFIG_TYPES = (CONFIG_TYPE_SUBDOMAIN,)
 ALL_CONFIG_TYPES = list(CONFIG_TYPES)
 
-# Legacy constants for backwards compatibility (deprecated - do not use in new code)
-CONFIG_TYPE_SUBDOMAIN = "subdomain"
-CONFIG_TYPE_SUBFOLDER = "subfolder"
-CONFIG_TYPE_MCP_SUBDOMAIN = "mcp-subdomain"
-CONFIG_TYPE_MCP_SUBFOLDER = "mcp-subfolder"
+# Template filename: mcp.subdomain.conf.j2
+MCP_TEMPLATE_FILENAME = "mcp.subdomain.conf.j2"
 
 # URI schemes and paths
 SWAG_URI_BASE = "swag://"

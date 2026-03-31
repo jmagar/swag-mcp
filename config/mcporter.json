@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "swag-mcp": {
+      "baseUrl": "http://localhost:8012"
+    }
+  }
+}

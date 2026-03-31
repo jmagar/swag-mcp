@@ -29,11 +29,8 @@ class TestSwagManagerServiceBasic:
         """Create a temporary template directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
             template_dir = Path(temp_dir)
-            # Create SWAG-compliant templates
-            (template_dir / "swag-compliant-mcp-subdomain.conf.j2").write_text(
-                "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
-            )
-            (template_dir / "swag-compliant-mcp-subfolder.conf.j2").write_text(
+            # Create template with new naming
+            (template_dir / "mcp.subdomain.conf.j2").write_text(
                 "# Test template for {{ service_name }}\nserver_name {{ server_name }};"
             )
             yield template_dir
@@ -118,10 +115,8 @@ class TestSwagManagerServiceBasic:
     async def test_validate_template_exists(self, service):
         """Test template existence validation with specific assertions."""
         # Test existing template
-        result = await service.validate_template_exists("swag-compliant-mcp-subdomain")
-        assert (
-            result is True
-        ), "Expected 'swag-compliant-mcp-subdomain' template to exist in test setup"
+        result = await service.validate_template_exists("subdomain")
+        assert result is True, "Expected 'subdomain' template to exist in test setup"
         assert isinstance(result, bool), f"Expected boolean result, got {type(result)}"
 
         # Test non-existent template
@@ -133,8 +128,8 @@ class TestSwagManagerServiceBasic:
         """Test validating all templates."""
         result = await service.validate_all_templates()
         assert isinstance(result, dict)
-        assert "swag-compliant-mcp-subdomain" in result
-        assert result["swag-compliant-mcp-subdomain"] is True
+        assert "subdomain" in result
+        assert result["subdomain"] is True
 
     async def test_get_resource_configs(self, service, temp_config_dir):
         """Test getting resource configs."""

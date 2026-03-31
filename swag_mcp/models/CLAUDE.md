@@ -130,7 +130,7 @@ class SwagCreateRequest(SwagBaseRequest):
     upstream_proto: str = Field(default="http", pattern=r"^(http|https)$")
     config_type_create: str = Field(
         default="subdomain",
-        pattern=r"^(subdomain|subfolder|mcp-subdomain|mcp-subfolder)$"
+        pattern=r"^(subdomain)$"
     )
     auth_method: str = Field(
         default="authelia",
