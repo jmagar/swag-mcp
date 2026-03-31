@@ -51,7 +51,7 @@ def _coerce_action(v: Any) -> str:
         raise ValueError(f"action is required. Must be one of: {_VALID_ACTIONS_STR}")
     if isinstance(v, bool):
         raise ValueError(
-            f"action must be a string, got boolean ({v}). " f"Must be one of: {_VALID_ACTIONS_STR}"
+            f"action must be a string, got boolean ({v}). Must be one of: {_VALID_ACTIONS_STR}"
         )
     return str(v)
 
@@ -164,6 +164,15 @@ def register_tools(mcp: FastMCP) -> None:
                 description="Filter for listing configurations: 'all' | 'active' | 'samples'",
             ),
         ] = "all",
+        offset: Annotated[int, Field(default=0, description="Pagination offset", ge=0)] = 0,
+        limit: Annotated[
+            int, Field(default=50, description="Max results to return", ge=1, le=200)
+        ] = 50,
+        sort_by: Annotated[str, Field(default="name", description="Field to sort by")] = "name",
+        sort_order: Annotated[
+            Literal["asc", "desc"], Field(default="asc", description="Sort direction")
+        ] = "asc",
+        query: Annotated[str, Field(default="", description="Filter query string")] = "",
         # Create parameters
         config_name: Annotated[
             str,
@@ -385,7 +394,17 @@ def register_tools(mcp: FastMCP) -> None:
         try:
             match action:
                 case SwagAction.LIST:
-                    return await _handle_list_action(ctx, swag_service, formatter, list_filter)
+                    return await _handle_list_action(
+                        ctx,
+                        swag_service,
+                        formatter,
+                        list_filter,
+                        offset,
+                        limit,
+                        sort_by,
+                        sort_order,
+                        query,
+                    )
                 case SwagAction.CREATE:
                     # eqf.10: Emit note when mcp_upstream_port inherits from upstream_port
                     effective_mcp_port = mcp_upstream_port or None
@@ -445,11 +464,59 @@ def register_tools(mcp: FastMCP) -> None:
             logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
             return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
 
+    @mcp.tool
+    async def swag_help() -> str:
+        """Returns help for the SWAG MCP server — lists all available actions and subactions."""
+        return """# SWAG MCP Server
+
+Manage SWAG (Secure Web Application Gateway) reverse proxy configurations.
+
+## Tool: `swag`
+
+Routes all SWAG management actions via `action` parameter.
+
+## Available Actions
+
+| Action | Description |
+|--------|-------------|
+| `list` | List proxy configurations (filter: all/active/samples) |
+| `create` | Create a new proxy configuration |
+| `view` | View a configuration file's contents |
+| `edit` | Edit a configuration file |
+| `update` | Update a field in a configuration (port, upstream, app, add_mcp) |
+| `remove` | Remove a configuration file |
+| `logs` | View SWAG logs (type: access/error/fail2ban) |
+| `backups` | Manage config backups (subaction: list/cleanup) |
+| `health_check` | Run HTTP health check on a domain |
+
+## Examples
+
+```json
+{"action": "list", "list_filter": "active"}
+{"action": "create", "config_name": "app.subdomain.conf", "server_name": "app.example.com", "upstream_app": "myapp", "upstream_port": 3000}
+{"action": "view", "config_name": "app.subdomain.conf"}
+{"action": "edit", "config_name": "app.subdomain.conf", "new_content": "..."}
+{"action": "update", "config_name": "app.subdomain.conf", "update_field": "port", "update_value": "8080"}
+{"action": "remove", "config_name": "app.subdomain.conf"}
+{"action": "logs", "log_type": "access", "lines": 50}
+{"action": "backups", "backup_action": "list"}
+{"action": "health_check", "domain": "app.example.com"}
+```
+"""
+
 
 async def _handle_list_action(
-    ctx: Context, swag_service: Any, formatter: Any, list_filter: str
+    ctx: Context,
+    swag_service: Any,
+    formatter: Any,
+    list_filter: str,
+    offset: int = 0,
+    limit: int = 50,
+    sort_by: str = "name",
+    sort_order: str = "asc",
+    query: str = "",
 ) -> ToolResult:
-    """Handle LIST action."""
+    """Handle LIST action with pagination."""
     await log_action_start(ctx, "Listing SWAG configurations", list_filter)
 
     if error := validate_list_filter(cast("Literal['all', 'active', 'samples']", list_filter)):
@@ -460,14 +527,31 @@ async def _handle_list_action(
 
     result = await swag_service.list_configs(list_filter)
 
-    # Convert service result to dict for formatter
+    # Apply query filter, sort, and pagination
+    configs = result.configs or []
+    if query:
+        configs = [c for c in configs if query.lower() in str(c).lower()]
+    if sort_order == "desc":
+        configs = sorted(configs, key=lambda c: str(c), reverse=True)
+    else:
+        configs = sorted(configs, key=lambda c: str(c))
+    total = len(configs)
+    page = configs[offset : offset + limit]
+
+    # Standard pagination response shape
     result_data = {
-        "configs": result.configs,
-        "total_count": result.total_count,
+        "items": page,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total,
+        # Legacy fields for formatter compatibility
+        "configs": page,
+        "total_count": total,
         "list_filter": result.list_filter,
     }
 
-    await log_action_success(ctx, f"Listed {result.total_count} configurations")
+    await log_action_success(ctx, f"Listed {total} configurations (offset={offset}, limit={limit})")
     return cast("ToolResult", formatter.format_list_result(result_data, list_filter))
 
 

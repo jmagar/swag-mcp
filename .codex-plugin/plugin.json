@@ -1,0 +1,10 @@
+{
+  "name": "swag-mcp",
+  "version": "1.0.0",
+  "description": "SWAG reverse proxy management via MCP",
+  "interface": {
+    "type": "mcp",
+    "transport": "http",
+    "url": "http://localhost:8082/mcp"
+  }
+}

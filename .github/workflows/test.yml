@@ -71,10 +71,10 @@ jobs:
           git push origin main
         fi
 
-    - name: Type check with mypy
+    - name: Type check with ty
       if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
       run: |
-        uv run mypy swag_mcp --ignore-missing-imports
+        uv run ty check swag_mcp/
       continue-on-error: false  # Enforce type checking (fail CI on type errors)
 
     - name: Run tests with pytest
@@ -150,3 +150,21 @@ jobs:
         path: |
           bandit-report.json
           pip-audit-report.json
+
+  version-sync:
+    name: Version sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version consistency
+        run: |
+          pyproject_ver=$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+          echo "pyproject.toml version: $pyproject_ver"
+
+  contract-drift:
+    name: Contract drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run plugin lint
+        run: bash scripts/lint-plugin.sh || true

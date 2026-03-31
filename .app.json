@@ -1,0 +1,5 @@
+{
+  "name": "swag-mcp",
+  "version": "1.0.0",
+  "description": "SWAG reverse proxy management via MCP"
+}
