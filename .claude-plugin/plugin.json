@@ -7,13 +7,19 @@
   },
   "repository": "https://github.com/jmagar/swag-mcp",
   "license": "MIT",
-  "keywords": ["swag", "nginx", "reverse-proxy", "homelab", "mcp"],
+  "keywords": [
+    "swag",
+    "nginx",
+    "reverse-proxy",
+    "homelab",
+    "mcp"
+  ],
   "userConfig": {
     "swag_mcp_url": {
       "type": "string",
       "title": "SWAG MCP Server URL",
       "description": "URL of the swag-mcp MCP server. Default http://localhost:8000 works if running via docker compose in this repo. Change if running on a different host or port.",
-      "default": "http://localhost:8000",
+      "default": "https://swag.tootie.tv/mcp",
       "sensitive": false
     },
     "swag_proxy_confs_path": {

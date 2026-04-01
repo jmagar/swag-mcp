@@ -15,12 +15,8 @@ services:
     user: "${PUID:-1000}:${PGID:-1000}"
 
     volumes:
-      - /mnt/appdata/swag:/swag
       - ${SWAG_MCP_LOG_DIRECTORY:-/tmp/swag-mcp/logs}:/app/.swag-mcp/logs
-      - /var/run/docker.sock:/var/run/docker.sock
-
-    group_add:
-      - ${DOCKER_GID:-999}
+      - ~/.ssh:/home/swagmcp/.ssh:ro
 
     ports:
       - "${SWAG_MCP_PORT:-8000}:8000"
