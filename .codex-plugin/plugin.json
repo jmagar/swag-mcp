@@ -5,6 +5,7 @@
   "interface": {
     "type": "mcp",
     "transport": "http",
-    "url": "http://localhost:8082/mcp"
+    "url": "http://localhost:8082/mcp",
+    "displayName": "SWAG MCP"
   }
 }
