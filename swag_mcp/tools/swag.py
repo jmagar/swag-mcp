@@ -395,7 +395,7 @@ Routes all SWAG management actions via `action` parameter.
 {"action": "edit", "config_name": "app.subdomain.conf", "new_content": "..."}
 {"action": "update", "config_name": "app.subdomain.conf", "update_field": "port", "update_value": "8080"}
 {"action": "remove", "config_name": "app.subdomain.conf"}
-{"action": "logs", "log_type": "access", "lines": 50}
+{"action": "logs", "log_type": "nginx-access", "lines": 50}
 {"action": "backups", "backup_action": "list"}
 {"action": "health_check", "domain": "app.example.com"}
 ```

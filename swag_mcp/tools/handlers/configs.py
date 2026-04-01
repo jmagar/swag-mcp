@@ -137,6 +137,16 @@ async def _handle_list_action(
             formatter.format_error_result(error.get("message", "Invalid list filter"), "list"),
         )
 
+    _ALLOWED_SORT_FIELDS = {"name", "filename"}
+    if sort_by not in _ALLOWED_SORT_FIELDS:
+        return cast(
+            "ToolResult",
+            formatter.format_error_result(
+                f"Invalid sort_by value '{sort_by}'. Allowed values: {sorted(_ALLOWED_SORT_FIELDS)}",
+                "list",
+            ),
+        )
+
     result = await swag_service.list_configs(list_filter)
 
     # Apply query filter, sort, and pagination
@@ -144,9 +154,9 @@ async def _handle_list_action(
     if query:
         configs = [c for c in configs if query.lower() in str(c).lower()]
 
-    def _get_sort_key(c: Any) -> Any:
+    def _get_sort_key(c: Any) -> str:
         value = getattr(c, sort_by, None)
-        return value if value is not None else str(c)
+        return str(value) if value is not None else str(c)
 
     if sort_order == "desc":
         configs = sorted(configs, key=_get_sort_key, reverse=True)
