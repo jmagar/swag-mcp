@@ -1,9 +1,6 @@
-# External network must exist before running docker compose up.
-# Create it with: docker network create mcp-net
-# Or set DOCKER_NETWORK to an existing network name.
 networks:
-  mcp-net:
-    name: ${DOCKER_NETWORK:-mcp-net}
+  jakenet:
+    name: ${DOCKER_NETWORK:-swag-mcp}
     external: true
 
 services:
@@ -33,7 +30,7 @@ services:
         required: false
 
     networks:
-      - mcp-net
+      - jakenet
 
     deploy:
       resources:
