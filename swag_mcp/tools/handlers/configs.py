@@ -143,10 +143,15 @@ async def _handle_list_action(
     configs = result.configs or []
     if query:
         configs = [c for c in configs if query.lower() in str(c).lower()]
+
+    def _get_sort_key(c: Any) -> Any:
+        value = getattr(c, sort_by, None)
+        return value if value is not None else str(c)
+
     if sort_order == "desc":
-        configs = sorted(configs, key=lambda c: str(c), reverse=True)
+        configs = sorted(configs, key=_get_sort_key, reverse=True)
     else:
-        configs = sorted(configs, key=lambda c: str(c))
+        configs = sorted(configs, key=_get_sort_key)
     total = len(configs)
     page = configs[offset : offset + limit]
 
@@ -436,7 +441,9 @@ async def _handle_update_action(
             "health_check": health_check_result,
         }
 
-        return formatter.format_update_result(result_data, config_name)
+        return formatter.format_update_result(
+            result_data, config_name, update_field, update_value, health_check_result
+        )
 
     except asyncio.CancelledError:
         await ctx.info("Update operation cancelled by user")

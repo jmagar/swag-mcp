@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import Context
 from fastmcp.tools.tool import ToolResult
 
+from swag_mcp.core.config import config
 from swag_mcp.models.enums import BackupSubAction
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
@@ -49,7 +50,7 @@ async def _handle_backups_action(
             # Convert service result to dict for formatter
             cleanup_data = {
                 "cleaned_count": cleaned_count,
-                "retention_days": retention_days_param or 30,  # Default fallback
+                "retention_days": retention_days_param or config.backup_retention_days,
             }
 
             return formatter.format_backup_result(cleanup_data, backup_action)

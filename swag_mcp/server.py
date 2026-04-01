@@ -332,20 +332,30 @@ async def cleanup_old_backups() -> None:
 
 
 def _validate_bearer_token() -> None:
-    """Fail startup if SWAG_MCP_TOKEN is not set and auth is not explicitly disabled."""
+    """Log auth-related configuration; auth must be enforced externally.
+
+    This function no longer exits the process if SWAG_MCP_TOKEN is absent.
+    Authentication must be implemented at the proxy/network layer or via a
+    dedicated auth mechanism — not via this startup check.
+    """
     token = os.getenv("SWAG_MCP_TOKEN")
     no_auth = os.getenv("SWAG_MCP_NO_AUTH", "").lower() in ("true", "1", "yes")
-    if not token and not no_auth:
-        logger.error(
-            "CRITICAL: SWAG_MCP_TOKEN is not set.\n"
-            "Set SWAG_MCP_TOKEN to a secure random token, or set SWAG_MCP_NO_AUTH=true\n"
-            "to disable auth (only appropriate when secured at the network/proxy level).\n\n"
-            "Generate a token with: openssl rand -hex 32"
+
+    if token:
+        logger.info(
+            "SWAG_MCP_TOKEN is set, but this server does not enforce bearer token auth. "
+            "Ensure access is restricted or authentication is performed by an external component."
         )
-        sys.exit(1)
-    if no_auth and not token:
+    elif no_auth:
         logger.warning(
-            "SWAG_MCP_NO_AUTH=true — bearer auth disabled. Not recommended for shared servers."
+            "SWAG_MCP_NO_AUTH=true — bearer auth is not enforced by this server. "
+            "Make sure the service is secured at the network/proxy level."
+        )
+    else:
+        logger.info(
+            "No SWAG_MCP_TOKEN configured and SWAG_MCP_NO_AUTH is not set. "
+            "This server does not perform bearer token authentication; "
+            "ensure access control is handled externally."
         )
 
 

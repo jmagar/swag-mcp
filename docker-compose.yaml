@@ -1,3 +1,6 @@
+# External network must exist before running docker compose up.
+# Create it with: docker network create mcp-net
+# Or set DOCKER_NETWORK to an existing network name.
 networks:
   mcp-net:
     name: ${DOCKER_NETWORK:-mcp-net}
@@ -39,7 +42,7 @@ services:
           cpus: "1"
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
