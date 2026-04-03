@@ -1,0 +1,20 @@
+{
+  "name": "swag-mcp",
+  "interface": {
+    "displayName": "SWAG MCP"
+  },
+  "plugins": [
+    {
+      "name": "swag-mcp",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Infrastructure"
+    }
+  ]
+}
