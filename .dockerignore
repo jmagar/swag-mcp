@@ -1,68 +1,49 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Git
-.git/
-.gitignore
-
-# Documentation
-docs/
-*.md
-!README.md
-
-# AI/tooling metadata
-.lavra/
-.omc/
-Makefile
-Justfile
-
-# Testing
-tests/
-.pytest_cache/
-.coverage
-.tox/
+.git
+.github
+.claude-plugin
+.codex-plugin
+.agents
+.beads
+.dolt
+.omc
+.lavra
+.serena
 .cache
-htmlcov/
-
-# Environment files
+.worktrees
+.full-review
+.full-review-archive-*
+.vscode
+.cursor
+.windsurf
+.1code
+.idea
 .env
 .env.*
+!.env.example
+*.log
+logs/
+backups/
+docs/
+specs/
+*.md
+!README.md
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.hypothesis
+node_modules
+dist
+coverage
+*.tsbuildinfo
+target
+Justfile
+biome.json
+.pre-commit-config.yaml
+.prettierrc
+.prettierignore
+tests/
 
-# Claude specific
-.claude/
-
-# OS files
-.DS_Store
-Thumbs.db
