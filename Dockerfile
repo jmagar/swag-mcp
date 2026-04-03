@@ -1,7 +1,7 @@
 FROM python:3.11-slim AS builder
 
 # Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.10 /uv /uvx /usr/local/bin/
 
 # Set working directory
 WORKDIR /app
