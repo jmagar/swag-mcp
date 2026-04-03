@@ -71,12 +71,16 @@ class SSHFilesystem:
             try:
                 user_prefix = f"{self._username}@" if self._username else ""
                 logger.info(f"Connecting to {user_prefix}{self._host}:{self._port} via SSH")
-                self._conn = await asyncssh.connect(
-                    self._host,
-                    port=self._port,
-                    username=self._username,
-                    known_hosts=(),  # Use system default known_hosts
-                )
+                connect_kwargs: dict[str, Any] = {
+                    "host": self._host,
+                    "port": self._port,
+                    "known_hosts": (),  # Use system default known_hosts
+                }
+                # Only pass username if explicitly set — asyncssh reads
+                # ~/.ssh/config when omitted but crashes on None (asyncssh 2.22+)
+                if self._username is not None:
+                    connect_kwargs["username"] = self._username
+                self._conn = await asyncssh.connect(**connect_kwargs)
                 self._sftp = await self._conn.start_sftp_client()
                 logger.info(f"SSH connection established to {self._host}")
                 return self._sftp
