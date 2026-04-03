@@ -1,0 +1,26 @@
+{
+  "name": "swag-mcp",
+  "version": "1.0.0",
+  "description": "SWAG reverse proxy configuration management via MCP tools. Create, edit, view, and manage nginx proxy configurations with auth integration.",
+  "mcpServers": {
+    "swag-mcp": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "swag_mcp"],
+      "cwd": "${extensionPath}"
+    }
+  },
+  "settings": [
+    {
+      "name": "SWAG Proxy Confs Path",
+      "description": "Path to SWAG nginx proxy configuration directory (e.g., /swag/nginx/proxy-confs)",
+      "envVar": "SWAG_MCP_PROXY_CONFS_PATH",
+      "sensitive": false
+    },
+    {
+      "name": "Default Auth Method",
+      "description": "Default authentication method for new proxy configs (none, basic, ldap, authelia, authentik, tinyauth)",
+      "envVar": "SWAG_MCP_DEFAULT_AUTH_METHOD",
+      "sensitive": false
+    }
+  ]
+}
