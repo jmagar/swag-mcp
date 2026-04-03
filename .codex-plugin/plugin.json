@@ -1,11 +1,43 @@
 {
   "name": "swag-mcp",
   "version": "1.0.0",
-  "description": "SWAG reverse proxy management via MCP",
+  "description": "SWAG reverse proxy management via MCP.",
+  "homepage": "https://github.com/jmagar/swag-mcp",
+  "repository": "https://github.com/jmagar/swag-mcp",
+  "license": "MIT",
+  "keywords": [
+    "swag",
+    "nginx",
+    "reverse-proxy",
+    "homelab",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "apps": "./.app.json",
   "interface": {
-    "type": "mcp",
-    "transport": "http",
-    "url": "http://localhost:8082/mcp",
-    "displayName": "SWAG MCP"
+    "displayName": "SWAG MCP",
+    "shortDescription": "Manage SWAG reverse proxy configurations",
+    "longDescription": "Create, inspect, edit, and validate SWAG reverse proxy configurations through MCP tools and bundled skills.",
+    "developerName": "Jacob Magar",
+    "category": "Infrastructure",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/jmagar/swag-mcp",
+    "defaultPrompt": [
+      "Create a SWAG proxy config for a service.",
+      "Inspect an existing SWAG configuration.",
+      "Run a health check for a proxied domain."
+    ],
+    "brandColor": "#0EA5E9",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.svg"
+  },
+  "author": {
+    "name": "Jacob Magar",
+    "email": "jmagar@users.noreply.github.com",
+    "url": "https://github.com/jmagar"
   }
 }

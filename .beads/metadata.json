@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "server",
-  "dolt_database": "swag_mcp",
-  "project_id": "9ebe59c9-0000-4059-96e6-be1beb0ee782"
-}

@@ -1,1 +1,0 @@
-{"key":"fact-oauth-conf-uses-nginx-server-name-variable-for-well-know","type":"fact","content":"oauth.conf uses nginx \\$server_name variable for /.well-known/oauth-protected-resource static JSON — works for any domain without templating, no Jinja2 needed in this file\" && bd close swag-mcp-r4g.1","source":"user","tags":["fact","auth"],"ts":1774850492,"bead":"swag-mcp-r4g.1"}
