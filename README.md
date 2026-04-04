@@ -1,105 +1,132 @@
-# SWAG MCP Server
+# SWAG MCP
 
-> **Intelligent reverse proxy and security management for SWAG via the Model Context Protocol.**
+MCP server for managing SWAG reverse-proxy configuration files, backups, logs, and health checks. The repo uses a single `swag` action router backed by local filesystem or SSH-accessible SWAG config storage.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
-[![Python Version](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/downloads/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-Enabled-brightgreen.svg)](https://github.com/jlowin/fastmcp)
-[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+## What this repository ships
 
----
+- `swag_mcp/`: server, config, middleware, models, services, tools, and templates
+- `config/`: local config and test assets
+- `docs/`: template notes, test commands, and design records
+- `.claude-plugin/`, `.codex-plugin/`, `gemini-extension.json`: client manifests
+- `docker-compose.yaml`, `Dockerfile`, `entrypoint.sh`: container deployment
 
-## ✨ Overview
-SWAG MCP transforms reverse proxy management into an AI-powered automated workflow. It enables AI assistants to generate secure Nginx configurations, manage service accessibility, and perform real-time health monitoring for your homelab services.
+## MCP surface
 
-### 🎯 Key Features
-| Feature | Description |
-|---------|-------------|
-| **Smart Templates** | Generate secure configs for basic, MCP, and remote services |
-| **Auto-Security** | Native Authelia integration and pre-configured headers |
-| **Fail-Safe Edits** | Automatic config backups before every modification |
-| **Health Guard** | Real-time verification of service accessibility |
+### Main tool
 
----
+| Tool | Purpose |
+| --- | --- |
+| `swag` | Unified action router for config, logs, backups, and health checks |
 
-## 🎯 Claude Code Integration
-The easiest way to use this plugin is through the Claude Code marketplace:
+### Supported actions
+
+| Action | Purpose |
+| --- | --- |
+| `list` | List config files |
+| `create` | Create a new reverse-proxy config |
+| `view` | View config contents |
+| `edit` | Replace config contents |
+| `update` | Update a specific field in an existing config |
+| `remove` | Remove a config |
+| `logs` | Read SWAG logs |
+| `backups` | List or clean up backup files |
+| `health_check` | Probe a service endpoint |
+
+The `update` action supports field-level updates such as `port`, `upstream`, `app`, and `add_mcp`.
+
+## Installation
+
+### Marketplace
 
 ```bash
-# Add the marketplace
 /plugin marketplace add jmagar/claude-homelab
-
-# Install the plugin
 /plugin install swag-mcp @jmagar-claude-homelab
 ```
 
----
+### Local development
 
-## ⚙️ Configuration & Credentials
-Credentials follow the standardized `homelab-core` pattern.
-
-**Location:** `~/.swag-mcp/.env`
-
-### Required Variables
 ```bash
-SWAG_MCP_PROXY_CONFS_PATH="/path/to/swag/proxy-confs"
-SWAG_MCP_LOG_DIRECTORY="/app/.swag-mcp/logs"
-SWAG_MCP_DEFAULT_AUTH_METHOD="authelia"
+uv sync --all-extras --dev
+uv run python -m swag_mcp
+```
+
+The repo's `Justfile` also exposes:
+
+```bash
+just dev
+```
+
+## Configuration
+
+Create `.env` from `.env.example` and set the storage mode you use:
+
+```bash
+SWAG_MCP_PROXY_CONFS_PATH=/swag/nginx/proxy-confs
+SWAG_MCP_SWAG_LOG_BASE_PATH=/swag/log
+SWAG_MCP_LOG_DIRECTORY=/app/.swag-mcp/logs
+SWAG_MCP_HOST=0.0.0.0
 SWAG_MCP_PORT=8000
+SWAG_MCP_TOKEN=...
+SWAG_MCP_NO_AUTH=false
+SWAG_MCP_DEFAULT_AUTH_METHOD=authelia
+SWAG_MCP_DEFAULT_QUIC_ENABLED=false
+SWAG_MCP_BACKUP_RETENTION_DAYS=30
+SWAG_MCP_TEMPLATE_PATH=templates
 ```
 
----
+Important notes:
 
-## 🛠️ Available Tools & Resources
+- use `SWAG_MCP_PROXY_CONFS_PATH` for local filesystem mode
+- use the repo's remote/SSH options if configs live on another host
+- HTTP auth is token-based unless disabled intentionally
+- the server runs streamable HTTP in practice through `python -m swag_mcp`
 
-### 🔧 Primary Tool: `swag`
-The `swag` tool uses action-based routing to manage your Nginx proxy ecosystem.
+## Typical operations
 
-| Action | Parameters | Description |
-|--------|------------|-------------|
-| **`create`** | `service_name`, `server_name`, `upstream`, `port` | Generate new proxy configuration |
-| **`list`** | `none` | List all active proxy configurations |
-| **`health`** | `service_name` | Verify service reachability and HTTP status |
-| **`backup`** | `service_name` | Manually trigger a configuration backup |
-| **`status`** | `service_name` | Check if config is enabled/disabled |
+```text
+swag action=list
+swag action=create config_name=jellyfin.subdomain.conf server_name=jellyfin.example.com upstream_app=jellyfin upstream_port=8096
+swag action=view config_name=jellyfin.subdomain.conf
+swag action=update config_name=jellyfin.subdomain.conf update_field=port update_value=8097
+swag action=health_check domain=jellyfin.example.com
+```
 
----
+## Development commands
 
-## 🏗️ Architecture & Design
-This server is built for reliability and security in production homelab environments:
-- **Template Engine:** Intelligent generation of Nginx `.subdomain.conf` files.
-- **Safety Middleware:** Automatic backups and YAML-based state tracking.
-- **MCP Streaming:** Optimized for remote MCP server proxying with SSE support.
-
----
-
-## 🔧 Development
-### Prerequisites
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) package manager
-
-### Setup
 ```bash
-uv sync
-uv run python -m swag_mcp.main
+just setup
+just dev
+just lint
+just fmt
+just typecheck
+just test
+just up
+just logs
 ```
 
-### Docker Deployment
+## Verification
+
+Recommended:
+
 ```bash
-# Deploy via one-line installer
-curl -sSL https://raw.githubusercontent.com/jmagar/swag-mcp/main/install.sh | bash
+just lint
+just typecheck
+just test
 ```
 
----
+If you need a local health check:
 
-## 🐛 Troubleshooting
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **Permission Denied** | File Ownership | Check `SWAG_MCP_PROXY_CONFS_PATH` perms |
-| **Config Not Active** | Disable State | Run `swag enable service_name` |
-| **Port Conflict** | 8000 is taken | Change `SWAG_MCP_PORT` in `.env` |
+```bash
+just health
+```
 
----
+## Related files
 
-## 📄 License
-MIT © jmagar
+- `swag_mcp/server.py`: server bootstrap and transport startup
+- `swag_mcp/tools/handlers/`: action handlers
+- `docs/TEMPLATES.md`: template model and routing behavior
+- `config/mcporter.json`: test harness config
+
+## License
+
+MIT
