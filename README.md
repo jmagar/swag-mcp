@@ -407,19 +407,35 @@ The `/health` endpoint is also used by the Docker `HEALTHCHECK` directive. It al
 | `service` | `"swag-mcp"` |
 | `version` | Package version from `importlib.metadata` |
 
-## Related files
+## Related plugins
 
-- `swag_mcp/server.py`: Server bootstrap, resource registration, transport startup
-- `swag_mcp/tools/swag.py`: Unified `swag` tool definition and action dispatch
-- `swag_mcp/tools/handlers/`: Per-action handler modules
-- `swag_mcp/core/config.py`: All configuration fields and defaults
-- `swag_mcp/core/constants.py`: Auth methods, validation patterns, URI constants
-- `swag_mcp/services/swag_manager.py`: Orchestrator coordinating 9 sub-managers
-- `swag_mcp/services/ssh_filesystem.py`: SSH filesystem backend (asyncssh)
-- `templates/mcp.subdomain.conf.j2`: The single Jinja2 template for generated configs
-- `docs/TEMPLATES.md`: Deep-dive on template design and MCP nginx requirements
-- `.env.example`: Annotated example of all environment variables
-- `config/mcporter.json`: Test harness config
+| Plugin | Category | Description |
+|--------|----------|-------------|
+| [homelab-core](https://github.com/jmagar/claude-homelab) | core | Core agents, commands, skills, and setup/health workflows for homelab management. |
+| [overseerr-mcp](https://github.com/jmagar/overseerr-mcp) | media | Search movies and TV shows, submit requests, and monitor failed requests via Overseerr. |
+| [unraid-mcp](https://github.com/jmagar/unraid-mcp) | infrastructure | Query, monitor, and manage Unraid servers: Docker, VMs, array, parity, and live telemetry. |
+| [unifi-mcp](https://github.com/jmagar/unifi-mcp) | infrastructure | Monitor and manage UniFi devices, clients, firewall rules, and network health. |
+| [gotify-mcp](https://github.com/jmagar/gotify-mcp) | utilities | Send and manage push notifications via a self-hosted Gotify server. |
+| [synapse-mcp](https://github.com/jmagar/synapse-mcp) | infrastructure | Docker management (Flux) and SSH remote operations (Scout) across homelab hosts. |
+| [arcane-mcp](https://github.com/jmagar/arcane-mcp) | infrastructure | Manage Docker environments, containers, images, volumes, networks, and GitOps via Arcane. |
+| [syslog-mcp](https://github.com/jmagar/syslog-mcp) | infrastructure | Receive, index, and search syslog streams from all homelab hosts via SQLite FTS5. |
+| [plugin-lab](https://github.com/jmagar/plugin-lab) | dev-tools | Scaffold, review, align, and deploy homelab MCP plugins with agents and canonical templates. |
+| [axon](https://github.com/jmagar/axon) | research | Self-hosted web crawl, ingest, embed, and RAG pipeline with MCP tooling. |
+
+## Related plugins
+
+| Plugin | Category | Description |
+|--------|----------|-------------|
+| [homelab-core](https://github.com/jmagar/claude-homelab) | core | Core agents, commands, skills, and setup/health workflows for homelab management. |
+| [overseerr-mcp](https://github.com/jmagar/overseerr-mcp) | media | Search movies and TV shows, submit requests, and monitor failed requests via Overseerr. |
+| [unraid-mcp](https://github.com/jmagar/unraid-mcp) | infrastructure | Query, monitor, and manage Unraid servers: Docker, VMs, array, parity, and live telemetry. |
+| [unifi-mcp](https://github.com/jmagar/unifi-mcp) | infrastructure | Monitor and manage UniFi devices, clients, firewall rules, and network health. |
+| [gotify-mcp](https://github.com/jmagar/gotify-mcp) | utilities | Send and manage push notifications via a self-hosted Gotify server. |
+| [synapse-mcp](https://github.com/jmagar/synapse-mcp) | infrastructure | Docker management (Flux) and SSH remote operations (Scout) across homelab hosts. |
+| [arcane-mcp](https://github.com/jmagar/arcane-mcp) | infrastructure | Manage Docker environments, containers, images, volumes, networks, and GitOps via Arcane. |
+| [syslog-mcp](https://github.com/jmagar/syslog-mcp) | infrastructure | Receive, index, and search syslog streams from all homelab hosts via SQLite FTS5. |
+| [plugin-lab](https://github.com/jmagar/plugin-lab) | dev-tools | Scaffold, review, align, and deploy homelab MCP plugins with agents and canonical templates. |
+| [axon](https://github.com/jmagar/axon) | research | Self-hosted web crawl, ingest, embed, and RAG pipeline with MCP tooling. |
 
 ## License
 
