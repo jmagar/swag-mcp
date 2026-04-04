@@ -1,5 +1,7 @@
 # SWAG MCP
 
+<!-- mcp-name: tv.tootie/swag-mcp -->
+
 [![PyPI](https://img.shields.io/pypi/v/swag-mcp)](https://pypi.org/project/swag-mcp/) [![ghcr.io](https://img.shields.io/badge/ghcr.io-jmagar%2Fswag--mcp-blue?logo=docker)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
 
 MCP server for managing SWAG reverse-proxy configuration files, backups, logs, and health checks. Uses a single `swag` action router backed by local filesystem or SSH-accessible SWAG config storage.

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "tv.tootie/swag-mcp",
+  "title": "SWAG MCP",
+  "description": "MCP server for SWAG reverse proxy configuration generation and management.",
+  "repository": {
+    "url": "https://github.com/jmagar/swag-mcp",
+    "source": "github"
+  },
+  "version": "1.0.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "swag-mcp",
+      "version": "1.0.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SWAG_MCP_PROXY_CONFS_URI",
+          "description": "URI to the SWAG proxy-confs directory. Supports local path, SSH (user@host:/path), or SCP with port (user@host:port:/path).",
+          "isRequired": true,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
