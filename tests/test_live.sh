@@ -185,17 +185,53 @@ skip_test() {
 # ---------------------------------------------------------------------------
 # HTTP helper — sends MCP JSON-RPC over streamable-http
 # ---------------------------------------------------------------------------
-# swag-mcp uses FastMCP streamable-http transport.
-# The MCP endpoint is POST /mcp with Content-Type: application/json
-# and Accept: application/json, text/event-stream
+# swag-mcp uses FastMCP streamable-http transport (MCP 2025-11-05).
+# The endpoint is POST /mcp; the server may respond with:
+#   - plain JSON (Content-Type: application/json)
+#   - SSE stream (Content-Type: text/event-stream) with "data: {...}" lines
+#
+# mcp_call extracts the JSON payload from either format.
+# An optional session ID is forwarded when MCP_SESSION_ID is set.
+MCP_SESSION_ID=""
+
 mcp_call() {
   local url="${1:?}" payload="${2:?}"
-  curl -s -X POST \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json, text/event-stream" \
-    --max-time 30 \
-    -d "${payload}" \
-    "${url}/mcp"
+
+  # Build curl args array — add session header when we have one
+  local -a curl_args=(
+    -s -X POST
+    -H "Content-Type: application/json"
+    -H "Accept: application/json, text/event-stream"
+    --max-time 30
+  )
+  if [[ -n "${MCP_SESSION_ID}" ]]; then
+    curl_args+=(-H "Mcp-Session-Id: ${MCP_SESSION_ID}")
+  fi
+
+  # Capture response headers so we can extract session ID
+  local tmp_headers
+  tmp_headers="$(mktemp)"
+
+  local raw_response
+  raw_response="$(curl "${curl_args[@]}" -D "${tmp_headers}" -d "${payload}" "${url}/mcp" 2>&1)"
+
+  # Persist session ID from first response that carries one
+  if [[ -z "${MCP_SESSION_ID}" ]]; then
+    local new_sid
+    new_sid="$(grep -i "^mcp-session-id:" "${tmp_headers}" 2>/dev/null \
+      | head -1 | tr -d '\r\n' | sed 's/^[^:]*: *//')"
+    if [[ -n "${new_sid}" ]]; then
+      MCP_SESSION_ID="${new_sid}"
+    fi
+  fi
+  rm -f "${tmp_headers}"
+
+  # Strip SSE envelope: extract the "data: {...}" JSON payload when present
+  if printf '%s' "${raw_response}" | grep -q '^data: '; then
+    printf '%s' "${raw_response}" | grep '^data: ' | tail -1 | sed 's/^data: //'
+  else
+    printf '%s' "${raw_response}"
+  fi
 }
 
 # Plain GET for health
@@ -280,10 +316,11 @@ phase_health() {
   local status
   status="$(printf '%s' "${response}" | jq -r '.status // empty' 2>/dev/null)"
 
-  if [[ "${status}" == "ok" ]]; then
-    pass_test "GET /health → {\"status\":\"ok\"}" "${ms}"
+  # swag-mcp returns {"status":"healthy"} — accept "healthy" or "ok"
+  if [[ "${status}" == "healthy" || "${status}" == "ok" ]]; then
+    pass_test "GET /health → {\"status\":\"${status}\"}" "${ms}"
   else
-    fail_test "GET /health → {\"status\":\"ok\"}" ".status='${status}' (expected 'ok')" "${ms}"
+    fail_test "GET /health → {\"status\":\"healthy\"}" ".status='${status}' (expected 'healthy')" "${ms}"
     return 1
   fi
 
@@ -524,6 +561,7 @@ run_http_mode() {
   proxy_confs_dir="$(mktemp -d)"
   trap 'rm -rf -- "${proxy_confs_dir}"' RETURN
 
+  MCP_SESSION_ID=""  # Reset session for http mode
   phase_health "${BASE_URL}"
   phase_auth "${BASE_URL}"
   phase_protocol "${BASE_URL}"
@@ -591,6 +629,7 @@ run_docker_mode() {
     return 1
   fi
 
+  MCP_SESSION_ID=""  # Reset session for docker mode
   phase_health "${DOCKER_BASE_URL}"
   phase_auth "${DOCKER_BASE_URL}"
   phase_protocol "${DOCKER_BASE_URL}"
