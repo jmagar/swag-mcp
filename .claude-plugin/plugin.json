@@ -1,6 +1,6 @@
 {
   "name": "swag-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SWAG reverse proxy configuration management via MCP. Create, edit, view, and manage nginx proxy configurations with auth integration.",
   "author": {
     "name": "Jacob Magar"

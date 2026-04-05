@@ -84,6 +84,7 @@ coverage.xml
 .tox/
 .nox/
 pip-log.txt
+.benchmarks/
 
 # ── Repo-specific ────────────────────────────────────────────────────────────
 /.swag-mcp/

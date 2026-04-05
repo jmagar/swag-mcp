@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-04
+
+### Added
+- **tests/TEST_COVERAGE.md**: Comprehensive test coverage documentation
+- **tests/mcporter/**: MCPorter-based integration test suite
+
+### Changed
+- Updated `.gitignore` with additional exclusion patterns
+
 ## [1.0.1] - 2026-04-03
 
 ### Fixed
