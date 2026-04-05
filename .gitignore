@@ -96,3 +96,8 @@ tests/test-proxy-confs/*.conf
 CLAUDE.md.local
 logs/
 backups/
+
+# Runtime artifacts
+logs/
+backups/
+data/
