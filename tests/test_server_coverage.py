@@ -239,8 +239,8 @@ class TestConfigurationIntegration:
 
             config = SwagConfig()
 
-            # Test defaults
-            assert config.host == "0.0.0.0"  # From .env file (overrides code default)
+            # Test defaults — host may be 127.0.0.1 (code default) or overridden by .env
+            assert config.host in ("127.0.0.1", "0.0.0.0")
             assert config.port == 8000
             assert config.default_auth_method == "authelia"
             assert config.log_level == "INFO"

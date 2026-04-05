@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from unittest.mock import AsyncMock, patch  # noqa: F401
 
 import pytest
 from fastmcp import Client, FastMCP
@@ -13,6 +14,22 @@ from pytest import MonkeyPatch
 from swag_mcp.server import create_mcp_server
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+async def mock_nginx_validation():
+    """Mock nginx syntax validation for all tests.
+
+    The generated configs reference /config/nginx/*.conf include files that only
+    exist inside the SWAG Docker container. Running `nginx -t` on these configs in
+    CI will always fail due to missing includes even when nginx is installed.
+    This fixture skips the external process call and treats all configs as valid.
+    """
+    with patch(
+        "swag_mcp.services.validation.ValidationService.validate_nginx_syntax",
+        new=AsyncMock(return_value=True),
+    ):
+        yield
 
 
 @pytest.fixture(scope="session", autouse=True)
