@@ -113,9 +113,9 @@ class TestDeadlockPrevention:
         cleanup_acquire_idx = lock_acquisition_order.index("acquire_cleanup")
         backup_acquire_idx = lock_acquisition_order.index("acquire_backup")
 
-        assert (
-            cleanup_acquire_idx < backup_acquire_idx
-        ), "Cleanup lock should be acquired before backup lock to prevent deadlock"
+        assert cleanup_acquire_idx < backup_acquire_idx, (
+            "Cleanup lock should be acquired before backup lock to prevent deadlock"
+        )
 
 
 class TestRaceConditionHandling:
@@ -204,9 +204,9 @@ class TestRaceConditionHandling:
 
         # If any succeeded, they should all have unique names
         if successful_backups:
-            assert len(successful_backups) == len(
-                set(successful_backups)
-            ), "All backup names should be unique (race condition test)"
+            assert len(successful_backups) == len(set(successful_backups)), (
+                "All backup names should be unique (race condition test)"
+            )
 
             # Each backup name should contain a UUID suffix
             for backup_name in successful_backups:

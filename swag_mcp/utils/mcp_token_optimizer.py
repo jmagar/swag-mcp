@@ -80,23 +80,23 @@ class MCPTokenOptimizer:
 
         """
         # For list responses, prioritize summary over details
-        lines = response.split('\n')
+        lines = response.split("\n")
 
         # Keep header information
         optimized_lines = []
         summary_added = False
 
         for line in lines:
-            if not summary_added and ('Total:' in line or 'Found' in line):
+            if not summary_added and ("Total:" in line or "Found" in line):
                 optimized_lines.append(line)
                 summary_added = True
-            elif line.startswith('##') or line.startswith('###'):
+            elif line.startswith("##") or line.startswith("###"):
                 # Keep section headers
                 optimized_lines.append(line)
-            elif line.strip() and not line.startswith('- '):
+            elif line.strip() and not line.startswith("- "):
                 # Keep non-list items
                 optimized_lines.append(line)
-            elif line.startswith('- ') and len(optimized_lines) < 20:
+            elif line.startswith("- ") and len(optimized_lines) < 20:
                 # Keep first 20 list items
                 optimized_lines.append(line)
 
@@ -106,7 +106,7 @@ class MCPTokenOptimizer:
             optimized_lines.append(f"\n... and {remaining} more entries")
             optimized_lines.append("\n💡 Use 'view' action for detailed configuration content")
 
-        return '\n'.join(optimized_lines)
+        return "\n".join(optimized_lines)
 
     def _optimize_view_response(self, response: str, context: dict[str, Any]) -> str:
         """Optimize view operation responses.
@@ -122,7 +122,7 @@ class MCPTokenOptimizer:
         # For view responses, use smart truncation with important sections
 
         # Check if it's a configuration file
-        if 'server {' in response or 'location /' in response:
+        if "server {" in response or "location /" in response:
             return self._optimize_config_content(response)
 
         # Generic text optimization
@@ -139,7 +139,7 @@ class MCPTokenOptimizer:
             Optimized log response
 
         """
-        lines = response.split('\n')
+        lines = response.split("\n")
 
         if len(lines) <= 50:
             return response  # Small enough already
@@ -155,22 +155,22 @@ class MCPTokenOptimizer:
         if sample_size < len(middle_lines):
             # Take every nth line for sampling
             step = len(middle_lines) // sample_size
-            sampled_middle = [
-                middle_lines[i] for i in range(0, len(middle_lines), step)
-            ][:sample_size]
+            sampled_middle = [middle_lines[i] for i in range(0, len(middle_lines), step)][
+                :sample_size
+            ]
         else:
             sampled_middle = middle_lines
 
         # Combine sections
         optimized_lines = (
-            header_lines +
-            [f"\n... showing {sample_size} of {len(middle_lines)} middle entries ...\n"] +
-            sampled_middle +
-            ["\n... showing last 10 entries ...\n"] +
-            footer_lines
+            header_lines
+            + [f"\n... showing {sample_size} of {len(middle_lines)} middle entries ...\n"]
+            + sampled_middle
+            + ["\n... showing last 10 entries ...\n"]
+            + footer_lines
         )
 
-        return '\n'.join(optimized_lines)
+        return "\n".join(optimized_lines)
 
     def _optimize_create_response(self, response: str, context: dict[str, Any]) -> str:
         """Optimize create operation responses.
@@ -184,26 +184,26 @@ class MCPTokenOptimizer:
 
         """
         # For create responses, prioritize success confirmation and health check
-        lines = response.split('\n')
+        lines = response.split("\n")
         optimized_lines = []
 
         in_config_content = False
         health_check_started = False
 
         for line in lines:
-            if '# Configuration Content:' in line:
+            if "# Configuration Content:" in line:
                 in_config_content = True
                 optimized_lines.append(line)
                 optimized_lines.append("... [configuration content truncated for brevity] ...")
                 continue
-            elif '✅ Health check' in line or '⚠️ Health check' in line:
+            elif "✅ Health check" in line or "⚠️ Health check" in line:
                 health_check_started = True
                 in_config_content = False
 
             if not in_config_content or health_check_started:
                 optimized_lines.append(line)
 
-        return '\n'.join(optimized_lines)
+        return "\n".join(optimized_lines)
 
     def _optimize_config_content(self, content: str) -> str:
         """Optimize nginx configuration content for readability.
@@ -215,30 +215,30 @@ class MCPTokenOptimizer:
             Optimized configuration content
 
         """
-        lines = content.split('\n')
+        lines = content.split("\n")
         important_lines: list[str] = []
 
         # Patterns for important configuration lines
         important_patterns = [
-            r'server\s*{',
-            r'server_name\s+',
-            r'listen\s+',
-            r'location\s+/',
-            r'proxy_pass\s+',
-            r'include\s+',
-            r'#.*?auth',  # Authentication related comments
-            r'#.*?MCP',   # MCP related comments
-            r'}',
+            r"server\s*{",
+            r"server_name\s+",
+            r"listen\s+",
+            r"location\s+/",
+            r"proxy_pass\s+",
+            r"include\s+",
+            r"#.*?auth",  # Authentication related comments
+            r"#.*?MCP",  # MCP related comments
+            r"}",
         ]
 
-        pattern = '|'.join(important_patterns)
+        pattern = "|".join(important_patterns)
         compiled_pattern = re.compile(pattern, re.IGNORECASE)
 
         for line in lines:
             stripped = line.strip()
-            if (compiled_pattern.search(line) or
-                not stripped or
-                stripped.startswith('#')) or len(important_lines) < 30:
+            if (compiled_pattern.search(line) or not stripped or stripped.startswith("#")) or len(
+                important_lines
+            ) < 30:
                 important_lines.append(line)
 
         if len(lines) > len(important_lines):
@@ -246,7 +246,7 @@ class MCPTokenOptimizer:
                 f"\n# ... {len(lines) - len(important_lines)} additional lines truncated ..."
             )
 
-        return '\n'.join(important_lines)
+        return "\n".join(important_lines)
 
     def _optimize_generic_response(self, response: str) -> str:
         """Apply generic optimization strategies.
@@ -279,18 +279,18 @@ class MCPTokenOptimizer:
         if not preserve_structure:
             return text[:target_length] + "\n\n... [truncated for brevity]"
 
-        lines = text.split('\n')
+        lines = text.split("\n")
         preserved_lines = []
         current_length = 0
 
         # Priority order: headers, important markers, regular content
         priority_patterns = [
-            (r'^#{1,3}\s+', 10),      # Headers (high priority)
-            (r'^\*\*.*?\*\*', 8),     # Bold text (high priority)
-            (r'✅|⚠️|❌|🔍|💡', 9),    # Status emojis (high priority)
-            (r'^-\s+', 5),            # List items (medium priority)
-            (r'^\d+\.', 5),           # Numbered lists (medium priority)
-            (r'^>', 4),               # Quotes (medium priority)
+            (r"^#{1,3}\s+", 10),  # Headers (high priority)
+            (r"^\*\*.*?\*\*", 8),  # Bold text (high priority)
+            (r"✅|⚠️|❌|🔍|💡", 9),  # Status emojis (high priority)
+            (r"^-\s+", 5),  # List items (medium priority)
+            (r"^\d+\.", 5),  # Numbered lists (medium priority)
+            (r"^>", 4),  # Quotes (medium priority)
         ]
 
         # First pass: collect high-priority lines
@@ -317,13 +317,10 @@ class MCPTokenOptimizer:
         if len(lines) > len(preserved_lines):
             preserved_lines.append(f"\n... [showing {len(preserved_lines)} of {len(lines)} lines]")
 
-        return '\n'.join(preserved_lines)
+        return "\n".join(preserved_lines)
 
     def create_summary_response(
-        self,
-        full_response: str,
-        context: dict[str, Any],
-        summary_length: int = 200
+        self, full_response: str, context: dict[str, Any], summary_length: int = 200
     ) -> str:
         """Create a concise summary response.
 
@@ -347,23 +344,23 @@ class MCPTokenOptimizer:
             return self._create_health_summary(full_response, summary_length)
         else:
             # Generic summary - first paragraph + key stats
-            lines = full_response.split('\n')
+            lines = full_response.split("\n")
             summary_lines = []
 
             for line in lines[:5]:  # First 5 lines
                 if line.strip():
                     summary_lines.append(line.strip())
 
-            summary = ' '.join(summary_lines)
+            summary = " ".join(summary_lines)
             if len(summary) > summary_length:
-                summary = summary[:summary_length-3] + "..."
+                summary = summary[: summary_length - 3] + "..."
 
             return summary
 
     def _create_list_summary(self, response: str, max_length: int) -> str:
         """Create summary for list responses."""
         # Extract count information
-        count_match = re.search(r'Total:\s*(\d+)', response)
+        count_match = re.search(r"Total:\s*(\d+)", response)
         if count_match:
             count = count_match.group(1)
             return f"Found {count} configurations. Use 'view' for details on specific configs."
@@ -373,8 +370,8 @@ class MCPTokenOptimizer:
     def _create_create_summary(self, response: str, max_length: int) -> str:
         """Create summary for create responses."""
         # Extract filename and health status
-        filename_match = re.search(r'Created configuration:\s*([^\n]+)', response)
-        health_match = re.search(r'(✅|⚠️)[^:]*:[^:]*:([^\\n]+)', response)
+        filename_match = re.search(r"Created configuration:\s*([^\n]+)", response)
+        health_match = re.search(r"(✅|⚠️)[^:]*:[^:]*:([^\\n]+)", response)
 
         filename = filename_match.group(1) if filename_match else "configuration"
         health = health_match.group(2).strip() if health_match else "status unknown"
@@ -406,7 +403,7 @@ class MCPTokenOptimizer:
 
         # Split on natural boundaries
         chunks = []
-        lines = content.split('\n')
+        lines = content.split("\n")
         current_chunk: list[str] = []
         current_size = 0
 
@@ -415,7 +412,7 @@ class MCPTokenOptimizer:
 
             if current_size + line_size > chunk_size and current_chunk:
                 # Finish current chunk
-                chunks.append('\n'.join(current_chunk))
+                chunks.append("\n".join(current_chunk))
                 current_chunk = [line]
                 current_size = line_size
             else:
@@ -424,12 +421,13 @@ class MCPTokenOptimizer:
 
         # Add final chunk
         if current_chunk:
-            chunks.append('\n'.join(current_chunk))
+            chunks.append("\n".join(current_chunk))
 
         return chunks
 
 
 # Factory functions and utilities
+
 
 def create_token_optimizer(max_tokens: int = 4000) -> MCPTokenOptimizer:
     """Create a token optimizer instance.
@@ -476,9 +474,7 @@ def optimize_json_response(data: dict[str, Any], max_tokens: int = 4000) -> dict
 
 
 def create_dual_response(
-    full_content: str,
-    context: dict[str, Any],
-    max_tokens: int = 4000
+    full_content: str, context: dict[str, Any], max_tokens: int = 4000
 ) -> tuple[str, str]:
     """Create dual response: optimized version + summary.
 

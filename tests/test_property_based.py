@@ -353,9 +353,9 @@ class TestConfigurationListHandling:
 
                 # Should find the configs we created
                 for created_name in created_files:
-                    assert (
-                        created_name in result.configs
-                    ), f"Created file {created_name} not found in listing: {result.configs}"
+                    assert created_name in result.configs, (
+                        f"Created file {created_name} not found in listing: {result.configs}"
+                    )
 
             except Exception as e:
                 pytest.fail(f"Config listing failed with valid files: {e}")

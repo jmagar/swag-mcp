@@ -44,16 +44,16 @@ class TestSwagManagerServiceBasic:
         """Test service initialization with comprehensive validation."""
         assert service.config_path is not None, "Service config_path should be set"
         assert service.template_path is not None, "Service template_path should be set"
-        assert (
-            service.template_manager.template_env is not None
-        ), "Service template_env should be initialized"
+        assert service.template_manager.template_env is not None, (
+            "Service template_env should be initialized"
+        )
 
         # Validate types and properties
         assert hasattr(service.config_path, "exists"), "config_path should be a Path object"
         assert hasattr(service.template_path, "exists"), "template_path should be a Path object"
-        assert hasattr(
-            service.template_manager.template_env, "get_template"
-        ), "template_env should be a Jinja2 Environment"
+        assert hasattr(service.template_manager.template_env, "get_template"), (
+            "template_env should be a Jinja2 Environment"
+        )
 
     async def test_list_configs_empty(self, service):
         """Test listing configs in empty directory with detailed validation."""
@@ -64,16 +64,16 @@ class TestSwagManagerServiceBasic:
         assert hasattr(result, "total_count"), "Result should have 'total_count' attribute"
 
         # Validate empty state
-        assert isinstance(
-            result.configs, list
-        ), f"configs should be a list, got {type(result.configs)}"
-        assert (
-            len(result.configs) == 0
-        ), f"Expected empty config list, got {len(result.configs)} items"
+        assert isinstance(result.configs, list), (
+            f"configs should be a list, got {type(result.configs)}"
+        )
+        assert len(result.configs) == 0, (
+            f"Expected empty config list, got {len(result.configs)} items"
+        )
         assert result.total_count == 0, f"Expected total_count 0, got {result.total_count}"
-        assert result.total_count == len(
-            result.configs
-        ), "total_count should match configs list length"
+        assert result.total_count == len(result.configs), (
+            "total_count should match configs list length"
+        )
 
     async def test_list_configs_with_files(self, service, temp_config_dir):
         """Test listing configs with actual files."""
@@ -265,9 +265,9 @@ class TestSwagManagerServiceBasic:
         # This should not raise an exception for basic content
         try:
             result = service.validation_service.validate_config_content(content, "test.conf")
-            assert isinstance(
-                result, str
-            ), f"Expected string result from validation, got {type(result)}"
+            assert isinstance(result, str), (
+                f"Expected string result from validation, got {type(result)}"
+            )
             assert len(result) >= len(content), "Validated content should not be shorter than input"
         except Exception as e:
             # If validation fails, it should be a controlled failure with descriptive message

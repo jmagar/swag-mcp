@@ -437,9 +437,9 @@ class TestMemoryLeakDetection:
 
         # Locks should not accumulate indefinitely
         # Some may remain if they're still in use, but not all 100
-        assert (
-            final_lock_count < after_ops_count or final_lock_count < 50
-        ), "File locks may be accumulating without cleanup"
+        assert final_lock_count < after_ops_count or final_lock_count < 50, (
+            "File locks may be accumulating without cleanup"
+        )
 
 
 @pytest.mark.benchmark

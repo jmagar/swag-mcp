@@ -4,8 +4,6 @@
 !.env.example
 
 # ── Runtime artifacts ────────────────────────────────────────────────────────
-logs/
-backups/
 *.log
 *.pid
 *.bak
@@ -91,3 +89,12 @@ pip-log.txt
 tests/test-proxy-confs/*.backup.*
 tests/test-proxy-confs/*.conf
 *-fixes.md
+
+backups/*
+!backups/.gitkeep
+logs/*
+!logs/.gitkeep
+.worktrees
+
+# Personal local cheatsheet (never commit)
+CLAUDE.md.local

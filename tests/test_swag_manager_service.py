@@ -561,15 +561,15 @@ server {
         for r in results:
             if isinstance(r, Exception):
                 # Only file locking or contention errors are expected
-                assert isinstance(
-                    r, OSError | SwagServiceError
-                ), f"Unexpected exception type: {type(r)}"
+                assert isinstance(r, OSError | SwagServiceError), (
+                    f"Unexpected exception type: {type(r)}"
+                )
 
         # Verify final file content matches one of the updates
         final_content = sample_config_file.read_text()
-        assert (
-            final_content in update_contents
-        ), "Final content should match one of the attempted updates"
+        assert final_content in update_contents, (
+            "Final content should match one of the attempted updates"
+        )
 
     async def test_invalid_utf8_content(self, service, temp_config):
         """Test handling of invalid UTF-8 content."""
