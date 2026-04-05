@@ -65,6 +65,7 @@ jobs:
       continue-on-error: false  # Enforce type checking (fail CI on type errors)
 
     - name: Run tests with pytest
+      shell: bash
       env:
         SWAG_MCP_PROXY_CONFS_PATH: /tmp/swag-test/proxy-confs
         SWAG_MCP_LOG_DIRECTORY: /tmp/swag-test/.swag-mcp/logs
