@@ -70,6 +70,30 @@ validate-skills:
     @echo "Validating skills..."
     @test -f skills/swag/SKILL.md && echo "OK: skills/swag/SKILL.md" || echo "MISSING: skills/swag/SKILL.md"
 
+# Generate a standalone CLI for this server (requires running server)
+generate-cli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "⚠  Server must be running on port 8082 (run 'just dev' first)"
+    echo "⚠  Generated CLI embeds your OAuth token — do not commit or share"
+    mkdir -p dist dist/.cache
+    current_hash=$(timeout 10 curl -sf \
+      -H "Authorization: Bearer $MCP_TOKEN" \
+      -H "Accept: application/json, text/event-stream" \
+      http://localhost:8082/mcp/tools/list 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "nohash")
+    cache_file="dist/.cache/swag-mcp-cli.schema_hash"
+    if [[ -f "$cache_file" ]] && [[ "$(cat "$cache_file")" == "$current_hash" ]] && [[ -f "dist/swag-mcp-cli" ]]; then
+      echo "SKIP: swag-mcp tool schema unchanged — use existing dist/swag-mcp-cli"
+      exit 0
+    fi
+    timeout 30 mcporter generate-cli \
+      --command http://localhost:8082/mcp \
+      --header "Authorization: Bearer $MCP_TOKEN" \
+      --name swag-mcp-cli \
+      --output dist/swag-mcp-cli
+    printf '%s' "$current_hash" > "$cache_file"
+    echo "✓ Generated dist/swag-mcp-cli (requires bun at runtime)"
+
 # Clean build artifacts
 clean:
     rm -rf dist/ build/ *.egg-info/ .pytest_cache/ .coverage htmlcov/ .cache/
