@@ -1,8 +1,10 @@
 {
   "mcpServers": {
     "swag-mcp": {
-      "type": "http",
-      "url": "${SWAG_MCP_URL}"
+      "command": "mcp-remote",
+      "args": [
+        "${SWAG_MCP_URL}"
+      ]
     }
   }
 }
