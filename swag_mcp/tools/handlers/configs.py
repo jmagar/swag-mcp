@@ -137,12 +137,13 @@ async def _handle_list_action(
             formatter.format_error_result(error.get("message", "Invalid list filter"), "list"),
         )
 
-    _ALLOWED_SORT_FIELDS = {"name", "filename"}
-    if sort_by not in _ALLOWED_SORT_FIELDS:
+    _allowed_sort_fields = {"name", "filename"}
+    if sort_by not in _allowed_sort_fields:
         return cast(
             "ToolResult",
             formatter.format_error_result(
-                f"Invalid sort_by value '{sort_by}'. Allowed values: {sorted(_ALLOWED_SORT_FIELDS)}",
+                f"Invalid sort_by value '{sort_by}'. "
+                f"Allowed values: {sorted(_allowed_sort_fields)}",
                 "list",
             ),
         )

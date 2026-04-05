@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import cast
+from typing import Literal, cast
 
 from fastmcp import Context
 from fastmcp.tools.tool import ToolResult

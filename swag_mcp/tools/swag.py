@@ -363,7 +363,7 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool
     async def swag_help() -> str:
-        """Returns help for the SWAG MCP server — lists all available actions and subactions."""
+        """Return help for the SWAG MCP server — lists all available actions and subactions."""
         return """# SWAG MCP Server
 
 Manage SWAG (Secure Web Application Gateway) reverse proxy configurations.
@@ -390,10 +390,12 @@ Routes all SWAG management actions via `action` parameter.
 
 ```json
 {"action": "list", "list_filter": "active"}
-{"action": "create", "config_name": "app.subdomain.conf", "server_name": "app.example.com", "upstream_app": "myapp", "upstream_port": 3000}
+{"action": "create", "config_name": "app.subdomain.conf", "server_name": "app.example.com",
+ "upstream_app": "myapp", "upstream_port": 3000}
 {"action": "view", "config_name": "app.subdomain.conf"}
 {"action": "edit", "config_name": "app.subdomain.conf", "new_content": "..."}
-{"action": "update", "config_name": "app.subdomain.conf", "update_field": "port", "update_value": "8080"}
+{"action": "update", "config_name": "app.subdomain.conf", "update_field": "port",
+ "update_value": "8080"}
 {"action": "remove", "config_name": "app.subdomain.conf"}
 {"action": "logs", "log_type": "nginx-access", "lines": 50}
 {"action": "backups", "backup_action": "list"}

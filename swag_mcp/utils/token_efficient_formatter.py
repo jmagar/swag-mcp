@@ -230,15 +230,17 @@ class TokenEfficientFormatter:
         output_lines.extend([f"  {i + 1:2d}│ {line}" for i, line in enumerate(lines)])
 
         formatted_content = "\n".join(output_lines)
-        
+
         # Ensure structured content includes success field
         structured_data = dict(result)  # Copy existing data
-        structured_data.update({
-            "success": success,
-            "config_name": config_name,
-            "content": content,
-            "character_count": character_count,
-        })
+        structured_data.update(
+            {
+                "success": success,
+                "config_name": config_name,
+                "content": content,
+                "character_count": character_count,
+            }
+        )
 
         return self._create_tool_result(formatted_content, structured_data)
 
