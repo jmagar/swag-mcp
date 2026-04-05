@@ -148,14 +148,6 @@ jobs:
           pyproject_ver=$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
           echo "pyproject.toml version: $pyproject_ver"
 
-  contract-drift:
-    name: Contract drift
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run plugin lint
-        run: bash scripts/lint-plugin.sh || true
-
   mcp-integration:
     name: MCP Integration Tests
     runs-on: ubuntu-latest
