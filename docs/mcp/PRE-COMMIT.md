@@ -34,14 +34,13 @@ From `.pre-commit-config.yaml`:
 
 Separate from git pre-commit hooks, swag-mcp has Claude Code session hooks defined in `hooks/hooks.json`:
 
-### SessionStart
+SessionStart
 
-1. `sync-env.sh` -- syncs userConfig to `.env`
-2. `ensure-gitignore.sh` -- verifies `.gitignore` patterns
+The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
 
-### PostToolUse (Write/Edit/Bash)
 
-1. `fix-env-perms.sh` -- sets `.env` to `chmod 600`
-2. `ensure-gitignore.sh` -- re-verifies `.gitignore` patterns
+
+1. `` -- sets `.env` to `chmod 600`
+
 
 These hooks run automatically during Claude Code sessions and prevent credential leaks.

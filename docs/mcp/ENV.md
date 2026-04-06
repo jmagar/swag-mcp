@@ -2,6 +2,18 @@
 
 Comprehensive reference for all environment variables read by swag-mcp. All variables use the `SWAG_MCP_` prefix and are case-insensitive.
 
+## Deployment paths
+
+swag-mcp supports two deployment models:
+
+| Path | Transport | Credentials | Auth |
+|------|-----------|-------------|------|
+| **Plugin (stdio)** | stdio | `${userConfig.*}` in `.mcp.json` | None (stdio) |
+| **Plugin (mcp-remote)** | HTTP gateway | Manual config in `.mcp.json` | Bearer token |
+| **Docker (HTTP)** | http | `.env` file | Bearer token |
+
+For plugin deployment, see [Plugin CONFIG](../plugin/CONFIG.md).
+
 ## Upstream service
 
 | Variable | Required | Default | Sensitive | Description |

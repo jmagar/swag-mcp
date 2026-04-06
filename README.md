@@ -51,17 +51,27 @@ SWAG MCP generates and manages nginx subdomain proxy configurations for [SWAG (S
 
 ## Installation
 
-### Marketplace
+### Plugin (recommended)
+
+Install as a Claude Code plugin. You will be prompted for:
+
+- **SWAG Proxy Configs Path** -- local path to proxy-confs directory
+- **SWAG Proxy Configs URI** -- SSH URI for remote access (key-auth only)
+
+One of the two is required.
 
 ```bash
 /plugin marketplace add jmagar/claude-homelab
 /plugin install swag-mcp @jmagar-claude-homelab
 ```
 
+The plugin uses stdio transport by default. A `swag-mcp-remote` entry is also available in `.mcp.json` for users who run swag-mcp as a remote Docker service.
+
 ### Docker Compose
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 # Edit .env with your paths and token
 docker compose up -d
 ```
@@ -77,7 +87,15 @@ just dev         # starts the server
 
 ## Configuration
 
-Create `.env` from `.env.example`. All variables use the `SWAG_MCP_` prefix.
+Two deployment paths are supported:
+
+| Path | Transport | Credentials | Auth |
+|------|-----------|-------------|------|
+| **Plugin (stdio)** | stdio | `userConfig` in plugin settings | None |
+| **Plugin (mcp-remote)** | HTTP gateway | Manual config | Bearer token |
+| **Docker (HTTP)** | http | `.env` file | Bearer token |
+
+See [docs/CONFIG.md](docs/CONFIG.md) for full variable reference. All variables use the `SWAG_MCP_` prefix.
 
 ### Core
 
