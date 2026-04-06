@@ -158,3 +158,14 @@ jobs:
       - name: Run integration tests (docker mode)
         continue-on-error: true  # Live docker tests require session-aware MCP client; tracked separately
         run: bash tests/test_live.sh --mode docker
+
+  gitleaks:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
