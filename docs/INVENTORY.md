@@ -134,7 +134,7 @@ Development
 | `pytest-cov` | >=4.0.0 | Coverage reporting |
 | `ruff` | >=0.8.0 | Linter and formatter |
 | `ty` | >=0.0.24 | Type checker |
-| `pre-commit` | >=4.0.0 | Git hook management |
+| `lefthook` | latest | Git hook management |
 | `bandit` | >=1.7.0 | Security linting |
 | `pip-audit` | >=2.0.0 | Dependency vulnerability scanning |
 | `hypothesis` | >=6.0.0 | Property-based testing |

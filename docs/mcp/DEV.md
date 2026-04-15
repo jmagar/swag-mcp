@@ -102,10 +102,10 @@ swag_mcp/
 
 ```bash
 # Install hooks
-pre-commit install
+lefthook install
 
 # Run all hooks manually
-pre-commit run --all-files
+lefthook run pre-commit
 ```
 
 See [PRE-COMMIT](PRE-COMMIT.md) for hook details.

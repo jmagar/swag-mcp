@@ -1,38 +1,37 @@
-# Pre-commit Hook Configuration
+# Git Hook Configuration
 
-Pre-commit hooks for swag-mcp. These run locally before each commit and are also enforced in CI.
+Git hooks for swag-mcp. These run locally before each commit and are also enforced in CI.
 
 ## Setup
 
 ```bash
-# Install pre-commit
-uv add --dev pre-commit
+# Install lefthook
+npm install -g @evilmartians/lefthook
 
 # Install hooks
-pre-commit install
+lefthook install
 
 # Run all hooks manually
-pre-commit run --all-files
+lefthook run pre-commit
 ```
 
 ## Configured hooks
 
-From `.pre-commit-config.yaml`:
+From `lefthook.yml`:
 
 | Hook | Purpose |
 | --- | --- |
-| `ruff` (check) | Linting with auto-fix |
-| `ruff` (format) | Code formatting |
-| `check-yaml` | YAML syntax validation |
-| `check-json` | JSON syntax validation |
-| `end-of-file-fixer` | Ensure files end with newline |
-| `trailing-whitespace` | Remove trailing whitespace |
-| `check-merge-conflict` | Detect merge conflict markers |
-| `detect-private-key` | Prevent committing private keys |
+| `diff_check` | Detect trailing whitespace and merge conflict markers in staged diff |
+| `yaml` | Validate staged YAML syntax |
+| `lint` | Ruff linting |
+| `format` | Ruff formatting |
+| `typecheck` | `ty` type checking |
+| `skills` | Validate skills |
+| `env_guard` | Block `.env` commits |
 
 ## Session hooks
 
-Separate from git pre-commit hooks, swag-mcp has Claude Code session hooks defined in `hooks/hooks.json`:
+Separate from git hooks, swag-mcp has Claude Code session hooks defined in `hooks/hooks.json`:
 
 SessionStart
 

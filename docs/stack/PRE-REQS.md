@@ -17,7 +17,7 @@ Required tools and versions before developing or deploying.
 | Docker Compose | v2+ | Container orchestration | Bundled with Docker Desktop |
 | just | latest | Task runner | `cargo install just` or system package |
 | openssl | any | Token generation | System package manager |
-| pre-commit | latest | Git hooks | `uv add --dev pre-commit` |
+| lefthook | latest | Git hooks | `npm install -g @evilmartians/lefthook` |
 
 ## Optional
 
