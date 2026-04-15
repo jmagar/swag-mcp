@@ -36,7 +36,7 @@ uv run pytest tests/test_integration.py      # End-to-end tests
 # Code quality checks
 uv run ruff check swag_mcp/                  # Linting
 uv run mypy swag_mcp/                       # Type checking
-pre-commit run --all-files                  # All pre-commit hooks
+lefthook run pre-commit                     # Run all git hooks
 ```
 
 ### Development Server

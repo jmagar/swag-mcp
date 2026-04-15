@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-15
+
+### Changed
+- Repository maintenance updates committed from the current working tree.
+- Version-bearing manifests synchronized to 1.0.3.
+
+
 ## [1.0.2] - 2026-04-04
 
 ### Added
@@ -38,6 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.pre-commit-config.yaml` — required hooks (skills-validate, docker-security, no-baked-env, ensure-ignore-files)
 
 ### Changed
-- `hooks/scripts/sync-env.sh` — replaced `sed` with `awk`, added `flock` for safe concurrent writes
-- `hooks/scripts/ensure-gitignore.sh` — added `--check` mode (exits non-zero without modifying file)
+- `bin/sync-uv.sh` — replaced `sed` with `awk`, added `flock` for safe concurrent writes
+
 - CI workflow — typecheck now uses `ty` (not mypy); added version-sync and contract-drift jobs

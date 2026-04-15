@@ -1,6 +1,6 @@
 {
   "name": "swag-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "SWAG reverse proxy configuration management via MCP. Create, edit, view, and manage nginx proxy configurations with auth integration.",
   "author": {
     "name": "Jacob Magar"
@@ -14,30 +14,18 @@
     "homelab",
     "mcp"
   ],
+  "mcpServers": "./.mcp.json",
   "userConfig": {
-    "swag_mcp_url": {
-      "type": "string",
-      "title": "SWAG MCP Server URL",
-      "description": "URL of the swag-mcp MCP server. Default http://localhost:8000 works if running via docker compose in this repo. Change if running on a different host or port.",
-      "default": "https://swag.tootie.tv/mcp",
-      "sensitive": false
-    },
     "swag_proxy_confs_path": {
       "type": "string",
       "title": "SWAG Proxy Configs Path",
-      "description": "Local filesystem path to SWAG nginx proxy-confs directory, e.g. /mnt/appdata/swag/nginx/proxy-confs.",
+      "description": "Local filesystem path to SWAG nginx proxy-confs directory, e.g. /mnt/appdata/swag/nginx/proxy-confs. Required unless swag_proxy_confs_uri is set.",
       "sensitive": false
     },
     "swag_proxy_confs_uri": {
       "type": "string",
       "title": "SWAG Proxy Configs URI (Remote/SSH)",
-      "description": "SSH URI to remote SWAG proxy-confs, e.g. user@host:/path/to/proxy-confs. Overrides path if set. Requires passwordless SSH keys.",
-      "sensitive": false
-    },
-    "swag_mcp_token": {
-      "type": "string",
-      "title": "MCP Server Bearer Token",
-      "description": "Bearer token for authenticating with the MCP server. Must match SWAG_MCP_TOKEN in the server's .env. Generate with: openssl rand -hex 32",
+      "description": "SSH URI to remote SWAG proxy-confs, e.g. user@host:/path/to/proxy-confs. Overrides path if set. Only SSH-key auth is supported — do NOT put passwords in the URI.",
       "sensitive": true
     }
   }

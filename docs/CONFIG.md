@@ -2,17 +2,30 @@
 
 Complete environment variable reference and configuration options.
 
-## Environment file
+## Deployment paths
+
+| Path | Transport | Credentials source | Auth |
+|------|-----------|-------------------|------|
+| **Plugin (stdio)** | stdio | `userConfig` in plugin.json, interpolated via `.mcp.json` | None |
+| **Plugin (mcp-remote)** | HTTP gateway | Manual `SWAG_MCP_URL` in `.mcp.json` | Bearer token |
+| **Docker (HTTP)** | http | `.env` file | Bearer token |
+
+### Plugin quickstart
+
+Install the plugin in Claude Code. You will be prompted for:
+- **SWAG Proxy Configs Path** -- local filesystem path to proxy-confs directory
+- **SWAG Proxy Configs URI** -- SSH URI for remote access (key-auth only, no passwords)
+
+One of the two is required. See [plugin/CONFIG.md](plugin/CONFIG.md) for details.
+
+### Docker quickstart
 
 ```bash
 cp .env.example .env
 chmod 600 .env
+# Edit .env with your paths and token
+docker compose up -d
 ```
-
-Precedence (highest to lowest):
-1. `.env` file in project root
-2. Container environment variables (Docker `environment:` or `-e` flags)
-3. System environment variables
 
 The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All variables are case-insensitive.
 
@@ -102,18 +115,11 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 
 ## Plugin userConfig
 
-When installed as a Claude Code plugin, these fields map to `userConfig` in `.claude-plugin/plugin.json`:
+When installed as a Claude Code plugin, these fields are declared in `.claude-plugin/plugin.json` and interpolated into `.mcp.json` via `${userConfig.*}`:
 
 ```json
 {
   "userConfig": {
-    "swag_mcp_url": {
-      "type": "string",
-      "title": "SWAG MCP Server URL",
-      "description": "URL of the swag-mcp MCP server",
-      "default": "https://swag.tootie.tv/mcp",
-      "sensitive": false
-    },
     "swag_proxy_confs_path": {
       "type": "string",
       "title": "SWAG Proxy Configs Path",
@@ -123,18 +129,14 @@ When installed as a Claude Code plugin, these fields map to `userConfig` in `.cl
     "swag_proxy_confs_uri": {
       "type": "string",
       "title": "SWAG Proxy Configs URI (Remote/SSH)",
-      "description": "SSH URI to remote SWAG proxy-confs. Overrides path if set.",
-      "sensitive": false
-    },
-    "swag_mcp_token": {
-      "type": "string",
-      "title": "MCP Server Bearer Token",
-      "description": "Bearer token for MCP auth. Generate: openssl rand -hex 32",
+      "description": "SSH URI to remote SWAG proxy-confs. Only SSH-key auth supported.",
       "sensitive": true
     }
   }
 }
 ```
+
+HTTP-only fields (`swag_mcp_url`, `swag_mcp_token`) are not needed for plugin (stdio) deployment. For remote gateway access, use the `swag-mcp-remote` entry in `.mcp.json`.
 
 ## .env.example conventions
 

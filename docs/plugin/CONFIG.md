@@ -1,50 +1,61 @@
 # Plugin Settings -- swag-mcp
 
-Plugin configuration, user-facing settings, and environment sync.
+Plugin configuration and user-facing settings for stdio deployment.
 
-## Configuration layers
+## How it works
 
-swag-mcp has three configuration layers:
+Claude Code plugins use a two-layer config model:
 
-1. **Plugin userConfig** -- set via Claude Code plugin UI, synced to `.env` by hooks
-2. **Environment variables** -- `.env` file or container environment
-3. **Pydantic defaults** -- hardcoded in `SwagConfig` class
+1. **`plugin.json`** -- declares `userConfig` fields that Claude Code prompts for at install time
+2. **`.mcp.json`** -- references those fields as `${userConfig.<key>}` in the `env` section
 
-### Precedence
+No `.env` file is needed for plugin deployment. Claude Code handles interpolation directly.
 
-Plugin userConfig -> `.env` file -> container env -> Pydantic defaults
+## Deployment topologies
 
-The `sync-env.sh` hook bridges layer 1 to layer 2 at session start.
+swag-mcp supports two plugin deployment topologies:
+
+| Entry | Transport | When to use |
+| --- | --- | --- |
+| `swag-mcp` (stdio) | stdio | SWAG configs accessible locally or via SSH from this machine |
+| `swag-mcp-remote` (mcp-remote) | HTTP gateway | SWAG MCP server running on a remote Docker host |
+
+The stdio entry is the default for plugin installs. The mcp-remote entry is available in `.mcp.json` for users who run swag-mcp as a remote Docker service.
 
 ## userConfig fields
 
-Defined in `.claude-plugin/plugin.json`:
+| Key | Title | Sensitive | Purpose |
+| --- | --- | --- | --- |
+| `swag_proxy_confs_path` | SWAG Proxy Configs Path | no | Local path to proxy-confs directory |
+| `swag_proxy_confs_uri` | SWAG Proxy Configs URI | yes | SSH URI for remote access (key-auth only) |
 
-| Key | Type | Sensitive | Default | Description |
-| --- | --- | --- | --- | --- |
-| `swag_mcp_url` | string | no | `https://swag.tootie.tv/mcp` | MCP server URL |
-| `swag_proxy_confs_path` | string | no | — | Local proxy-confs path |
-| `swag_proxy_confs_uri` | string | no | — | SSH proxy-confs URI |
-| `swag_mcp_token` | string | yes | — | Bearer token |
+One of `swag_proxy_confs_path` or `swag_proxy_confs_uri` is required.
 
-Sensitive fields are stored encrypted by the Claude Code plugin system.
+### SSH URI security
 
-## Environment mapping
+The `swag_proxy_confs_uri` field is marked `sensitive: true`. Only SSH-key authentication is supported -- password-in-URI is NOT supported and is a security risk. The URI format is: `[user@]host[:port]:/absolute/path`.
 
-| userConfig key | Environment variable |
-| --- | --- |
-| `swag_mcp_url` | Used directly by MCP client (not in `.env`) |
-| `swag_proxy_confs_path` | `SWAG_MCP_PROXY_CONFS_PATH` |
-| `swag_proxy_confs_uri` | `SWAG_MCP_PROXY_CONFS_URI` |
-| `swag_mcp_token` | `SWAG_MCP_TOKEN` |
+## Hardcoded defaults in .mcp.json
 
-## Pydantic settings
+| Variable | Value | Reason |
+| --- | --- | --- |
+| `SWAG_MCP_NO_AUTH` | `true` | No HTTP auth needed for stdio |
+| `SWAG_MCP_LOG_LEVEL` | `INFO` | Sensible default |
+| `SWAG_MCP_LOG_FILE_ENABLED` | `false` | Avoid file writes in plugin context |
+| `SWAG_MCP_DEFAULT_AUTH_METHOD` | `authelia` | Standard default |
 
-The `SwagConfig` class in `swag_mcp/core/config.py` uses `pydantic-settings` with:
+## SessionStart hook
 
-- `env_prefix = "SWAG_MCP_"` -- all variables prefixed
-- `case_sensitive = False` -- case-insensitive matching
-- `extra = "ignore"` -- unknown variables silently ignored
-- `env_file = ".env"` -- reads `.env` from working directory
+The `sync-uv.sh` hook runs at session start to keep Python dependencies in sync:
 
-Empty strings are coerced to default values for `default_auth_method`, `host`, and `log_level`.
+```
+hooks/hooks.json -> bin/sync-uv.sh
+  --> uv sync --project ${CLAUDE_PLUGIN_ROOT}
+  --> venv at ${CLAUDE_PLUGIN_DATA}/.venv
+```
+
+## Cross-references
+
+- [HOOKS.md](HOOKS.md) -- Hook definitions
+- [CONFIG](../CONFIG.md) -- Full environment variable reference
+- [ENV](../mcp/ENV.md) -- Transport-specific variable details

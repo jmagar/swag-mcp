@@ -26,7 +26,7 @@ Pre-release and quality checklist. Complete all items before tagging a release.
 - [ ] No credentials in code, docs, or git history
 - [ ] `.gitignore` includes `.env`, `*.secret`, credentials files
 - [ ] `.dockerignore` includes `.env`, `.git/`, `*.secret`
-- [ ] Hooks enforce permissions: `sync-env.sh`, `fix-env-perms.sh`, `ensure-gitignore.sh`
+
 - [ ] `remove` action creates backup before deletion
 - [ ] `/health` endpoint is unauthenticated; access control documented as external responsibility
 - [ ] Container runs as non-root (UID 1000)

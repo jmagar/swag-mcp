@@ -1,6 +1,6 @@
 [project]
 name = "swag-mcp"
-version = "1.0.2"
+version = "1.0.3"
 description = "SWAG reverse proxy configuration generator MCP server"
 readme = "README.md"
 license = { text = "MIT" }
@@ -36,7 +36,6 @@ dev-dependencies = [
     "pytest-cov>=4.0.0",
     "ruff>=0.8.0",
     "ty>=0.0.24",
-    "pre-commit>=4.0.0",
     "bandit>=1.7.0",
     "pip-audit>=2.0.0",
     "hypothesis>=6.0.0", # Property-based testing

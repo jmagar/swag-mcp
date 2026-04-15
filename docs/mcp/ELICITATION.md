@@ -17,7 +17,7 @@ swag-mcp supports configuration via the Claude Code plugin `userConfig` system. 
 
 ## Sync mechanism
 
-The `sync-env.sh` hook runs at SessionStart and syncs userConfig values to `.env`:
+The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
 
 1. Reads userConfig values from the Claude Code plugin context
 2. Writes them to `.env` with appropriate `SWAG_MCP_` prefixes

@@ -49,7 +49,7 @@ Chosen for:
 | pytest-benchmark | Performance benchmarking |
 | bandit | Security linting |
 | pip-audit | Dependency vulnerability scanning |
-| pre-commit | Git hook management |
+| lefthook | Git hook management |
 | just | Task runner (Justfile) |
 
 ## Container stack

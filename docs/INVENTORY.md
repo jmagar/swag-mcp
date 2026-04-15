@@ -101,16 +101,16 @@ Complete listing of all plugin components.
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/smoke-test.sh` | Smoke test against running server |
+| `bin/smoke-test.sh` | Smoke test against running server |
 | `scripts/lint-plugin.sh` | Verify plugin manifest contract |
-| `hooks/scripts/sync-env.sh` | Sync userConfig to `.env` |
-| `hooks/scripts/fix-env-perms.sh` | Set `.env` to chmod 600 |
-| `hooks/scripts/ensure-gitignore.sh` | Verify gitignore patterns |
-| `hooks/scripts/ensure-ignore-files.sh` | Verify dockerignore patterns |
+The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
+| `bin/` | Set `.env` to chmod 600 |
+
+
 
 ## Dependencies
 
-### Runtime
+Runtime
 
 | Package | Version | Purpose |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ Complete listing of all plugin components.
 | `docker` | >=7.1.0 | Docker API client for log access |
 | `asyncssh` | >=2.14.0 | SSH/SFTP for remote filesystem access |
 
-### Development
+Development
 
 | Package | Version | Purpose |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ Complete listing of all plugin components.
 | `pytest-cov` | >=4.0.0 | Coverage reporting |
 | `ruff` | >=0.8.0 | Linter and formatter |
 | `ty` | >=0.0.24 | Type checker |
-| `pre-commit` | >=4.0.0 | Git hook management |
+| `lefthook` | latest | Git hook management |
 | `bandit` | >=1.7.0 | Security linting |
 | `pip-audit` | >=2.0.0 | Dependency vulnerability scanning |
 | `hypothesis` | >=6.0.0 | Property-based testing |

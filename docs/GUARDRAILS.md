@@ -4,14 +4,14 @@ Safety and security patterns enforced across the swag-mcp server.
 
 ## Credential management
 
-### Storage
+Storage
 
 - All credentials in `.env` with `chmod 600` permissions
 - Never commit `.env` or any file containing secrets
 - Use `.env.example` as a tracked template with placeholder values only
 - Generate tokens with `openssl rand -hex 32`
 
-### Ignore files
+Ignore files
 
 `.gitignore` and `.dockerignore` must include:
 
@@ -23,17 +23,16 @@ credentials.*
 *.key
 ```
 
-### Hook enforcement
+Hook enforcement
 
 Session hooks verify security invariants:
 
 | Hook | Trigger | Purpose |
 | --- | --- | --- |
-| `sync-env.sh` | SessionStart | Syncs userConfig to `.env`, validates variables |
-| `fix-env-perms.sh` | PostToolUse (Write/Edit/Bash) | Sets `.env` to `chmod 600` if present |
-| `ensure-gitignore.sh` | SessionStart, PostToolUse | Verifies `.gitignore` contains required patterns |
+The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
 
-### Credential rotation
+
+Credential rotation
 
 1. Generate new token: `openssl rand -hex 32`
 2. Update `.env` with the new value
@@ -49,7 +48,7 @@ Backup retention is controlled by `SWAG_MCP_BACKUP_RETENTION_DAYS` (default: 30 
 
 ## Docker security
 
-### Non-root execution
+Non-root execution
 
 The container runs as non-root (UID/GID 1000 by default):
 
@@ -61,7 +60,7 @@ USER swagmcp
 
 Override with `PUID` and `PGID` environment variables in `docker-compose.yaml`.
 
-### No baked environment
+No baked environment
 
 The Docker image does not contain credentials at build time:
 
@@ -77,7 +76,7 @@ docker inspect swag-mcp:latest | jq '.[0].Config.Env'
 
 No sensitive values should appear in the output.
 
-### Resource limits
+Resource limits
 
 The Docker Compose file enforces resource limits:
 
@@ -91,11 +90,11 @@ deploy:
 
 ## Template security
 
-### Jinja2 sandboxing
+Jinja2 sandboxing
 
 The template system uses a sandboxed Jinja2 environment to prevent Server-Side Template Injection (SSTI) attacks. All template variables are validated before rendering.
 
-### Input validation
+Input validation
 
 - Config names must match `^[a-zA-Z0-9_.-]+\.(conf|sample)$`
 - Upstream app names must match `^[a-zA-Z0-9_.\[\]:-]+$` (supports IPv6)
@@ -103,7 +102,7 @@ The template system uses a sandboxed Jinja2 environment to prevent Server-Side T
 - Port numbers validated as integers in range 0-65535
 - Path traversal blocked via regex validation
 
-### Error message sanitization
+Error message sanitization
 
 The security error middleware sanitizes all error messages to prevent information disclosure:
 
@@ -115,13 +114,13 @@ The security error middleware sanitizes all error messages to prevent informatio
 
 ## Network security
 
-### HTTPS in production
+HTTPS in production
 
 - All proxied services should use `https://` in production
 - SWAG handles TLS termination via Let's Encrypt
 - HTTP is acceptable only for local development
 
-### Authentication architecture
+Authentication architecture
 
 SWAG MCP does not enforce authentication internally. Security is handled at the proxy/network layer:
 
@@ -129,7 +128,7 @@ SWAG MCP does not enforce authentication internally. Security is handled at the 
 - Use Docker network isolation to restrict access
 - The `/health` endpoint is unauthenticated for container liveness probes
 
-### Health endpoint
+Health endpoint
 
 - `/health` is unauthenticated -- required for Docker health checks
 - Returns only status, service name, and version
@@ -137,14 +136,14 @@ SWAG MCP does not enforce authentication internally. Security is handled at the 
 
 ## Input handling
 
-### Parameter sanitization
+Parameter sanitization
 
 - All user-supplied parameters validated via Pydantic models with `Field` constraints
 - `max_length` enforced on string fields (config_name: 255, server_name: 253, upstream_app: 100)
 - Regex patterns enforce valid characters for upstream addresses and config names
 - Unicode normalization prevents encoding-based attacks
 
-### File operations
+File operations
 
 - Atomic writes via temp file + rename pattern
 - Per-file locking prevents race conditions

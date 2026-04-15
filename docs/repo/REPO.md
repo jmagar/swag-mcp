@@ -28,10 +28,10 @@ swag-mcp/
   hooks/
     hooks.json               Claude Code session hook definitions
     scripts/
-      sync-env.sh            Sync userConfig to .env
-      fix-env-perms.sh       Fix .env permissions
-      ensure-gitignore.sh    Verify gitignore patterns
-      ensure-ignore-files.sh Verify dockerignore patterns
+The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
+             Fix .env permissions
+
+
   scripts/
     lint-plugin.sh           Plugin contract checker
     smoke-test.sh            Smoke test script

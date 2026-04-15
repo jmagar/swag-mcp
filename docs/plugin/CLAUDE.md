@@ -8,7 +8,6 @@ Index for the `plugin/` documentation subdirectory. These docs cover every Claud
 | --- | --- |
 | `PLUGINS.md` | Plugin manifest reference (`.claude-plugin`, `.codex-plugin`, `gemini-extension.json`) |
 | `SKILLS.md` | Skill definitions (`skills/swag/SKILL.md`) |
-| `HOOKS.md` | Lifecycle hooks (SessionStart, PostToolUse) |
 | `CONFIG.md` | Plugin settings and userConfig |
 | `AGENTS.md` | Agent definitions (none currently) |
 | `COMMANDS.md` | Slash commands (none currently) |
