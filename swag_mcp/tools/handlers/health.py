@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from fastmcp import Context
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from swag_mcp.models.config import SwagHealthCheckRequest
 from swag_mcp.models.enums import SwagAction

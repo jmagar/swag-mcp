@@ -14,8 +14,8 @@ The `services/` module implements the core business logic for SWAG reverse proxy
 
 ## Key Files
 
-### `swag_manager.py` - Core Service Implementation (1494 lines)
-The main `SwagManagerService` class that provides all SWAG configuration operations:
+### `swag_manager.py` - Service Orchestrator
+`SwagManagerService` delegates to focused managers: config operations, updates, backups, health/log access, MCP operations, and resources:
 
 ```python
 class SwagManagerService:
@@ -99,7 +99,7 @@ async def remove_configuration(
 
 ### Health Check Operations
 ```python
-async def check_service_health(
+async def health_check(
     self,
     domain: str,
     timeout: int = 30,

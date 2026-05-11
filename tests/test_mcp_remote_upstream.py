@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from swag_mcp.models.config import SwagConfigRequest
+from swag_mcp.models.config import SwagConfigRequest, SwagUpdateRequest
 from swag_mcp.services.swag_manager import SwagManagerService
 
 
@@ -104,6 +104,58 @@ class TestMCPRemoteUpstream:
         # Verify main location uses main upstream
         # The default location / should use $upstream_app:$upstream_port
         assert "location / {" in result.content
+
+    @pytest.mark.asyncio
+    async def test_main_port_update_preserves_split_mcp_upstream(self, swag_manager):
+        """Test app port updates do not collapse a separate MCP upstream."""
+        create_request = SwagConfigRequest(
+            action="create",
+            config_name="split-port.subdomain.conf",
+            server_name="split-port.example.com",
+            upstream_app="jellyfin",
+            upstream_port=8096,
+            mcp_upstream_app="ai-gpu-server",
+            mcp_upstream_port=9000,
+        )
+        await swag_manager.create_config(create_request)
+
+        update_request = SwagUpdateRequest(
+            action="update",
+            config_name="split-port.subdomain.conf",
+            update_field="port",
+            update_value="8097",
+        )
+        result = await swag_manager.update_config_field(update_request)
+
+        assert 'set $upstream_port "8097"' in result.content
+        assert 'set $mcp_upstream_port "9000"' in result.content
+
+    @pytest.mark.asyncio
+    async def test_main_app_update_preserves_split_mcp_upstream(self, swag_manager):
+        """Test app updates do not collapse a separate MCP upstream."""
+        create_request = SwagConfigRequest(
+            action="create",
+            config_name="split-app.subdomain.conf",
+            server_name="split-app.example.com",
+            upstream_app="jellyfin",
+            upstream_port=8096,
+            mcp_upstream_app="ai-gpu-server",
+            mcp_upstream_port=9000,
+        )
+        await swag_manager.create_config(create_request)
+
+        update_request = SwagUpdateRequest(
+            action="update",
+            config_name="split-app.subdomain.conf",
+            update_field="app",
+            update_value="plex:32400",
+        )
+        result = await swag_manager.update_config_field(update_request)
+
+        assert 'set $upstream_app "plex"' in result.content
+        assert 'set $upstream_port "32400"' in result.content
+        assert 'set $mcp_upstream_app "ai-gpu-server"' in result.content
+        assert 'set $mcp_upstream_port "9000"' in result.content
 
     @pytest.mark.asyncio
     async def test_mcp_upstream_validation(self):

@@ -4,7 +4,7 @@ import logging
 from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from pydantic import BeforeValidator, Field
 
 from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN

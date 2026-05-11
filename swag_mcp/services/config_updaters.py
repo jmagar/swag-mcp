@@ -19,6 +19,22 @@ from swag_mcp.utils.validators import validate_mcp_path
 
 logger = logging.getLogger(__name__)
 
+SET_DIRECTIVE_PATTERN = r'set \${variable_name} ("[^"]*"|[^;]+);'
+
+
+def _extract_set_value(content: str, variable_name: str) -> str | None:
+    """Extract a simple nginx `set $variable "value";` value."""
+    pattern = rf'set \${variable_name}\s+"?([^";]+)"?\s*;'
+    match = re.search(pattern, content)
+    return match.group(1).strip() if match else None
+
+
+def _replace_set_value(content: str, variable_name: str, value: str | int) -> tuple[str, int]:
+    """Replace a simple nginx set directive value."""
+    pattern = SET_DIRECTIVE_PATTERN.format(variable_name=variable_name)
+    replacement = rf'set ${variable_name} "{value}";'
+    return re.subn(pattern, replacement, content)
+
 
 @runtime_checkable
 class MCPOperationsProtocol(Protocol):
@@ -138,18 +154,24 @@ class ConfigFieldUpdaters:
         updated_content = content
         changes_made = False
 
-        # Try template format first: set $upstream_port and $mcp_upstream_port
-        patterns = [
-            (r'set \$upstream_port ("[^"]*"|[^;]+);', rf'set $upstream_port "{port_value}";'),
-            (r'set \$mcp_upstream_port ("[^"]*"|[^;]+);', rf'set $mcp_upstream_port "{port_value}";'),
-        ]
+        original_upstream_port = _extract_set_value(content, "upstream_port")
+        original_mcp_port = _extract_set_value(content, "mcp_upstream_port")
 
-        for pattern, replacement in patterns:
-            new_content, count = re.subn(pattern, replacement, updated_content)
-            if count > 0:
+        new_content, port_replacements = _replace_set_value(
+            updated_content, "upstream_port", port_value
+        )
+        if port_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+            logger.debug("Updated %s upstream port references", port_replacements)
+
+        if original_mcp_port and original_mcp_port == original_upstream_port:
+            new_content, mcp_port_replacements = _replace_set_value(
+                updated_content, "mcp_upstream_port", port_value
+            )
+            if mcp_port_replacements > 0:
                 updated_content = new_content
-                changes_made = True
-                logger.debug(f"Updated {count} port references using pattern {pattern}")
+                logger.debug("Updated %s inherited MCP port references", mcp_port_replacements)
 
         if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
@@ -209,18 +231,24 @@ class ConfigFieldUpdaters:
         updated_content = content
         changes_made = False
 
-        # Try template format first: set $upstream_app and $mcp_upstream_app
-        patterns = [
-            (r'set \$upstream_app ("[^"]*"|[^;]+);', rf'set $upstream_app "{update_request.update_value}";'),
-            (r'set \$mcp_upstream_app ("[^"]*"|[^;]+);', rf'set $mcp_upstream_app "{update_request.update_value}";'),
-        ]
+        original_upstream_app = _extract_set_value(content, "upstream_app")
+        original_mcp_app = _extract_set_value(content, "mcp_upstream_app")
 
-        for pattern, replacement in patterns:
-            new_content, count = re.subn(pattern, replacement, updated_content)
-            if count > 0:
+        new_content, app_replacements = _replace_set_value(
+            updated_content, "upstream_app", update_request.update_value
+        )
+        if app_replacements > 0:
+            updated_content = new_content
+            changes_made = True
+            logger.debug("Updated %s upstream app references", app_replacements)
+
+        if original_mcp_app and original_mcp_app == original_upstream_app:
+            new_content, mcp_app_replacements = _replace_set_value(
+                updated_content, "mcp_upstream_app", update_request.update_value
+            )
+            if mcp_app_replacements > 0:
                 updated_content = new_content
-                changes_made = True
-                logger.debug(f"Updated {count} app references using pattern {pattern}")
+                logger.debug("Updated %s inherited MCP app references", mcp_app_replacements)
 
         if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
@@ -303,16 +331,22 @@ class ConfigFieldUpdaters:
         updated_content = content
         changes_made = False
 
-        # Try template format first
-        patterns = [
-            (r"set \$upstream_app (\"[^\"]*\"|[^;]+);", rf"set $upstream_app \"{app}\";"),
-            (r"set \$mcp_upstream_app (\"[^\"]*\"|[^;]+);", rf"set $mcp_upstream_app \"{app}\";"),
-            (r"set \$upstream_port (\"[^\"]*\"|[^;]+);", rf"set $upstream_port \"{port_value}\";"),
-            (r"set \$mcp_upstream_port (\"[^\"]*\"|[^;]+);", rf"set $mcp_upstream_port \"{port_value}\";"),
-        ]
+        original_upstream_app = _extract_set_value(content, "upstream_app")
+        original_mcp_app = _extract_set_value(content, "mcp_upstream_app")
+        original_upstream_port = _extract_set_value(content, "upstream_port")
+        original_mcp_port = _extract_set_value(content, "mcp_upstream_port")
 
-        for pattern, replacement in patterns:
-            new_content, count = re.subn(pattern, replacement, updated_content)
+        template_updates: list[tuple[str, str | int]] = [
+            ("upstream_app", app),
+            ("upstream_port", port_value),
+        ]
+        if original_mcp_app and original_mcp_app == original_upstream_app:
+            template_updates.append(("mcp_upstream_app", app))
+        if original_mcp_port and original_mcp_port == original_upstream_port:
+            template_updates.append(("mcp_upstream_port", port_value))
+
+        for variable_name, value in template_updates:
+            new_content, count = _replace_set_value(updated_content, variable_name, value)
             if count > 0:
                 updated_content = new_content
                 changes_made = True

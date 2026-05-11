@@ -460,13 +460,18 @@ assert_not_contains "$OUT" "error" "no error on MCP config create"
 if [[ -f "${PROXY_CONFS_DIR}/${MCP_TEST_CONFIG}" ]]; then
     pass "MCP config file exists on disk"
     MCP_CONTENT=$(cat "${PROXY_CONFS_DIR}/${MCP_TEST_CONFIG}")
-    # buffering is either inlined or via include /config/nginx/mcp-location.conf
-    if echo "$MCP_CONTENT" | grep -qF "proxy_buffering off"; then
+    # buffering must be present in /mcp block (inlined or via mcp-location include)
+    MCP_BLOCK=$(echo "$MCP_CONTENT" | awk '
+        /location[[:space:]]+\/mcp[[:space:]]*\{/ { in_block=1; print; next }
+        in_block { print }
+        in_block && /^[[:space:]]*\}/ { exit }
+    ')
+    if echo "$MCP_BLOCK" | grep -qF "proxy_buffering off"; then
         pass "zero-buffering inlined in MCP config"
-    elif echo "$MCP_CONTENT" | grep -qF "mcp-location.conf"; then
+    elif echo "$MCP_BLOCK" | grep -qF "mcp-location.conf"; then
         pass "zero-buffering via mcp-location.conf include"
     else
-        fail "no buffering control found in MCP config"
+        fail "no buffering control found in /mcp location block"
     fi
     assert_contains "$MCP_CONTENT" "/mcp" "MCP endpoint location block"
     assert_contains "$MCP_CONTENT" "proxy_read_timeout" "extended timeout for AI tasks"

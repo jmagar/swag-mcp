@@ -5,7 +5,7 @@ import logging
 from typing import Literal, cast
 
 from fastmcp import Context
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from swag_mcp.models.config import SwagLogsRequest
 from swag_mcp.models.enums import SwagAction

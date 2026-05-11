@@ -14,17 +14,23 @@ The only template file. All configurations are generated from this single templa
 
 **Architecture:**
 - `/` location uses Authelia authentication and `proxy.conf`
-- `/mcp` location uses OAuth (`auth_request /_oauth_verify`), then includes `proxy.conf` and `mcp-server.conf and mcp-location.conf`
-- `/health` location has no authentication
+- `/mcp` location uses OAuth (`auth_request /_oauth_verify`), then includes `proxy.conf` and `mcp-location.conf`
+- Health is provided by the server-level `config/nginx/mcp-server.conf` sidecar
 
 **No subfolder support** - config types have been simplified to just "subdomain".
 
 ## Nginx Includes
 
-Two nginx include files live in `nginx/` (not in this directory):
+Two nginx include files live in `config/nginx/` (not in this directory):
 
-### `nginx/mcp-server.conf and mcp-location.conf` - Location-Level MCP Overrides
-Included inside the `/mcp` location block after `proxy.conf`:
+### `config/nginx/mcp-server.conf` - Server-Level Axon Sidecar
+
+Provides OAuth/OIDC discovery, token/auth routes, MCP metadata routes, origin validation, and `/health`.
+The template sets `$oauth_upstream` before including this file so `/_oauth_verify` can validate bearer tokens.
+
+### `config/nginx/mcp-location.conf` - Location-Level MCP Transport
+
+Included inside the `/mcp` and `/session*` location blocks after `proxy.conf`:
 
 ```nginx
 # Zero-buffering for real-time streaming

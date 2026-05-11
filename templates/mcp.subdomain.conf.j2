@@ -19,6 +19,7 @@ server {
     set $mcp_upstream_app "{{ mcp_upstream_app }}";
     set $mcp_upstream_port "{{ mcp_upstream_port }}";
     set $mcp_upstream_proto "{{ mcp_upstream_proto }}";
+    set $oauth_upstream "{{ oauth_upstream }}";
 
     # Identity, Discovery, and Auth sidecar (Axon Standard)
     include /config/nginx/mcp-server.conf;
@@ -33,6 +34,7 @@ server {
             return 403 '{"error":"origin_not_allowed","message":"Origin header validation failed"}';
         }
 
+        auth_request /_oauth_verify;
         include /config/nginx/resolver.conf;
         include /config/nginx/proxy.conf;
         # Transport Engine (Streaming, MCP Headers, CORS)

@@ -6,7 +6,7 @@ import re
 from typing import Any, Literal, cast
 
 from fastmcp import Context
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from swag_mcp.models.config import (
     SwagConfigRequest,
@@ -449,10 +449,11 @@ async def _handle_update_action(
         result_data = {
             "success": True,
             "filename": config_name,
-            "content": update_result.content,
             "backup_created": update_result.backup_created,
             "health_check": health_check_result,
         }
+        if update_field == "add_mcp":
+            result_data["content"] = update_result.content
 
         return formatter.format_update_result(
             result_data, config_name, update_field, update_value, health_check_result

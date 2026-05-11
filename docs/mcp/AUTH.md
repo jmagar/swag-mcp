@@ -61,7 +61,7 @@ The default is configured via `SWAG_MCP_DEFAULT_AUTH_METHOD` (default: `authelia
 
 Generated configs use the **Axon Standard**, which implements explicit `location =` (exact match) routing for all security-sensitive OAuth 2.1 and MCP discovery endpoints. This approach replaces the legacy dependency on global `oauth.conf` includes and catch-all regexes, ensuring higher reliability and performance.
 
-The `/mcp` location block and all related auth routes proxy directly to the service's own Authorization Server (typically integrated into the MCP engine itself).
+The `/mcp` location must include proxy-level OAuth verification with `auth_request /_oauth_verify;`. The internal `/_oauth_verify` route forwards bearer-token validation to `SWAG_MCP_OAUTH_UPSTREAM`, while OAuth discovery and auth routes can proxy to the MCP service's own Authorization Server.
 
 ### Standardized Endpoints
 
@@ -83,9 +83,10 @@ Every generated config includes these explicit routes:
 
 1. **DNS Rebinding Protection**: All configurations include origin validation against authorized domains (including `claude.ai` and `anthropic.com`).
 2. **Standardized Headers**: Consistent `X-MCP-Version` and `Referrer-Policy` headers across the fleet.
-3. **Internal AuthLayer**: Authentication is enforced by the service's internal AuthLayer rather than a global gateway, allowing for fine-grained, per-service permission management.
+3. **Proxy OAuth Gate**: `/mcp` requests are checked by nginx via `auth_request /_oauth_verify` before reaching the MCP upstream.
+4. **Internal AuthLayer**: The MCP service can still enforce its own AuthLayer after proxy verification for fine-grained, per-service permissions.
 
-The main application location (`/`) still uses the standard auth method (Authelia, Authentik, etc.), while the MCP engine handles its own security handshake.
+The main application location (`/`) still uses the standard auth method (Authelia, Authentik, etc.), while MCP endpoints use proxy-level OAuth verification plus any service-level AuthLayer.
 
 ## Health endpoint
 

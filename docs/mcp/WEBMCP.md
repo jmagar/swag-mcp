@@ -14,7 +14,7 @@ The swag-mcp server exposes the following HTTP endpoints:
 
 ## CORS configuration
 
-The generated nginx configs include CORS headers via `mcp-server.conf and mcp-location.conf`:
+The generated nginx configs include CORS headers via `mcp-location.conf`:
 
 ```nginx
 add_header Access-Control-Allow-Origin $http_origin always;

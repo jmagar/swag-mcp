@@ -301,12 +301,18 @@ class MCPOperations:
         # Note: We use the existing upstream variables from the server block
         block = f"""
     location {mcp_path} {{
+        if ($origin_valid = 0) {{
+            add_header Content-Type "application/json" always;
+            return 403 '{{"error":"origin_not_allowed","message":"Origin failed"}}';
+        }}
+
+        auth_request /_oauth_verify;
         include /config/nginx/resolver.conf;
         include /config/nginx/proxy.conf;
         # Transport Engine (Streaming, MCP Headers, CORS)
         include /config/nginx/mcp-location.conf;
 
-        proxy_pass {upstream_proto}://{upstream_app}:{upstream_port};
+        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
     }}"""
         return block
 

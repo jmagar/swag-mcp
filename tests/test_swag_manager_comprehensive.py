@@ -514,7 +514,9 @@ class TestMCPFunctionality:
         )
         assert "location /ai-service" in result
         assert "mcp-location.conf" in result
-        assert "proxy_pass http://mcp-server:8080;" in result
+        assert "auth_request /_oauth_verify;" in result
+        assert "origin_not_allowed" in result
+        assert "proxy_pass $upstream_proto://$upstream_app:$upstream_port;" in result
 
     def test_insert_location_block(self, temp_service):
         """Test inserting location block into configuration."""
@@ -570,6 +572,7 @@ server {
         assert result.filename == "test.subdomain.conf"
         assert "location /ai-service" in result.content
         assert "mcp-location.conf" in result.content
+        assert "auth_request /_oauth_verify;" in result.content
 
     async def test_add_mcp_location_file_not_found(self, temp_service):
         """Test MCP location addition when file doesn't exist."""

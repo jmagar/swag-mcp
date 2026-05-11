@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound
 from jinja2.sandbox import SandboxedEnvironment
@@ -11,6 +11,77 @@ from jinja2.sandbox import SandboxedEnvironment
 from swag_mcp.utils.formatters import build_template_filename
 
 logger = logging.getLogger(__name__)
+
+
+def _is_safe_template_attribute(obj: Any, attr: str) -> bool:
+    """Check whether template attribute access is safe."""
+    if attr.startswith("_"):
+        return False
+
+    dangerous_attrs = [
+        "import",
+        "eval",
+        "exec",
+        "compile",
+        "open",
+        "file",
+        "input",
+        "raw_input",
+        "reload",
+        "help",
+        "copyright",
+        "credits",
+        "license",
+        "quit",
+        "exit",
+        "globals",
+        "locals",
+        "vars",
+        "dir",
+        "hasattr",
+        "getattr",
+        "setattr",
+        "delattr",
+        "isinstance",
+        "issubclass",
+        "callable",
+        "classmethod",
+        "staticmethod",
+        "property",
+        "super",
+        "type",
+        "__import__",
+        "__builtins__",
+        "__dict__",
+        "__class__",
+        "__bases__",
+        "__name__",
+        "__module__",
+        "func_globals",
+        "f_globals",
+        "gi_frame",
+        "gi_code",
+        "cr_frame",
+        "cr_code",
+    ]
+
+    if attr.lower() in dangerous_attrs:
+        return False
+
+    if "subprocess" in str(type(obj)).lower() or "popen" in attr.lower():
+        return False
+
+    fs_access = any(fs_attr in attr.lower() for fs_attr in ["file", "open", "read", "write"])
+    safe_type = isinstance(obj, str | int | float | bool | list | dict | tuple)
+    return not (fs_access and not safe_type)
+
+
+class SecureTemplateEnvironment(SandboxedEnvironment):
+    """Sandboxed Jinja environment with project-specific attribute restrictions."""
+
+    def is_safe_attribute(self, obj: Any, attr: str, value: Any) -> bool:
+        """Return whether attribute access is allowed during template rendering."""
+        return _is_safe_template_attribute(obj, attr)
 
 
 class TemplateManager:
@@ -143,7 +214,7 @@ class TemplateManager:
 
         """
         # Create sandboxed environment to prevent dangerous operations
-        env = SandboxedEnvironment(
+        env = SecureTemplateEnvironment(
             loader=FileSystemLoader(str(self.template_path)),
             autoescape=True,  # Enable autoescape for security
             undefined=StrictUndefined,  # Fail on undefined variables
@@ -152,87 +223,9 @@ class TemplateManager:
         )
 
         # Remove dangerous globals and built-ins to prevent code execution
-        # Minimal set of globals required for NGINX config templates
-        env.globals = {
-            # Only essential type conversion functions for template rendering
-            "str": str,
-            "int": int,
-            "bool": bool,
-        }
-
-        # Customize sandbox to block additional dangerous operations
-        def is_safe_attribute(obj: Any, attr: str, value: Any) -> bool:
-            """Check if attribute access is safe."""
-            # Block access to private/dunder methods
-            if attr.startswith("_"):
-                return False
-
-            # Block access to dangerous attributes
-            dangerous_attrs = [
-                "import",
-                "eval",
-                "exec",
-                "compile",
-                "open",
-                "file",
-                "input",
-                "raw_input",
-                "reload",
-                "help",
-                "copyright",
-                "credits",
-                "license",
-                "quit",
-                "exit",
-                "globals",
-                "locals",
-                "vars",
-                "dir",
-                "hasattr",
-                "getattr",
-                "setattr",
-                "delattr",
-                "isinstance",
-                "issubclass",
-                "callable",
-                "classmethod",
-                "staticmethod",
-                "property",
-                "super",
-                "type",
-                "__import__",
-                "__builtins__",
-                "__dict__",
-                "__class__",
-                "__bases__",
-                "__name__",
-                "__module__",
-                "func_globals",
-                "f_globals",
-                "gi_frame",
-                "gi_code",
-                "cr_frame",
-                "cr_code",
-            ]
-
-            if attr.lower() in dangerous_attrs:
-                return False
-
-            # Block access to subprocess-related attributes
-            if "subprocess" in str(type(obj)).lower() or "popen" in attr.lower():
-                return False
-
-            # Block access to file system operations - return True if safe, False if blocked
-            fs_access = any(
-                fs_attr in attr.lower() for fs_attr in ["file", "open", "read", "write"]
-            )
-            safe_type = isinstance(obj, str | int | float | bool | list | dict | tuple)
-            return not (fs_access and not safe_type)
-
-        # Override the sandboxed environment's security checks
-        # Note: is_safe_attribute signature doesn't perfectly match Jinja2 expectations
-        # but this works for our security model
-        env.is_safe_attribute = is_safe_attribute  # type: ignore[invalid-assignment]  # intentional monkey-patch
+        env.globals.clear()
+        safe_globals = cast("dict[str, Any]", env.globals)
+        safe_globals.update({"str": str, "int": int, "bool": bool})
 
         # Disable dangerous template features
         env.filters.clear()  # Remove potentially dangerous filters
