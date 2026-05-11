@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-05-11
+
+### Fixed
+- Addressed remaining PR review comments for MCP origin enforcement, Docker Compose host bind paths, and FastMCP import compatibility.
+
+## [1.1.0] - 2026-05-11
+
+### Added
+- Standardized Axon MCP nginx sidecar and transport include layout.
+- Restored proxy-level OAuth verification for MCP locations.
+
+### Changed
+- Updated split-routing behavior to preserve separate MCP upstreams during main app updates.
+- Migrated uv development dependencies to `dependency-groups.dev`.
+- Removed committed `.beads` issue export artifact.
+
 ## [1.0.3] - 2026-04-15
 
 ### Changed

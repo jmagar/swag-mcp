@@ -17,7 +17,6 @@ See @README.md for complete project documentation and @.env.example for configur
 ### Key Components
 
 - **`swag_mcp/`**: Core application package with modular architecture
-- **`templates/`**: Single unified nginx configuration template (`mcp.subdomain.conf.j2`) with nginx includes (`mcp.conf`, `oauth.conf`)
 - **`tests/`**: Comprehensive test suite with performance, integration, and validation tests
 - **`docs/`**: Test command documentation with 600+ examples
 
@@ -127,8 +126,7 @@ When using remote MCP servers, traffic is routed as follows:
 
 - **Main Service** (`/`): Routes to `upstream_app:upstream_port`, protected by Authelia
 - **MCP Endpoints** (`/mcp`): Routes to `mcp_upstream_app:mcp_upstream_port`, protected by OAuth (`auth_request /_oauth_verify`)
-- **OAuth Endpoints** (`/_oauth_verify`, etc.): Included via `oauth.conf` at server level
-- **Health Checks** (`/health`): Routes to main service, no authentication
+- **Health Checks** (`/health`): Routes to main service via `mcp-server.conf`, no authentication
 
 ## Environment Variables
 
@@ -165,9 +163,9 @@ swag-mcp/
 │   └── utils/         # @swag_mcp/utils/CLAUDE.md - Utility functions
 ├── templates/         # @templates/CLAUDE.md - Single unified Jinja2 template
 │   └── mcp.subdomain.conf.j2  # The only template file
-├── nginx/             # Nginx include snippets
-│   ├── mcp.conf       # Location-level MCP overrides (buffering, timeouts, SSE)
-│   └── oauth.conf     # Server-level OAuth 2.1 endpoints (/_oauth_verify, etc.)
+├── config/nginx/      # Nginx include snippets copied into SWAG's /config/nginx/
+│   ├── mcp-server.conf     # Axon Standard server-level identity/discovery/auth sidecar
+│   └── mcp-location.conf   # MCP/session transport overrides (streaming, CORS, headers)
 └── tests/            # @tests/CLAUDE.md - Testing strategies & commands
 ```
 

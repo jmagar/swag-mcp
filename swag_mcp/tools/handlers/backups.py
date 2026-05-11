@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from fastmcp import Context
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from swag_mcp.core.config import config
 from swag_mcp.models.enums import BackupSubAction

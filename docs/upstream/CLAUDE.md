@@ -69,13 +69,12 @@ server {
     include /config/nginx/authelia-server.conf;
 
     # OAuth 2.1 endpoints
-    include /config/nginx/oauth.conf;
 
     # MCP endpoint with OAuth protection
     location /mcp {
         auth_request /_oauth_verify;
         include /config/nginx/proxy.conf;
-        include /config/nginx/mcp.conf;
+        include /config/nginx/mcp-location.conf;
         proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port;
     }
 
@@ -117,10 +116,10 @@ The template references SWAG-provided nginx includes:
 | `ssl.conf` | SSL/TLS configuration (ciphers, protocols, certificates) |
 | `resolver.conf` | DNS resolver for dynamic upstream resolution |
 | `proxy.conf` | Standard proxy headers (Host, X-Real-IP, X-Forwarded-*) |
-| `mcp.conf` | MCP-specific overrides (buffering off, SSE, CORS, timeouts) |
-| `oauth.conf` | OAuth 2.1 endpoints (token verification, discovery, JWKS) |
+| `mcp-server.conf` | Server-level MCP identity, discovery, OAuth verification, and health routes |
+| `mcp-location.conf` | Location-level MCP transport overrides (buffering off, SSE, CORS, timeouts) |
 
-`mcp.conf` and `oauth.conf` are shipped with swag-mcp in `config/nginx/` and must be copied to SWAG's nginx configuration directory.
+`mcp-server.conf` and `mcp-location.conf` are shipped with swag-mcp in `config/nginx/` and must be copied to SWAG's nginx configuration directory.
 
 ## Split routing
 
@@ -131,7 +130,7 @@ When `mcp_upstream_app` is specified during `create`, the config routes traffic 
 | `/` | `upstream_app:upstream_port` | Authelia/Authentik/etc. |
 | `/mcp` | `mcp_upstream_app:mcp_upstream_port` | OAuth 2.1 |
 | `/session*` | `mcp_upstream_app:mcp_upstream_port` | OAuth 2.1 |
-| `/health` | `upstream_app:upstream_port` | None |
+| `/health` | `upstream_app:upstream_port` via `mcp-server.conf` | None |
 
 This enables running an MCP service on a separate machine (e.g., GPU server) while the main web application runs on a different host.
 

@@ -13,19 +13,24 @@ The `templates/` directory provides a single secure Jinja2 template for all prox
 The only template file. All configurations are generated from this single template, selected via `build_template_filename("subdomain")` which returns `"mcp.subdomain.conf.j2"`.
 
 **Architecture:**
-- Includes `oauth.conf` at server level for OAuth 2.1 endpoints
 - `/` location uses Authelia authentication and `proxy.conf`
-- `/mcp` location uses OAuth (`auth_request /_oauth_verify`), then includes `proxy.conf` and `mcp.conf`
-- `/health` location has no authentication
+- `/mcp` location uses OAuth (`auth_request /_oauth_verify`), then includes `proxy.conf` and `mcp-location.conf`
+- Health is provided by the server-level `config/nginx/mcp-server.conf` sidecar
 
 **No subfolder support** - config types have been simplified to just "subdomain".
 
 ## Nginx Includes
 
-Two nginx include files live in `nginx/` (not in this directory):
+Two nginx include files live in `config/nginx/` (not in this directory):
 
-### `nginx/mcp.conf` - Location-Level MCP Overrides
-Included inside the `/mcp` location block after `proxy.conf`:
+### `config/nginx/mcp-server.conf` - Server-Level Axon Sidecar
+
+Provides OAuth/OIDC discovery, token/auth routes, MCP metadata routes, origin validation, and `/health`.
+The template sets `$oauth_upstream` before including this file so `/_oauth_verify` can validate bearer tokens.
+
+### `config/nginx/mcp-location.conf` - Location-Level MCP Transport
+
+Included inside the `/mcp` and `/session*` location blocks after `proxy.conf`:
 
 ```nginx
 # Zero-buffering for real-time streaming
@@ -47,7 +52,6 @@ proxy_set_header Cache-Control 'no-cache, no-store, must-revalidate';
 chunked_transfer_encoding on;
 ```
 
-### `nginx/oauth.conf` - Server-Level OAuth Endpoints
 Included at the server block level, provides OAuth 2.1 verification:
 
 ```nginx
@@ -204,4 +208,3 @@ nginx -t -c /path/to/generated/config.conf
 - Template path must be relative to working directory
 - Undefined variables cause template errors (StrictUndefined)
 - Generated configs must pass `nginx -t` validation
-- `nginx/mcp.conf` and `nginx/oauth.conf` must be accessible to SWAG

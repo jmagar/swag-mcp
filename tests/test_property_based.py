@@ -23,6 +23,11 @@ from swag_mcp.utils.validators import (
 )
 
 
+def _is_expected_unicode_rejection(error: Exception) -> bool:
+    """Return True when normalization rejects security-sensitive Unicode."""
+    return isinstance(error, ValueError) and "problematic Unicode characters" in str(error)
+
+
 class TestDomainValidationProperties:
     """Property-based tests for domain validation."""
 
@@ -252,7 +257,8 @@ class TestUnicodeNormalizationProperties:
             normalized_twice = normalize_unicode_text(normalized_once)
             assert normalized_once == normalized_twice
         except Exception as e:
-            pytest.fail(f"Unicode normalization failed: {e}")
+            if not _is_expected_unicode_rejection(e):
+                pytest.fail(f"Unicode normalization failed: {e}")
 
     @given(st.text())
     def test_unicode_normalization_consistent(self, text):
@@ -265,7 +271,8 @@ class TestUnicodeNormalizationProperties:
             result2 = normalize_unicode_text(text)
             assert result1 == result2
         except Exception as e:
-            pytest.fail(f"Unicode normalization inconsistent: {e}")
+            if not _is_expected_unicode_rejection(e):
+                pytest.fail(f"Unicode normalization inconsistent: {e}")
 
     @given(st.text())
     def test_unicode_normalization_preserves_basic_structure(self, text):
@@ -285,7 +292,8 @@ class TestUnicodeNormalizationProperties:
                 # This is a weak property since normalization might remove some chars
                 assert len(result) >= 0  # At minimum, should be a string
         except Exception as e:
-            pytest.fail(f"Unicode normalization failed: {e}")
+            if not _is_expected_unicode_rejection(e):
+                pytest.fail(f"Unicode normalization failed: {e}")
 
 
 class TestConfigurationListHandling:

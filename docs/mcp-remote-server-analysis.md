@@ -742,7 +742,7 @@ server {
     location /mcp {
         include /config/nginx/authelia-location.conf;
         include /config/nginx/resolver.conf;
-        include /config/nginx/mcp.conf;
+        include /config/nginx/mcp-location.conf;
 
         proxy_set_header MCP-Protocol-Version $http_mcp_protocol_version;
         proxy_set_header Mcp-Session-Id $http_mcp_session_id;
@@ -763,7 +763,7 @@ server {
     # Health check - main service
     location /health {
         include /config/nginx/resolver.conf;
-        include /config/nginx/mcp.conf;
+        include /config/nginx/mcp-location.conf;
 
         # Routes to jellyfin:8096
         proxy_pass $upstream_proto://$upstream_app:$upstream_port;

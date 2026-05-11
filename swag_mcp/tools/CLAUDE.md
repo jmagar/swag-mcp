@@ -156,7 +156,7 @@ async def _handle_create_action(service: SwagManagerService, params: Dict) -> st
     # Automatic health check after creation
     if result['success']:
         try:
-            health_result = await service.check_service_health(
+            health_result = await swag_service.health_check(
                 domain=request.server_name,
                 timeout=10
             )
@@ -218,7 +218,7 @@ async def _handle_health_check_action(service: SwagManagerService, params: Dict)
     """
     request = SwagHealthCheckRequest(**params)
 
-    result = await service.check_service_health(
+    result = await swag_service.health_check(
         domain=request.domain,
         timeout=request.timeout,
         follow_redirects=request.follow_redirects

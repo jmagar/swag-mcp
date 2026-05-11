@@ -24,8 +24,8 @@ The server uses streamable-HTTP transport on port 8000. Authentication is handle
 - `swag_mcp/services/`: Service layer with 9 sub-managers (file ops, templates, validation, backups, health, resources, MCP ops, config updaters, config operations)
 - `swag_mcp/middleware/`: Rate limiting, error handling, timing, request logging, retry, security error sanitization
 - `templates/mcp.subdomain.conf.j2`: Jinja2 nginx config template with MCP/OAuth support
-- `config/nginx/mcp.conf`: Location-level MCP overrides (buffering, timeouts, SSE, CORS)
-- `config/nginx/oauth.conf`: Server-level OAuth 2.1 endpoints (RFC 9728, RFC 8414, RFC 7591)
+- `config/nginx/mcp-server.conf`: Server-level MCP identity/discovery/auth sidecar
+- `config/nginx/mcp-location.conf`: Location-level MCP transport overrides (buffering, timeouts, SSE, CORS)
 - `skills/swag/SKILL.md`: Client-facing skill documentation
 - `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `gemini-extension.json`: Client manifests
 - `docker-compose.yaml`, `Dockerfile`, `entrypoint.sh`: Container deployment

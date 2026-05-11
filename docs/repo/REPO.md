@@ -22,8 +22,8 @@ swag-mcp/
   config/
     mcporter.json            Live test tool contract
     nginx/
-      mcp.conf               MCP location-level nginx overrides
-      oauth.conf             OAuth 2.1 server-level nginx endpoints
+      mcp-server.conf       MCP server-level identity/discovery/auth sidecar
+      mcp-location.conf     MCP location-level transport overrides
   docs/                      Documentation (this tree)
   hooks/
     hooks.json               Claude Code session hook definitions

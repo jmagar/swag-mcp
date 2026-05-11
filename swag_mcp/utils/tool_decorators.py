@@ -7,7 +7,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
 
 from fastmcp import Context
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from pydantic import ValidationError
 
 from swag_mcp.utils.error_handlers import handle_os_error
@@ -58,7 +58,7 @@ def _create_fallback_formatter() -> "TokenEfficientFormatter":
     class FallbackFormatter:
         def format_error_result(self, error_message: str, action: str) -> ToolResult:
             """Format error result without dependencies."""
-            from fastmcp.tools.tool import ToolResult
+            from fastmcp.tools import ToolResult
             from mcp.types import TextContent
 
             formatted_content = f"❌ {action.replace('_', ' ').title()} failed: {error_message}"

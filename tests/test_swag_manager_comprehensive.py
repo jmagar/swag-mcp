@@ -503,16 +503,14 @@ class TestMCPFunctionality:
             yield SwagManagerService(config_dir, template_dir)
 
     async def test_render_mcp_location_block(self, temp_service):
-        """Test rendering MCP location block raises NotImplementedError."""
+        """Test rendering MCP location block using modular includes."""
 
-        with pytest.raises(NotImplementedError):
-            await temp_service.mcp_operations.render_mcp_location_block(
-                mcp_path="/ai-service",
-                upstream_app="mcp-server",
-                upstream_port="8080",
-                upstream_proto="http",
-                auth_method="none",
-            )
+        result = await temp_service.mcp_operations.render_mcp_location_block(mcp_path="/ai-service")
+        assert "location /ai-service" in result
+        assert "mcp-location.conf" in result
+        assert "auth_request /_oauth_verify;" in result
+        assert "origin_not_allowed" in result
+        assert "proxy_pass $upstream_proto://$upstream_app:$upstream_port;" in result
 
     def test_insert_location_block(self, temp_service):
         """Test inserting location block into configuration."""
@@ -541,8 +539,8 @@ server {
         assert "location /" in result
         assert "location /mcp" in result
 
-    async def test_add_mcp_location_not_supported(self, temp_service):
-        """Test that add_mcp_location raises ValueError (NotImplementedError internally)."""
+    async def test_add_mcp_location_success(self, temp_service):
+        """Test successful MCP location addition."""
         # Create existing config file
         config_file = temp_service.config_path / "test.subdomain.conf"
         original_content = """
@@ -561,11 +559,14 @@ server {
         """.strip()
         config_file.write_text(original_content)
 
-        with pytest.raises(ValueError, match="Failed to add MCP location"):
-            await temp_service.add_mcp_location(
-                config_name="test.subdomain.conf",
-                mcp_path="/ai-service",
-            )
+        result = await temp_service.add_mcp_location(
+            config_name="test.subdomain.conf",
+            mcp_path="/ai-service",
+        )
+        assert result.filename == "test.subdomain.conf"
+        assert "location /ai-service" in result.content
+        assert "mcp-location.conf" in result.content
+        assert "auth_request /_oauth_verify;" in result.content
 
     async def test_add_mcp_location_file_not_found(self, temp_service):
         """Test MCP location addition when file doesn't exist."""
