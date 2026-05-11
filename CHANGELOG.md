@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-05-11
+
+### Fixed
+- Wired the Docker entrypoint to prepare writable runtime directories before starting the app.
+- Split Docker Compose host log bind path from the container log directory.
+
 ## [1.1.1] - 2026-05-11
 
 ### Fixed

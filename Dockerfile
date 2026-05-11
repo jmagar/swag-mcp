@@ -21,7 +21,7 @@ FROM python:3.11-slim AS runtime
 
 # Install system dependencies in one layer
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends curl gosu && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
 
@@ -39,13 +39,12 @@ COPY --from=builder --chown=swagmcp:swagmcp /app/.venv /app/.venv
 # Copy application code
 COPY --from=builder --chown=swagmcp:swagmcp /app/swag_mcp/ ./swag_mcp/
 COPY --from=builder --chown=swagmcp:swagmcp /app/templates/ ./templates/
+COPY --chown=root:root entrypoint.sh /usr/local/bin/swag-mcp-entrypoint
+RUN chmod 755 /usr/local/bin/swag-mcp-entrypoint
 
 # Create volume mount points and set ownership
 RUN mkdir -p /proxy-confs /app/.swag-mcp /app/logs && \
     chown -R swagmcp:swagmcp /proxy-confs /app/.swag-mcp /app/logs
-
-# Switch to non-root user early
-USER swagmcp
 
 # Environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -64,4 +63,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Run the application
+ENTRYPOINT ["swag-mcp-entrypoint"]
 CMD ["python", "-m", "swag_mcp"]
