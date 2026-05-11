@@ -7,9 +7,8 @@ including adding MCP location blocks to existing configurations.
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING
 
-from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import SwagConfigResult
 from swag_mcp.utils.validators import (
     validate_config_filename,
@@ -144,41 +143,8 @@ class MCPOperations:
         try:
             # Begin atomic transaction
             async with self.file_ops.begin_transaction(f"add_mcp:{config_name}") as txn:
-                # Extract current upstream values from config
-                upstream_app = self.extract_upstream_value(content, "upstream_app")
-                upstream_port = self.extract_upstream_value(content, "upstream_port")
-                upstream_proto_raw = self.extract_upstream_value(content, "upstream_proto")
-
-                # Re-validate extracted values to guard against manually-edited configs
-                if not re.match(VALID_UPSTREAM_PATTERN, upstream_app):
-                    raise ValueError(
-                        f"Invalid upstream_app in existing config: {upstream_app!r}. "
-                        "The config may have been manually edited with an invalid value."
-                    )
-                try:
-                    port_int = int(upstream_port)
-                    if not (1 <= port_int <= 65535):
-                        raise ValueError(f"Port out of range: {port_int}")
-                except (ValueError, TypeError) as exc:
-                    raise ValueError(
-                        f"Invalid upstream_port in existing config: {upstream_port!r}. "
-                        "The config may have been manually edited with an invalid value."
-                    ) from exc
-
-                # Validate and cast upstream_proto to Literal type
-                if upstream_proto_raw not in ("http", "https"):
-                    upstream_proto_raw = "http"  # Default to safe value
-                upstream_proto = cast("Literal['http', 'https']", upstream_proto_raw)
-                auth_method = self.extract_auth_method(content)
-
-                # Render MCP location block
-                mcp_block = await self.render_mcp_location_block(
-                    mcp_path=mcp_path,
-                    upstream_app=upstream_app,
-                    upstream_port=upstream_port,
-                    upstream_proto=upstream_proto,
-                    auth_method=auth_method,
-                )
+                # Render MCP location block from existing server-level variables.
+                mcp_block = await self.render_mcp_location_block(mcp_path=mcp_path)
 
                 # Insert MCP location block before the last closing brace
                 updated_content = self.insert_location_block(content, mcp_block)
@@ -284,10 +250,6 @@ class MCPOperations:
     async def render_mcp_location_block(
         self,
         mcp_path: str,
-        upstream_app: str,
-        upstream_port: str,
-        upstream_proto: Literal["http", "https"],
-        auth_method: str,
     ) -> str:
         """Render MCP location block for insertion into existing configs.
 

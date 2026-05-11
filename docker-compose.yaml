@@ -17,9 +17,9 @@ services:
     volumes:
       - ${SWAG_MCP_LOG_DIRECTORY:-/tmp/swag-mcp/logs}:/app/.swag-mcp/logs
       - ~/.ssh:/home/swagmcp/.ssh:ro
-      - /mnt/appdata/swag/nginx/proxy-confs:/proxy-confs
-      - ./config/nginx:/config/nginx:ro
-      - /mnt/appdata/swag-mcp/data:/home/swagmcp/.local/share/fastmcp
+      - ${SWAG_MCP_PROXY_CONFS_HOST_PATH:-/mnt/appdata/swag/nginx/proxy-confs}:/proxy-confs
+      - ${SWAG_MCP_NGINX_INCLUDES_HOST_PATH:-./config/nginx}:/config/nginx:ro
+      - ${SWAG_MCP_FASTMCP_DATA_HOST_PATH:-/mnt/appdata/swag-mcp/data}:/home/swagmcp/.local/share/fastmcp
 
     ports:
       - "${SWAG_MCP_PORT:-8000}:8000"

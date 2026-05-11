@@ -505,13 +505,7 @@ class TestMCPFunctionality:
     async def test_render_mcp_location_block(self, temp_service):
         """Test rendering MCP location block using modular includes."""
 
-        result = await temp_service.mcp_operations.render_mcp_location_block(
-            mcp_path="/ai-service",
-            upstream_app="mcp-server",
-            upstream_port="8080",
-            upstream_proto="http",
-            auth_method="none",
-        )
+        result = await temp_service.mcp_operations.render_mcp_location_block(mcp_path="/ai-service")
         assert "location /ai-service" in result
         assert "mcp-location.conf" in result
         assert "auth_request /_oauth_verify;" in result
