@@ -8,6 +8,7 @@
 *.pid
 *.bak
 *.bak-*
+.beads/
 
 # ── Claude Code / AI tooling ────────────────────────────────────────────────
 .claude/settings.local.json

@@ -500,10 +500,9 @@ class TestSwagToolIntegration:
     async def test_update_add_mcp_location(
         self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
     ) -> None:
-        """Test adding a custom MCP location is not supported with new template system.
+        """Test adding a custom MCP location to an existing config.
 
-        render_mcp_location_block() now raises NotImplementedError, so add_mcp
-        should return a failure response.
+        Verifies that the new modular includes are correctly inserted.
         """
         config_name = f"{test_config_name}-mcp.subdomain.conf"
         test_config_cleanup(config_name)
@@ -521,7 +520,7 @@ class TestSwagToolIntegration:
         )
         assert create_result.is_error is False
 
-        # add_mcp is no longer supported — should return error response
+        # Add an additional MCP location
         update_result = await mcp_client.call_tool(
             "swag",
             {
@@ -536,9 +535,11 @@ class TestSwagToolIntegration:
         assert update_result.is_error is False
         assert isinstance(update_result.content[0], TextContent)
 
-        # Check structured content for failure (add_mcp not supported)
+        # Check structured content for success
         assert update_result.structured_content is not None
-        assert not update_result.structured_content.get("success")
+        assert update_result.structured_content.get("success")
+        assert "location /ai-service" in update_result.structured_content.get("content")
+        assert "mcp-location.conf" in update_result.structured_content.get("content")
 
     async def test_update_invalid_field(self, mcp_client: Client, test_config_name: str) -> None:
         """Test updating with an invalid field name."""

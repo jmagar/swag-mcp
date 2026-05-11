@@ -30,7 +30,7 @@ The server binds to `0.0.0.0` when running in Docker (overrides `127.0.0.1` and 
 
 ### SSE streaming
 
-The server uses Server-Sent Events for streaming responses. The nginx template (`mcp.conf`) configures:
+The server uses Server-Sent Events for streaming responses. The nginx template (`mcp-server.conf and mcp-location.conf`) configures:
 
 - `proxy_buffering off` -- real-time streaming
 - `proxy_cache off` -- no caching of dynamic responses

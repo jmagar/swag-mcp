@@ -460,11 +460,11 @@ assert_not_contains "$OUT" "error" "no error on MCP config create"
 if [[ -f "${PROXY_CONFS_DIR}/${MCP_TEST_CONFIG}" ]]; then
     pass "MCP config file exists on disk"
     MCP_CONTENT=$(cat "${PROXY_CONFS_DIR}/${MCP_TEST_CONFIG}")
-    # buffering is either inlined or via include /config/nginx/mcp.conf
+    # buffering is either inlined or via include /config/nginx/mcp-location.conf
     if echo "$MCP_CONTENT" | grep -qF "proxy_buffering off"; then
         pass "zero-buffering inlined in MCP config"
-    elif echo "$MCP_CONTENT" | grep -qF "mcp.conf"; then
-        pass "zero-buffering via mcp.conf include"
+    elif echo "$MCP_CONTENT" | grep -qF "mcp-location.conf"; then
+        pass "zero-buffering via mcp-location.conf include"
     else
         fail "no buffering control found in MCP config"
     fi

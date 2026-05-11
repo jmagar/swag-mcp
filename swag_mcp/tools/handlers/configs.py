@@ -448,6 +448,8 @@ async def _handle_update_action(
 
         result_data = {
             "success": True,
+            "filename": config_name,
+            "content": update_result.content,
             "backup_created": update_result.backup_created,
             "health_check": health_check_result,
         }

@@ -84,8 +84,7 @@ Single template: `templates/mcp.subdomain.conf.j2`
 The template generates nginx server blocks with:
 - SSL termination
 - Auth method includes (authelia, authentik, etc.)
-- OAuth 2.1 endpoints via `oauth.conf`
-- MCP location with streaming overrides via `mcp.conf`
+- MCP location with streaming overrides via `mcp-server.conf and mcp-location.conf`
 - Health check endpoint
 - Split routing support (main app + separate MCP upstream)
 - DNS rebinding protection

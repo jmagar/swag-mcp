@@ -17,11 +17,14 @@ services:
     volumes:
       - ${SWAG_MCP_LOG_DIRECTORY:-/tmp/swag-mcp/logs}:/app/.swag-mcp/logs
       - ~/.ssh:/home/swagmcp/.ssh:ro
+      - /mnt/appdata/swag/nginx/proxy-confs:/proxy-confs
+      - /mnt/appdata/swag-mcp/data:/home/swagmcp/.local/share/fastmcp
 
     ports:
       - "${SWAG_MCP_PORT:-8000}:8000"
 
     env_file:
+      - .env
       - path: ~/.claude-homelab/.env
         required: false
 

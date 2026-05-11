@@ -57,27 +57,35 @@ When creating nginx proxy configurations, the `auth_method` parameter controls h
 
 The default is configured via `SWAG_MCP_DEFAULT_AUTH_METHOD` (default: `authelia`).
 
-## OAuth 2.1 for MCP endpoints
+## OAuth 2.1 and Axon Standard for MCP Endpoints
 
-Generated configs include OAuth 2.1 endpoints via `oauth.conf` for MCP-specific routes. The `/mcp` location uses `auth_request /_oauth_verify` which delegates to the mcp-oauth gateway container.
+Generated configs use the **Axon Standard**, which implements explicit `location =` (exact match) routing for all security-sensitive OAuth 2.1 and MCP discovery endpoints. This approach replaces the legacy dependency on global `oauth.conf` includes and catch-all regexes, ensuring higher reliability and performance.
 
-OAuth endpoints included in every generated config:
+The `/mcp` location block and all related auth routes proxy directly to the service's own Authorization Server (typically integrated into the MCP engine itself).
 
-| Endpoint | RFC | Purpose |
-| --- | --- | --- |
-| `/_oauth_verify` | — | Internal auth_request target |
-| `/.well-known/oauth-protected-resource` | RFC 9728 | Protected Resource Metadata |
-| `/.well-known/oauth-authorization-server` | RFC 8414 | Authorization Server Metadata |
-| `/.well-known/openid-configuration` | — | OpenID Connect Discovery |
-| `/jwks` | — | JSON Web Key Set |
-| `/register` | RFC 7591 | Dynamic Client Registration |
-| `/authorize` | — | Authorization endpoint |
-| `/token` | — | Token endpoint |
-| `/revoke` | RFC 7009 | Token revocation |
-| `/callback` | — | OAuth callback handler |
-| `/success` | — | Post-auth success page |
+### Standardized Endpoints
 
-The main application location (`/`) uses the standard auth method (Authelia, Authentik, etc.). The MCP location (`/mcp`) uses OAuth. This split allows traditional web apps to keep their existing auth while MCP clients use OAuth 2.1.
+Every generated config includes these explicit routes:
+
+| Endpoint | RFC | Purpose | Cache Policy |
+| --- | --- | --- | --- |
+| `/.well-known/oauth-protected-resource` | RFC 9728 | Resource Metadata | 300s |
+| `/mcp/.well-known/oauth-protected-resource` | RFC 9728 | Path-based Metadata | 300s |
+| `/.well-known/oauth-authorization-server` | RFC 8414 | Server Metadata | 300s |
+| `/.well-known/openid-configuration` | — | OIDC Discovery | 300s |
+| `/jwks` | — | JSON Web Key Set | 3600s |
+| `/register` | RFC 7591 | Dynamic Registration | No-cache |
+| `/authorize` | — | Authorization endpoint | No-cache |
+| `/token` | — | Token endpoint | No-cache |
+| `/revoke` | RFC 7009 | Token revocation | No-cache |
+
+### Security Features
+
+1. **DNS Rebinding Protection**: All configurations include origin validation against authorized domains (including `claude.ai` and `anthropic.com`).
+2. **Standardized Headers**: Consistent `X-MCP-Version` and `Referrer-Policy` headers across the fleet.
+3. **Internal AuthLayer**: Authentication is enforced by the service's internal AuthLayer rather than a global gateway, allowing for fine-grained, per-service permission management.
+
+The main application location (`/`) still uses the standard auth method (Authelia, Authentik, etc.), while the MCP engine handles its own security handshake.
 
 ## Health endpoint
 

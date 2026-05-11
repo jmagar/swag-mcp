@@ -138,16 +138,20 @@ class ConfigFieldUpdaters:
         updated_content = content
         changes_made = False
 
-        # Try template format first: set $upstream_port
-        pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-        replacement = rf'set $upstream_port "{port_value}";'
-        new_content, port_replacements = re.subn(pattern, replacement, updated_content)
+        # Try template format first: set $upstream_port and $mcp_upstream_port
+        patterns = [
+            (r'set \$upstream_port ("[^"]*"|[^;]+);', rf'set $upstream_port "{port_value}";'),
+            (r'set \$mcp_upstream_port ("[^"]*"|[^;]+);', rf'set $mcp_upstream_port "{port_value}";'),
+        ]
 
-        if port_replacements > 0:
-            updated_content = new_content
-            changes_made = True
-            logger.debug(f"Updated {port_replacements} template port references to {port_value}")
-        else:
+        for pattern, replacement in patterns:
+            new_content, count = re.subn(pattern, replacement, updated_content)
+            if count > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(f"Updated {count} port references using pattern {pattern}")
+
+        if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
             pattern = r"proxy_pass\s+https?://([^/:]+):(\d+)([^;]*);"
 
@@ -205,19 +209,20 @@ class ConfigFieldUpdaters:
         updated_content = content
         changes_made = False
 
-        # Try template format first: set $upstream_app
-        pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-        replacement = rf'set $upstream_app "{update_request.update_value}";'
-        new_content, app_replacements = re.subn(pattern, replacement, updated_content)
+        # Try template format first: set $upstream_app and $mcp_upstream_app
+        patterns = [
+            (r'set \$upstream_app ("[^"]*"|[^;]+);', rf'set $upstream_app "{update_request.update_value}";'),
+            (r'set \$mcp_upstream_app ("[^"]*"|[^;]+);', rf'set $mcp_upstream_app "{update_request.update_value}";'),
+        ]
 
-        if app_replacements > 0:
-            updated_content = new_content
-            changes_made = True
-            logger.debug(
-                f"Updated {app_replacements} template app references to "
-                f"{update_request.update_value}"
-            )
-        else:
+        for pattern, replacement in patterns:
+            new_content, count = re.subn(pattern, replacement, updated_content)
+            if count > 0:
+                updated_content = new_content
+                changes_made = True
+                logger.debug(f"Updated {count} app references using pattern {pattern}")
+
+        if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
             pattern = r"proxy_pass\s+https?://([^/:]+)(:\d+)?([^;]*);"
 
@@ -299,21 +304,18 @@ class ConfigFieldUpdaters:
         changes_made = False
 
         # Try template format first
-        app_pattern = r'set \$upstream_app ("[^"]*"|[^;]+);'
-        app_replacement = rf'set $upstream_app "{app}";'
-        new_content, app_replacements = re.subn(app_pattern, app_replacement, updated_content)
+        patterns = [
+            (r"set \$upstream_app (\"[^\"]*\"|[^;]+);", rf"set $upstream_app \"{app}\";"),
+            (r"set \$mcp_upstream_app (\"[^\"]*\"|[^;]+);", rf"set $mcp_upstream_app \"{app}\";"),
+            (r"set \$upstream_port (\"[^\"]*\"|[^;]+);", rf"set $upstream_port \"{port_value}\";"),
+            (r"set \$mcp_upstream_port (\"[^\"]*\"|[^;]+);", rf"set $mcp_upstream_port \"{port_value}\";"),
+        ]
 
-        if app_replacements > 0:
-            updated_content = new_content
-            changes_made = True
-
-        port_pattern = r'set \$upstream_port ("[^"]*"|[^;]+);'
-        port_replacement = rf'set $upstream_port "{port_value}";'
-        new_content, port_replacements = re.subn(port_pattern, port_replacement, updated_content)
-
-        if port_replacements > 0:
-            updated_content = new_content
-            changes_made = True
+        for pattern, replacement in patterns:
+            new_content, count = re.subn(pattern, replacement, updated_content)
+            if count > 0:
+                updated_content = new_content
+                changes_made = True
 
         # If template format didn't work, try simple nginx format
         if not changes_made:

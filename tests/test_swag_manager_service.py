@@ -142,7 +142,8 @@ server {
         assert result.filename == "testapp.subdomain.conf"
         assert len(result.content) > 0
         assert "testapp.example.com" in result.content
-        assert "testapp:8080" in result.content
+        assert "set $upstream_app \"testapp\";" in result.content
+        assert "set $upstream_port \"8080\";" in result.content
         assert (temp_config.proxy_confs_path / "testapp.subdomain.conf").exists()
 
     async def test_create_config_invalid_service_name(self, service):

@@ -291,16 +291,24 @@ class MCPOperations:
     ) -> str:
         """Render MCP location block for insertion into existing configs.
 
-        Note: The standalone mcp_location_block.j2 template was removed.
-        New MCP configs should be created from mcp.subdomain.conf.j2 instead.
-        This method is retained for add_mcp_location but raises NotImplementedError
-        until a replacement inline template is provided.
-
+        This implementation uses the standardized mcp-location.conf include.
         """
-        raise NotImplementedError(
-            "add_mcp_location is not yet supported with the new template system. "
-            "Create a new MCP config using the 'create' action instead."
-        )
+        # Ensure path starts with /
+        if not mcp_path.startswith("/"):
+            mcp_path = f"/{mcp_path}"
+
+        # Standardized location block using modular includes
+        # Note: We use the existing upstream variables from the server block
+        block = f"""
+    location {mcp_path} {{
+        include /config/nginx/resolver.conf;
+        include /config/nginx/proxy.conf;
+        # Transport Engine (Streaming, MCP Headers, CORS)
+        include /config/nginx/mcp-location.conf;
+
+        proxy_pass {upstream_proto}://{upstream_app}:{upstream_port};
+    }}"""
+        return block
 
     def insert_location_block(self, content: str, location_block: str) -> str:
         """Insert location block before the closing brace of the outermost server block.
