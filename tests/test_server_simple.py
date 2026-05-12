@@ -1,6 +1,6 @@
 """Simple tests for server.py to improve coverage."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from swag_mcp.core.config import config
@@ -45,8 +45,15 @@ class TestServerFunctions:
 
     async def test_cleanup_old_backups(self):
         """Test cleanup old backups function."""
-        # Should not raise an exception for async function
-        await cleanup_old_backups()
+        with patch("swag_mcp.server.SwagManagerService") as service_cls:
+            service = service_cls.return_value.__aenter__.return_value
+            service.cleanup_old_backups = AsyncMock(return_value=0)
+
+            await cleanup_old_backups()
+
+            service_cls.return_value.__aenter__.assert_awaited_once()
+            service.cleanup_old_backups.assert_awaited_once()
+            service_cls.return_value.__aexit__.assert_awaited_once()
 
     async def test_create_mcp_server(self):
         """Test MCP server creation."""

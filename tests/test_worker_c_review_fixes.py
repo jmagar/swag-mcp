@@ -198,11 +198,10 @@ async def test_backup_cleanup_scan_and_delete_units_skip_locked_file(tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_health_check_endpoints_start_concurrently() -> None:
-    """Endpoint probes are bounded by the slowest endpoint, not the sum."""
+async def test_health_check_short_circuits_after_first_success() -> None:
+    """Health checks do not wait for later endpoints after a success."""
     service = SwagManagerService(config_path=Path("/tmp"), template_path=Path("templates"))
-    started: list[str] = []
-    all_started = asyncio.Event()
+    requested: list[str] = []
 
     class Response:
         def __init__(self, endpoint: str) -> None:
@@ -217,10 +216,9 @@ async def test_health_check_endpoints_start_concurrently() -> None:
             self.endpoint = endpoint
 
         async def __aenter__(self) -> Response:
-            started.append(self.endpoint)
-            if len(started) == 3:
-                all_started.set()
-            await all_started.wait()
+            requested.append(self.endpoint)
+            if self.endpoint == "/":
+                await asyncio.sleep(1)
             return Response(self.endpoint)
 
         async def __aexit__(self, *args: Any) -> None:
@@ -247,7 +245,7 @@ async def test_health_check_endpoints_start_concurrently() -> None:
     result = await asyncio.wait_for(service.health_check(request), timeout=0.25)
 
     assert result.success is True
-    assert started == ["/health", "/mcp", "/"]
+    assert requested == ["/health", "/mcp"]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,7 @@
 """Focused regression tests for filesystem and MCP service review findings."""
 
+import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -154,6 +156,24 @@ server {
 
     assert "location /mcp" not in config_file.read_text()
     service.validation_service.validate_nginx_syntax.assert_not_awaited()
+
+
+async def test_backup_cleanup_detects_uuid_temp_write_files(temp_paths):
+    """Backup cleanup skips files with active UUID-suffixed atomic temp writes."""
+    config_path, template_path, _ = temp_paths
+    backup_file = config_path / "active.subdomain.conf.backup.20200101_120000_123456_deadbeef"
+    temp_file = config_path / f"{backup_file.name}.tmp.{os.getpid()}.abcdef123456"
+    backup_file.write_text("backup")
+    temp_file.write_text("partial")
+    old_time = time.time() - (3 * 24 * 60 * 60)
+    os.utime(backup_file, (old_time, old_time))
+
+    service = SwagManagerService(config_path=config_path, template_path=template_path)
+
+    cleaned_count = await service.cleanup_old_backups(retention_days=1)
+
+    assert cleaned_count == 0
+    assert backup_file.exists()
 
 
 def test_swag_manager_exposes_mcp_config_reader_explicitly(temp_paths):

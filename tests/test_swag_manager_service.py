@@ -661,16 +661,14 @@ server {
 
         assert result.success is True
         assert result.status_code == 200
-        assert len(result.endpoint_results) == 3
+        assert len(result.endpoint_results) == 2
         assert result.endpoint_results[0].endpoint == "/health"
         assert result.endpoint_results[0].success is False
         assert result.endpoint_results[0].status_code == 404
         assert result.endpoint_results[1].endpoint == "/mcp"
         assert result.endpoint_results[1].success is True
         assert result.endpoint_results[1].status_code == 200
-        assert result.endpoint_results[2].endpoint == "/"
-        assert result.endpoint_results[2].success is False
-        assert result.endpoint_results[2].status_code == 404
+        assert mock_get.call_count == 2
 
     @patch("aiohttp.ClientSession.get")
     async def test_health_check_records_endpoint_errors(self, mock_get, service):

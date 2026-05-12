@@ -217,8 +217,12 @@ class BackupManager:
     async def _is_backup_being_written(self, backup_file_path: str) -> bool:
         """Return whether a process-local temporary file exists for a backup."""
         backup_path_obj = Path(backup_file_path)
-        temp_file = backup_path_obj.with_suffix(f"{backup_path_obj.suffix}.tmp.{os.getpid()}")
-        return await self.fs.exists(str(temp_file))
+        exact_temp_file = backup_path_obj.with_suffix(f"{backup_path_obj.suffix}.tmp.{os.getpid()}")
+        if await self.fs.exists(str(exact_temp_file)):
+            return True
+
+        temp_pattern = f"{backup_path_obj.name}.tmp.{os.getpid()}.*"
+        return bool(await self.fs.glob(str(backup_path_obj.parent), temp_pattern))
 
     async def _delete_backup_candidate(
         self,

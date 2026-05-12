@@ -354,8 +354,8 @@ def setup_templates() -> None:
 async def cleanup_old_backups() -> None:
     """Clean up old backup files on server startup."""
     try:
-        swag_service = SwagManagerService()
-        cleaned_count = await swag_service.cleanup_old_backups()
+        async with SwagManagerService() as swag_service:
+            cleaned_count = await swag_service.cleanup_old_backups()
         if cleaned_count > 0:
             logger.info("Startup cleanup: removed %d old backup files", cleaned_count)
         else:

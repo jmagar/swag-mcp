@@ -94,15 +94,12 @@ class HealthMonitor:
         endpoints_to_try = ["/health", "/mcp", "/"]
         urls_to_try = [f"https://{request.domain}{endpoint}" for endpoint in endpoints_to_try]
 
-        outcomes = await asyncio.gather(
-            *(
-                self._check_health_endpoint(request, endpoint, url)
-                for endpoint, url in zip(endpoints_to_try, urls_to_try, strict=True)
+        endpoint_results: list[HealthEndpointResult] = []
+        for endpoint, url in zip(endpoints_to_try, urls_to_try, strict=True):
+            endpoint_result, response_body = await self._check_health_endpoint(
+                request, endpoint, url
             )
-        )
-        endpoint_results = [outcome[0] for outcome in outcomes]
-
-        for endpoint_result, response_body in outcomes:
+            endpoint_results.append(endpoint_result)
             if endpoint_result.success:
                 return SwagHealthCheckResult(
                     domain=request.domain,
