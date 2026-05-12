@@ -145,6 +145,7 @@ class SwagManagerService:
         self.health_monitor = HealthMonitor(
             fs=self.fs,
             swag_log_base_path=runtime_config.swag_log_base_path,
+            health_check_insecure=runtime_config.health_check_insecure,
         )
         self.resource_manager = ResourceManager(config_path=self.config_path, fs=self.fs)
 
@@ -152,6 +153,7 @@ class SwagManagerService:
         self.backup_manager = BackupManager(
             config_path=self.config_path,
             file_ops=self.file_ops,
+            backup_retention_days=runtime_config.backup_retention_days,
         )
 
         # ===== PHASE 3: Instantiate managers with multi-level dependencies =====
@@ -179,6 +181,8 @@ class SwagManagerService:
             backup_manager=self.backup_manager,
             file_ops=self.file_ops,
             updaters=self.config_updaters,
+            oauth_upstream=runtime_config.oauth_upstream,
+            auth_server_url=runtime_config.auth_server_url,
         )
 
         # Explicitly wire config reads after ConfigOperations exists.

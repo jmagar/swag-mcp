@@ -7,7 +7,7 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   security-events: write
 

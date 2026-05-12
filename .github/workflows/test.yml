@@ -76,7 +76,7 @@ jobs:
         mkdir -p .cache/coverage
 
         # Run tests with coverage
-        uv run pytest tests/ -v -m "not slow" \
+        uv run pytest tests/ -v -m "not slow and not benchmark" \
           --cov=swag_mcp \
           --cov-report=xml:.cache/coverage/coverage.xml \
           --cov-report=term-missing \

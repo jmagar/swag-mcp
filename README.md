@@ -403,7 +403,7 @@ just lint         # ruff check
 just fmt          # ruff format
 just typecheck    # ty check
 just test         # pytest
-just build        # docker build
+just build        # build a local swag-mcp image for manual testing
 just up           # docker compose up -d
 just down         # docker compose down
 just logs         # docker compose logs -f

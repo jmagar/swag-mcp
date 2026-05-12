@@ -193,6 +193,7 @@ skip_test() {
 # mcp_call extracts the JSON payload from either format.
 # An optional session ID is forwarded when MCP_SESSION_ID is set.
 MCP_SESSION_ID=""
+DOCKER_CLEANUP_REGISTERED=false
 
 mcp_call() {
   local url="${1:?}" payload="${2:?}"
@@ -204,6 +205,9 @@ mcp_call() {
     -H "Accept: application/json, text/event-stream"
     --max-time 30
   )
+  if [[ -n "${TOKEN}" ]]; then
+    curl_args+=(-H "Authorization: Bearer ${TOKEN}")
+  fi
   if [[ -n "${MCP_SESSION_ID}" ]]; then
     curl_args+=(-H "Mcp-Session-Id: ${MCP_SESSION_ID}")
   fi
@@ -581,9 +585,8 @@ run_docker_mode() {
   log_info "Using proxy-confs dir: ${DOCKER_PROXY_CONFS_DIR}"
 
   # Ensure Docker cleanup on exit
-  local docker_cleanup_registered=false
   cleanup_docker() {
-    if [[ "${docker_cleanup_registered}" == true ]]; then
+    if [[ "${DOCKER_CLEANUP_REGISTERED}" == true ]]; then
       log_info "Tearing down Docker container ${DOCKER_CONTAINER}..."
       docker stop "${DOCKER_CONTAINER}" >/dev/null 2>&1 || true
       docker rm "${DOCKER_CONTAINER}" >/dev/null 2>&1 || true
@@ -604,7 +607,7 @@ run_docker_mode() {
     return 1
   fi
   log_info "Docker image built."
-  docker_cleanup_registered=true
+  DOCKER_CLEANUP_REGISTERED=true
 
   # Run container
   log_info "Starting container ${DOCKER_CONTAINER} on port ${DOCKER_HOST_PORT}..."

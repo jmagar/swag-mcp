@@ -122,7 +122,7 @@ async def test_transaction_attaches_structured_rollback_errors(temp_paths):
 
 
 async def test_mcp_location_uses_filesystem_validation_capability(temp_paths):
-    """MCP writes skip local nginx validation based on backend capability, not SSH type."""
+    """MCP writes fail closed when authoritative remote validation is unavailable."""
     config_path, template_path, _ = temp_paths
     config_file = config_path / "remote.subdomain.conf"
     config_file.write_text(
@@ -147,13 +147,12 @@ server {
         template_path=template_path,
         fs=RemoteValidationLocalFilesystem(),
     )
-    service.validation_service.validate_nginx_syntax = AsyncMock(
-        side_effect=AssertionError("local nginx validation should be skipped")
-    )
+    service.validation_service.validate_nginx_syntax = AsyncMock()
 
-    result = await service.add_mcp_location("remote.subdomain.conf", "/mcp")
+    with pytest.raises(ValueError, match="authoritative remote nginx validation"):
+        await service.add_mcp_location("remote.subdomain.conf", "/mcp")
 
-    assert "location /mcp" in result.content
+    assert "location /mcp" not in config_file.read_text()
     service.validation_service.validate_nginx_syntax.assert_not_awaited()
 
 

@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from swag_mcp.models.config import SwagConfigResult, SwagUpdateRequest
 from swag_mcp.services.file_operations import FileOperations
+from swag_mcp.services.filesystem import requires_remote_nginx_validation
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.error_codes import (
     ErrorCode,
@@ -473,6 +474,12 @@ class ConfigFieldUpdaters:
 
         try:
             # Validate nginx syntax before committing changes
+            if requires_remote_nginx_validation(self.file_ops.fs):
+                raise create_operation_error(
+                    ErrorCode.CONFIG_SYNTAX_ERROR,
+                    "Cannot validate nginx syntax for remote filesystem backend without "
+                    "authoritative remote nginx validation",
+                )
             if not await self.validation.validate_nginx_syntax(temp_path):
                 raise create_operation_error(
                     ErrorCode.CONFIG_SYNTAX_ERROR,

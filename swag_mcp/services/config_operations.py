@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 from re import Pattern
 
-from swag_mcp.core.config import config
 from swag_mcp.core.constants import LIST_FILTERS, VALID_UPSTREAM_PATTERN
 from swag_mcp.models.config import (
     ListFilterType,
@@ -25,7 +24,7 @@ from swag_mcp.models.config import (
 from swag_mcp.services.backup_manager import BackupManager
 from swag_mcp.services.config_updaters import ConfigFieldUpdaters
 from swag_mcp.services.file_operations import FileOperations
-from swag_mcp.services.filesystem import FilesystemBackend
+from swag_mcp.services.filesystem import FilesystemBackend, requires_remote_nginx_validation
 from swag_mcp.services.template_manager import TemplateManager
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.error_handlers import handle_os_error
@@ -67,6 +66,8 @@ class ConfigOperations:
         backup_manager: BackupManager,
         file_ops: FileOperations,
         updaters: ConfigFieldUpdaters,
+        oauth_upstream: str,
+        auth_server_url: str,
     ):
         """Initialize configuration operations service.
 
@@ -77,6 +78,8 @@ class ConfigOperations:
             backup_manager: Backup creation and management service
             file_ops: File operation utilities
             updaters: Configuration field update handlers
+            oauth_upstream: OAuth gateway upstream used by generated templates
+            auth_server_url: Auth server URL used by generated templates
 
         """
         self.config_path = config_path
@@ -85,9 +88,19 @@ class ConfigOperations:
         self.backup_manager = backup_manager
         self.file_ops = file_ops
         self.updaters = updaters
+        self.oauth_upstream = oauth_upstream
+        self.auth_server_url = auth_server_url
         self._cache_namespace = str(self.config_path)
 
         logger.info(f"Initialized ConfigOperations with path: {config_path}")
+
+    def _ensure_authoritative_nginx_validation(self) -> None:
+        """Fail closed when local nginx validation cannot verify the target backend."""
+        if requires_remote_nginx_validation(self.file_ops.fs):
+            raise ValueError(
+                "Cannot validate nginx syntax for remote filesystem backend without "
+                "authoritative remote nginx validation"
+            )
 
     @property
     def fs(self) -> FilesystemBackend:
@@ -300,8 +313,8 @@ class ConfigOperations:
                     "auth_method": request.auth_method,
                     "enable_quic": request.enable_quic,
                     # OAuth gateway variables
-                    "oauth_upstream": config.oauth_upstream,
-                    "auth_server_url": config.auth_server_url,
+                    "oauth_upstream": self.oauth_upstream,
+                    "auth_server_url": self.auth_server_url,
                 }
 
                 # Render template with validated variables
@@ -317,6 +330,7 @@ class ConfigOperations:
                 temp_path = Path(temp_file.name)
 
             try:
+                self._ensure_authoritative_nginx_validation()
                 if not await self.validation.validate_nginx_syntax(temp_path):
                     raise ValueError("Generated configuration contains invalid nginx syntax")
             finally:
@@ -374,6 +388,7 @@ class ConfigOperations:
             temp_path = Path(temp_file.name)
 
         try:
+            self._ensure_authoritative_nginx_validation()
             if not await self.validation.validate_nginx_syntax(temp_path):
                 raise ValueError("Updated configuration contains invalid nginx syntax")
         finally:

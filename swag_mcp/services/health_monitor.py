@@ -7,7 +7,6 @@ import time
 
 import aiohttp
 
-from swag_mcp.core.config import config
 from swag_mcp.models.config import (
     HealthEndpointResult,
     SwagHealthCheckRequest,
@@ -26,13 +25,17 @@ class HealthMonitor:
     """Handles health checks and log access."""
 
     def __init__(
-        self, fs: FilesystemBackend | None = None, swag_log_base_path: str = "/swag/log"
+        self,
+        fs: FilesystemBackend | None = None,
+        swag_log_base_path: str = "/swag/log",
+        health_check_insecure: bool = False,
     ) -> None:
         """Initialize health monitor.
 
         Args:
             fs: Filesystem backend to use (defaults to LocalFilesystem)
             swag_log_base_path: Base path for SWAG log files
+            health_check_insecure: Disable TLS verification for endpoint checks
 
         """
         # HTTP session for health checks with connection pooling
@@ -40,6 +43,7 @@ class HealthMonitor:
         self._session_lock = asyncio.Lock()
         self.fs: FilesystemBackend = fs or LocalFilesystem()
         self.swag_log_base_path = swag_log_base_path
+        self.health_check_insecure = health_check_insecure
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session with connection pooling.
@@ -54,7 +58,7 @@ class HealthMonitor:
                 ssl_context = ssl.create_default_context()
 
                 # Only disable SSL verification if explicitly configured
-                if config.health_check_insecure:
+                if self.health_check_insecure:
                     ssl_context.check_hostname = False
                     ssl_context.verify_mode = ssl.CERT_NONE
 
@@ -207,9 +211,7 @@ class HealthMonitor:
         """Return whether an endpoint HTTP status proves the proxy is reachable."""
         if 200 <= status_code < 300:
             return True
-        if status_code == 406 and endpoint == "/mcp":
-            return True
-        return not (status_code == 404 and endpoint in ["/health", "/"])
+        return status_code == 406 and endpoint == "/mcp"
 
     async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
         """Get SWAG logs by reading log files directly from mounted volume.

@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from swag_mcp.services.file_operations import FileOperations
 
-from swag_mcp.core.config import config
 from swag_mcp.services.filesystem import FilesystemBackend
 from swag_mcp.utils.validators import validate_config_filename
 
@@ -33,16 +32,23 @@ class _BackupCleanupCandidate:
 class BackupManager:
     """Handles backup creation and cleanup."""
 
-    def __init__(self, config_path: Path, file_ops: "FileOperations") -> None:
+    def __init__(
+        self,
+        config_path: Path,
+        file_ops: "FileOperations",
+        backup_retention_days: int,
+    ) -> None:
         """Initialize backup manager.
 
         Args:
             config_path: Path to the configuration directory
             file_ops: FileOperations instance for safe file operations
+            backup_retention_days: Default retention period for cleanup
 
         """
         self.config_path = config_path
         self.file_ops = file_ops
+        self.backup_retention_days = backup_retention_days
 
         # Initialize asyncio locks for concurrent operation safety
         self._backup_lock = asyncio.Lock()  # Protects backup creation operations
@@ -165,7 +171,7 @@ class BackupManager:
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""
         if retention_days is None:
-            retention_days = config.backup_retention_days
+            retention_days = self.backup_retention_days
 
         logger.info(f"Cleaning up backups older than {retention_days} days")
 
@@ -247,10 +253,11 @@ class BackupManager:
             try:
                 async with asyncio.timeout(1.0):
                     async with file_lock:
+                        current_stat = await self.fs.stat(candidate.path)
                         if (
                             await self.fs.exists(candidate.path)
-                            and candidate.stat.is_file
-                            and candidate.stat.st_mtime < cutoff_time
+                            and current_stat.is_file
+                            and current_stat.st_mtime < cutoff_time
                         ):
                             logger.debug(f"Deleting old backup: {candidate.filename}")
                             await self.fs.unlink(candidate.path)

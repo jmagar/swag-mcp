@@ -52,6 +52,12 @@ check-port:
     set -euo pipefail
     port="{{swag-port}}"
     bind="{{swag-bind}}"
+    existing_container="$(docker ps --filter 'name=^/swag-mcp$' --quiet 2>/dev/null || true)"
+    if [[ -n "${existing_container}" ]] \
+      && docker port "${existing_container}" 8000/tcp 2>/dev/null | grep -Eq "(^|:)${port}$"; then
+      echo "OK: Port ${port} is already owned by the running swag-mcp container"
+      exit 0
+    fi
     if command -v ss >/dev/null 2>&1; then
       if ss -tuln | awk '{print $5}' | grep -Eq "(^|:)${port}$"; then
         echo "ERROR: Port ${port} is already in use on ${bind}" >&2

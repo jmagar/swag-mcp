@@ -169,16 +169,13 @@ class MCPOperations:
                     config_file, updated_content, f"MCP location addition for {config_name}"
                 )
 
-                # Validate nginx syntax before committing (abort on failure)
-                # Skip local nginx -t when the filesystem backend reports that
-                # remote SWAG owns authoritative validation.
+                # Validate nginx syntax before committing (abort on failure).
                 if requires_remote_nginx_validation(self.fs):
-                    logger.warning(
-                        "Remote filesystem mode: skipping local nginx syntax validation for %s. "
-                        "Remote SWAG will validate on next reload.",
-                        config_name,
+                    raise ValueError(
+                        "Cannot add MCP location in remote filesystem mode without "
+                        "authoritative remote nginx validation"
                     )
-                elif not await self.validation.validate_nginx_syntax(config_file):
+                if not await self.validation.validate_nginx_syntax(config_file):
                     raise ValueError("Generated configuration contains invalid nginx syntax")
 
                 logger.info(f"Successfully added MCP location block to {config_name}")

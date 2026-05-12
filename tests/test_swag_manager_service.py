@@ -463,8 +463,8 @@ server {
             "test2.subdomain.conf.backup.20260101_120002_123456_deadbeef",
         ]
 
-    async def test_cleanup_old_backups_reuses_initial_file_stat(self, service, temp_config):
-        """Cleanup avoids repeated stat calls for each backup candidate."""
+    async def test_cleanup_old_backups_restats_candidates_before_unlink(self, service, temp_config):
+        """Cleanup re-checks backup metadata under lock before unlinking."""
 
         class CountingFilesystem:
             def __init__(self, root: Path) -> None:
@@ -544,7 +544,7 @@ server {
         cleaned_count = await service.cleanup_old_backups(retention_days=1)
 
         assert cleaned_count == backup_count
-        assert fs.stat_calls == backup_count
+        assert fs.stat_calls == backup_count * 2
 
     async def test_cleanup_old_backups(self, service, temp_config):
         """Test cleanup of old backup files."""

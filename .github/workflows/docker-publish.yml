@@ -31,6 +31,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Run security checks
+        run: |
+          uv run bandit -r swag_mcp/ --severity-level high
+          uv run pip-audit
+
       - name: Run tests
         run: uv run pytest --tb=short -q
 

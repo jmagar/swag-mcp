@@ -16,9 +16,6 @@ swag-mcp/
       docker-publish.yml     Docker image publish
       publish-pypi.yml       PyPI package publish
       dependencies.yml       Dependency updates
-  assets/
-    icon.png                 Plugin icon
-    logo.svg                 Plugin logo
   config/
     mcporter.json            Live test tool contract
     nginx/
