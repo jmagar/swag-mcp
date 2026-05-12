@@ -113,9 +113,7 @@ class ConfigOperations:
         namespace = re.escape(self._cache_namespace)
         if config_name is None:
             return re.compile(rf"^(config:read|list):{namespace}:")
-        return re.compile(
-            rf"^(config:read:{namespace}:{re.escape(config_name)}|list:{namespace}:)"
-        )
+        return re.compile(rf"^(config:read:{namespace}:{re.escape(config_name)}|list:{namespace}:)")
 
     async def _invalidate_config_cache(self, config_name: str | None = None) -> None:
         """Invalidate cached read/list entries for this config path."""

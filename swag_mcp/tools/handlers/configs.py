@@ -187,8 +187,7 @@ async def _handle_list_action(
     _allowed_sort_fields = {"name", "filename"}
     if sort_by not in _allowed_sort_fields:
         return formatter.format_error_result(
-            f"Invalid sort_by value '{sort_by}'. "
-            f"Allowed values: {sorted(_allowed_sort_fields)}",
+            f"Invalid sort_by value '{sort_by}'. Allowed values: {sorted(_allowed_sort_fields)}",
             "list",
         )
 
@@ -326,9 +325,7 @@ async def _handle_view_action(
     await log_action_start(ctx, "Viewing configuration", config_name)
 
     if error := validate_required_params({"config_name": (config_name, "config_name")}, "view"):
-        return formatter.format_error_result(
-            error.get("message", "Missing config name"), "view"
-        )
+        return formatter.format_error_result(error.get("message", "Missing config name"), "view")
 
     try:
         content = await swag_service.read_config(config_name)
@@ -337,9 +334,7 @@ async def _handle_view_action(
         result_data = {"filename": config_name, "content": content}
         return formatter.format_view_result(result_data, config_name)
     except FileNotFoundError:
-        return formatter.format_error_result(
-            f"Configuration '{config_name}' not found", "view"
-        )
+        return formatter.format_error_result(f"Configuration '{config_name}' not found", "view")
 
 
 async def _handle_edit_action(

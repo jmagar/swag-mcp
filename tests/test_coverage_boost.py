@@ -179,8 +179,7 @@ class TestFormatters:
         message, status = format_health_check_result(result)
 
         assert (
-            message
-            == "✅ example.com - 200 (1.5s) -> https://example.com/login\nResponse: ready"
+            message == "✅ example.com - 200 (1.5s) -> https://example.com/login\nResponse: ready"
         )
         assert status == "successful"
 

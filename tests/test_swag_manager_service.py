@@ -152,9 +152,7 @@ server {
             async def read_text(self, path: str, encoding: str = "utf-8") -> str:
                 return "secret"
 
-            async def write_text(
-                self, path: str, content: str, encoding: str = "utf-8"
-            ) -> None:
+            async def write_text(self, path: str, content: str, encoding: str = "utf-8") -> None:
                 return None
 
             async def exists(self, path: str) -> bool:
@@ -467,6 +465,7 @@ server {
 
     async def test_cleanup_old_backups_reuses_initial_file_stat(self, service, temp_config):
         """Cleanup avoids repeated stat calls for each backup candidate."""
+
         class CountingFilesystem:
             def __init__(self, root: Path) -> None:
                 self.root = root
@@ -478,9 +477,7 @@ server {
             async def read_text(self, path: str, encoding: str = "utf-8") -> str:
                 return Path(path).read_text(encoding=encoding)
 
-            async def write_text(
-                self, path: str, content: str, encoding: str = "utf-8"
-            ) -> None:
+            async def write_text(self, path: str, content: str, encoding: str = "utf-8") -> None:
                 Path(path).write_text(content, encoding=encoding)
 
             async def exists(self, path: str) -> bool:

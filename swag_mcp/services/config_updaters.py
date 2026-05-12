@@ -74,9 +74,7 @@ def _replace_template_value_pair(
     """Replace a primary set value and inherited MCP value when it mirrors the primary."""
     original_primary = _extract_set_value(content, primary_variable)
     original_inherited = _extract_set_value(content, inherited_variable)
-    updated_content, primary_replacements = _replace_set_value(
-        content, primary_variable, new_value
-    )
+    updated_content, primary_replacements = _replace_set_value(content, primary_variable, new_value)
     changes_made = primary_replacements > 0
 
     if primary_replacements > 0:

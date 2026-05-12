@@ -183,8 +183,7 @@ class AtomicTransaction:
 
         if rollback_errors:
             rollback_error_summary = "; ".join(
-                f"{error.operation} {error.path}: {error.message}"
-                for error in rollback_errors
+                f"{error.operation} {error.path}: {error.message}" for error in rollback_errors
             )
             logger.error(
                 f"Rollback of transaction {self.transaction_id} had errors: "

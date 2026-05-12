@@ -118,9 +118,7 @@ class TestSwagToolIntegration:
                 "Unable to read proxy configuration directory"
             )
             assert result.structured_content["error_code"] == ErrorCode.FILE_READ_ERROR.value
-            assert result.structured_content["details"] == {
-                "path": "/config/nginx/proxy-confs"
-            }
+            assert result.structured_content["details"] == {"path": "/config/nginx/proxy-confs"}
 
     async def test_action_specific_validation_rejects_irrelevant_parameters(
         self, mcp_client: Client

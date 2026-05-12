@@ -125,9 +125,7 @@ _ACTION_PARAMETER_SPECS: Mapping[SwagAction, ActionParameterSpec] = {
         required=frozenset({"config_name"}),
     ),
     SwagAction.LOGS: ActionParameterSpec(allowed=frozenset({"log_type", "lines"})),
-    SwagAction.BACKUPS: ActionParameterSpec(
-        allowed=frozenset({"backup_action", "retention_days"})
-    ),
+    SwagAction.BACKUPS: ActionParameterSpec(allowed=frozenset({"backup_action", "retention_days"})),
     SwagAction.HEALTH_CHECK: ActionParameterSpec(
         allowed=frozenset({"domain", "timeout", "follow_redirects"}),
         required=frozenset({"domain"}),

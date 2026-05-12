@@ -250,7 +250,8 @@ class HealthMonitor:
             result = "".join(lines)
             logger.info(
                 "Successfully retrieved %d lines from %s (filesystem backend)",
-                len(lines), logs_request.log_type,
+                len(lines),
+                logs_request.log_type,
             )
             return result
 

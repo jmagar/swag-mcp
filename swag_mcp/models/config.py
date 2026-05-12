@@ -66,8 +66,7 @@ def _validate_config_name_value(value: str) -> str:
     normalized = _normalize_model_text(value)
     if not normalized or ".." in normalized or "/" in normalized or "\\" in normalized:
         raise ValueError(
-            f"Config name '{_ud.normalize('NFKC', normalized[:50])}...' "
-            "contains invalid characters"
+            f"Config name '{_ud.normalize('NFKC', normalized[:50])}...' contains invalid characters"
         )
     if normalized.startswith("-") or normalized.endswith("-"):
         raise ValueError(

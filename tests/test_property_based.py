@@ -499,9 +499,7 @@ class TestSharedModelValidation:
         }
 
     @pytest.mark.parametrize("field_name", ["upstream_app", "mcp_upstream_app"])
-    def test_upstream_app_validation_normalizes_consistently_for_create_and_edit(
-        self, field_name
-    ):
+    def test_upstream_app_validation_normalizes_consistently_for_create_and_edit(self, field_name):
         """Create and edit models should share upstream app normalization rules."""
         create_payload = self._create_payload(field_name, " ａｐｐ ")
         edit_payload = self._edit_payload(field_name, " ａｐｐ ")

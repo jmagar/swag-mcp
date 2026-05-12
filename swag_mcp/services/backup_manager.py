@@ -110,9 +110,7 @@ class BackupManager:
 
                 return backup_name
 
-    async def list_backups(
-        self, offset: int = 0, limit: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_backups(self, offset: int = 0, limit: int | None = None) -> list[dict[str, Any]]:
         """List backup files with metadata and optional pagination."""
         from swag_mcp.core.constants import BACKUP_MARKER
 
@@ -264,9 +262,7 @@ class BackupManager:
                 logger.warning(f"Failed to delete backup {candidate.filename}: {e}")
                 return False
             except Exception as e:
-                logger.warning(
-                    f"Unexpected error cleaning up backup {candidate.filename}: {e}"
-                )
+                logger.warning(f"Unexpected error cleaning up backup {candidate.filename}: {e}")
                 return False
         except Exception as e:
             logger.warning(f"Error processing backup file {candidate.filename}: {e}")

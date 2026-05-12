@@ -31,7 +31,7 @@ packages = ["swag_mcp"]
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0.0,<9.0.0",
+    "pytest>=9.0.3,<10.0.0",
     "pytest-asyncio>=0.21.0,<2.0.0",
     "pytest-cov>=4.0.0,<7.0.0",
     "ruff>=0.8.0,<1.0.0",

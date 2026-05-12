@@ -128,9 +128,7 @@ class SSHFilesystem:
             return self._sftp
         return await self._ensure_connected()
 
-    async def _with_reconnect(
-        self, operation: Callable[[Any], Awaitable[T]]
-    ) -> T:
+    async def _with_reconnect(self, operation: Callable[[Any], Awaitable[T]]) -> T:
         """Execute an operation with automatic reconnection on failure.
 
         Args:
