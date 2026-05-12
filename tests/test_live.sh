@@ -193,10 +193,16 @@ skip_test() {
 # mcp_call extracts the JSON payload from either format.
 # An optional session ID is forwarded when MCP_SESSION_ID is set.
 MCP_SESSION_ID=""
+MCP_SESSION_ID_FILE="${TMPDIR:-/tmp}/swag-mcp-live-session-${$}.txt"
+trap 'rm -f "${MCP_SESSION_ID_FILE}"' EXIT
 DOCKER_CLEANUP_REGISTERED=false
 
 mcp_call() {
   local url="${1:?}" payload="${2:?}"
+  local current_session_id=""
+  if [[ -s "${MCP_SESSION_ID_FILE}" ]]; then
+    current_session_id="$(<"${MCP_SESSION_ID_FILE}")"
+  fi
 
   # Build curl args array — add session header when we have one
   local -a curl_args=(
@@ -208,8 +214,8 @@ mcp_call() {
   if [[ -n "${TOKEN}" ]]; then
     curl_args+=(-H "Authorization: Bearer ${TOKEN}")
   fi
-  if [[ -n "${MCP_SESSION_ID}" ]]; then
-    curl_args+=(-H "Mcp-Session-Id: ${MCP_SESSION_ID}")
+  if [[ -n "${current_session_id}" ]]; then
+    curl_args+=(-H "Mcp-Session-Id: ${current_session_id}")
   fi
 
   # Capture response headers so we can extract session ID
@@ -220,12 +226,13 @@ mcp_call() {
   raw_response="$(curl "${curl_args[@]}" -D "${tmp_headers}" -d "${payload}" "${url}/mcp" 2>&1)"
 
   # Persist session ID from first response that carries one
-  if [[ -z "${MCP_SESSION_ID}" ]]; then
+  if [[ -z "${current_session_id}" ]]; then
     local new_sid
     new_sid="$(grep -i "^mcp-session-id:" "${tmp_headers}" 2>/dev/null \
       | head -1 | tr -d '\r\n' | sed 's/^[^:]*: *//')"
     if [[ -n "${new_sid}" ]]; then
       MCP_SESSION_ID="${new_sid}"
+      printf '%s' "${new_sid}" > "${MCP_SESSION_ID_FILE}"
     fi
   fi
   rm -f "${tmp_headers}"
@@ -592,6 +599,7 @@ run_docker_mode() {
       docker rm "${DOCKER_CONTAINER}" >/dev/null 2>&1 || true
       docker rmi "${DOCKER_IMAGE}" >/dev/null 2>&1 || true
       rm -rf -- "${DOCKER_PROXY_CONFS_DIR}" 2>/dev/null || true
+      rm -f -- "${MCP_SESSION_ID_FILE}" 2>/dev/null || true
     fi
   }
   trap cleanup_docker EXIT
@@ -633,6 +641,7 @@ run_docker_mode() {
   fi
 
   MCP_SESSION_ID=""  # Reset session for docker mode
+  : > "${MCP_SESSION_ID_FILE}"
   phase_health "${DOCKER_BASE_URL}"
   phase_auth "${DOCKER_BASE_URL}"
   phase_protocol "${DOCKER_BASE_URL}"
