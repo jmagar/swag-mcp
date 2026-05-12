@@ -25,6 +25,7 @@ SWAG MCP generates and manages nginx subdomain proxy configurations for [SWAG (S
 | Tool | Purpose |
 | --- | --- |
 | `swag` | Unified action router for config, logs, backups, and health checks |
+| `swag_help` | Return help for the SWAG MCP server — lists all available actions and sub-actions |
 
 ### Actions
 

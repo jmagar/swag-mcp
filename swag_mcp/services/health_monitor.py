@@ -81,14 +81,14 @@ class HealthMonitor:
 
     async def health_check(self, request: SwagHealthCheckRequest) -> SwagHealthCheckResult:
         """Perform health check on a service endpoint."""
-        logger.info(f"Performing health check for domain: {request.domain}")
+        logger.info("Performing health check for domain: %s", request.domain)
 
         # Try multiple endpoints to test if the reverse proxy is working
         endpoints_to_try = ["/health", "/mcp", "/"]
         urls_to_try = [f"https://{request.domain}{endpoint}" for endpoint in endpoints_to_try]
 
         for url in urls_to_try:
-            logger.debug(f"Trying health check URL: {url}")
+            logger.debug("Trying health check URL: %s", url)
 
             try:
                 # Get pooled HTTP session
@@ -129,9 +129,8 @@ class HealthMonitor:
                         success = True
 
                     logger.info(
-                        f"Health check for {request.domain} - "
-                        f"URL: {url}, Status: {response.status}, "
-                        f"Time: {response_time_ms}ms, Success: {success}"
+                        "Health check for %s - URL: %s, Status: %s, Time: %dms, Success: %s",
+                        request.domain, url, response.status, response_time_ms, success,
                     )
 
                     if success:
@@ -148,32 +147,32 @@ class HealthMonitor:
                     else:
                         # Log the failure and continue to next endpoint
                         logger.debug(
-                            f"Endpoint {endpoint} failed with {response.status}, "
-                            "trying next endpoint"
+                            "Endpoint %s failed with %s, trying next endpoint",
+                            endpoint, response.status,
                         )
                         continue
 
             except TimeoutError:
                 error_msg = f"Timeout after {request.timeout} seconds"
-                logger.warning(f"Health check timeout for {url}: {error_msg}")
+                logger.warning("Health check timeout for %s: %s", url, error_msg)
                 # Continue to try next URL
                 continue
 
             except aiohttp.ClientConnectorError as e:
                 error_msg = f"Connection failed: {str(e)}"
-                logger.warning(f"Health check connection error for {url}: {error_msg}")
+                logger.warning("Health check connection error for %s: %s", url, error_msg)
                 # Continue to try next URL
                 continue
 
             except aiohttp.ClientResponseError as e:
                 error_msg = f"HTTP error: {e.status} {e.message}"
-                logger.warning(f"Health check HTTP error for {url}: {error_msg}")
+                logger.warning("Health check HTTP error for %s: %s", url, error_msg)
                 # Continue to try next URL for HTTP errors
                 continue
 
             except Exception as e:
                 error_msg = f"Unexpected error: {str(e)}"
-                logger.warning(f"Health check unexpected error for {url}: {error_msg}")
+                logger.warning("Health check unexpected error for %s: %s", url, error_msg)
                 # Continue to try next URL
                 continue
 
@@ -196,7 +195,7 @@ class HealthMonitor:
 
         Uses memory-efficient streaming to handle large log files.
         """
-        logger.info(f"Getting SWAG logs: {logs_request.log_type}, {logs_request.lines} lines")
+        logger.info("Getting SWAG logs: %s, %d lines", logs_request.log_type, logs_request.lines)
 
         # Map log types to file paths (using configurable base path)
         log_paths = {
@@ -229,13 +228,13 @@ class HealthMonitor:
             # Convert lines to string efficiently
             result = "".join(lines)
             logger.info(
-                f"Successfully retrieved {len(lines)} lines from {logs_request.log_type} "
-                f"(filesystem backend)"
+                "Successfully retrieved %d lines from %s (filesystem backend)",
+                len(lines), logs_request.log_type,
             )
             return result
 
         except Exception as e:
-            logger.error(f"Failed to read SWAG log file: {str(e)}")
+            logger.error("Failed to read SWAG log file: %s", e)
             raise FileNotFoundError(
                 f"Unable to read SWAG {logs_request.log_type} logs: {str(e)}\n"
                 f"Please check that SWAG is running and log files are accessible"

@@ -11,6 +11,7 @@ import contextlib
 import fnmatch
 import logging
 import os
+import shlex
 from typing import Any
 
 from swag_mcp.services.filesystem import FileStat
@@ -291,7 +292,7 @@ class SSHFilesystem:
         if self._conn is not None:
             try:
                 result = await self._conn.run(
-                    f"tail -n {n} {path}",
+                    f"tail -n {n} {shlex.quote(path)}",
                     check=True,
                 )
                 lines: list[str] = result.stdout.splitlines(keepends=True)

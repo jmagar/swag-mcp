@@ -251,15 +251,15 @@ async def create_mcp_server() -> FastMCP:
                 redirect_path=redirect_path,
             )
             logger.info("✅ Google OAuth authentication enabled")
-            logger.info(f"📍 OAuth base URL: {base_url}")
+            logger.info("📍 OAuth base URL: %s", base_url)
             logger.info("🔑 OAuth client ID: %s...", client_id[:20])
-            logger.info(f"🔒 OAuth scopes: {scopes}")
-        except ImportError as e:
-            logger.error(f"Failed to import GoogleProvider: {e}")
-            logger.error("Google OAuth authentication disabled")
-        except Exception as e:
-            logger.error(f"Failed to configure Google OAuth: {e}")
-            logger.error("Google OAuth authentication disabled")
+            logger.info("🔒 OAuth scopes: %s", scopes)
+        except ImportError:
+            logger.exception("Failed to import GoogleProvider — cannot configure Google OAuth")
+            raise
+        except Exception:
+            logger.exception("Failed to configure Google OAuth")
+            raise
     else:
         logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
 
@@ -288,11 +288,11 @@ async def create_mcp_server() -> FastMCP:
         )
 
     logger.info("SWAG MCP Server initialized")
-    logger.info(f"Version: {get_package_version()}")
+    logger.info("Version: %s", get_package_version())
     logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
-    logger.info(f"SWAG Proxy Confs Path: {config.proxy_confs_path}")
-    logger.info(f"Template path: {config.template_path}")
-    logger.info(f"MCP Transport: streamable-http on {config.host}:{config.port}")
+    logger.info("SWAG Proxy Confs Path: %s", config.proxy_confs_path)
+    logger.info("Template path: %s", config.template_path)
+    logger.info("MCP Transport: streamable-http on %s:%s", config.host, config.port)
 
     return mcp
 
@@ -302,7 +302,7 @@ def setup_templates() -> None:
     # Ensure template directory exists
     template_path = Path(config.template_path)
     if not template_path.exists():
-        logger.warning(f"Template directory {template_path} does not exist, creating...")
+        logger.warning("Template directory %s does not exist, creating...", template_path)
         template_path.mkdir(parents=True, exist_ok=True)
 
     # Check if required templates exist
@@ -313,9 +313,9 @@ def setup_templates() -> None:
     for template_name in required_templates:
         template_file = template_path / template_name
         if not template_file.exists():
-            logger.error(f"Template not found: {template_file}")
+            logger.error("Template not found: %s", template_file)
         else:
-            logger.debug(f"Template found: {template_file}")
+            logger.debug("Template found: %s", template_file)
 
 
 async def cleanup_old_backups() -> None:
@@ -324,11 +324,11 @@ async def cleanup_old_backups() -> None:
         swag_service = SwagManagerService()
         cleaned_count = await swag_service.cleanup_old_backups()
         if cleaned_count > 0:
-            logger.info(f"Startup cleanup: removed {cleaned_count} old backup files")
+            logger.info("Startup cleanup: removed %d old backup files", cleaned_count)
         else:
             logger.debug("Startup cleanup: no old backup files to remove")
     except Exception as e:
-        logger.error(f"Failed to cleanup old backups on startup: {e}", exc_info=True)
+        logger.error("Failed to cleanup old backups on startup: %s", e, exc_info=True)
 
 
 def _validate_bearer_token() -> None:
@@ -370,14 +370,17 @@ async def main() -> None:
 
     setup_templates()
 
-    # Clean up old backup files on startup
-    await cleanup_old_backups()
+    # Kick off cleanup in background — don't block server start
+    asyncio.create_task(cleanup_old_backups())
 
     # Create the MCP server
     mcp_server = await create_mcp_server()
 
     # Use run_async() with streamable-http transport configuration
     # This is the correct method for existing event loops and Claude Desktop
+    # NOTE: We bind to 0.0.0.0 inside the container; Docker's network namespace
+    # provides isolation. SWAG_MCP_HOST controls the bind address but is forced
+    # to 0.0.0.0 for localhost/container deployments so the service is reachable.
     _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
     await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
@@ -391,14 +394,15 @@ def main_sync() -> None:
     setup_templates()
 
     async def _setup_and_run() -> None:
-        # Clean up old backup files on startup
-        await cleanup_old_backups()
+        # Kick off cleanup in background — don't block server start
+        asyncio.create_task(cleanup_old_backups())
 
         # Create the MCP server
         mcp_server = await create_mcp_server()
 
         # Use run() with streamable-http transport configuration
         # Creates its own event loop for synchronous context
+        # NOTE: bind forced to 0.0.0.0 inside container; see main() comment above.
         _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
         await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
@@ -416,7 +420,7 @@ def detect_execution_context() -> str:
     try:
         # Try to get the running event loop
         loop = asyncio.get_running_loop()
-        logger.debug(f"Detected running event loop: {type(loop)}")
+        logger.debug("Detected running event loop: %s", type(loop))
         return "async"
     except RuntimeError:
         logger.debug("No running event loop detected")
@@ -456,5 +460,5 @@ if __name__ == "__main__":
         else:
             raise
     except Exception as e:
-        logger.error(f"Server error: {str(e)}")
+        logger.error("Server error: %s", e)
         raise

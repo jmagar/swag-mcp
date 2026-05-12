@@ -185,7 +185,11 @@ class SecurityErrorMiddleware(Middleware):
             return await call_next(context)
         except Exception as error:
             # Log the full error internally for debugging
-            logger.error(f"SecurityErrorMiddleware caught error: {type(error).__name__}: {error}")
+            logger.error(
+                "SecurityErrorMiddleware caught error: %s: %s",
+                type(error).__name__,
+                error,
+            )
 
             # Create sanitized user-friendly error
             sanitized_message = create_user_friendly_error(error)

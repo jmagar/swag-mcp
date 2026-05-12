@@ -177,9 +177,11 @@ class MCPOperations:
                     filename=config_name, content=updated_content, backup_created=backup_name
                 )
 
+        except (FileNotFoundError, ValueError):
+            raise
         except Exception as e:
-            logger.error(f"Failed to add MCP location to {config_name}: {str(e)}")
-            raise ValueError(f"Failed to add MCP location: {str(e)}") from e
+            logger.error("Failed to add MCP location to %s: %s", config_name, e)
+            raise RuntimeError(f"Failed to add MCP location: {e}") from e
 
     def extract_upstream_value(self, content: str, variable_name: str) -> str:
         """Extract upstream variable value from nginx configuration content.

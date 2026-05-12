@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..utils.validators import validate_empty_string
 from .constants import (
@@ -161,12 +161,12 @@ class SwagConfig(BaseSettings):
         create_empty_string_validator(DEFAULT_LOG_LEVEL)
     )
 
-    model_config = {
-        "env_file": ".env",
-        "env_prefix": "SWAG_MCP_",
-        "case_sensitive": False,
-        "extra": "ignore",  # Ignore extra environment variables
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="SWAG_MCP_",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 # Global configuration instance

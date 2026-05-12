@@ -62,9 +62,8 @@ class ValidationService:
                 return False
 
         except Exception as e:
-            logger.error(f"Error validating nginx syntax for {config_path}: {e}")
-            # Return True to not block operations if validation fails
-            return True
+            logger.error("Error validating nginx syntax for %s: %s", config_path, e)
+            return False  # Surface validation errors rather than silently passing
 
     def validate_config_content(self, content: str, config_name: str) -> str:
         """Validate configuration file content for security.

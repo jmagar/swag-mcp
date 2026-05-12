@@ -358,8 +358,16 @@ def register_tools(mcp: FastMCP) -> None:
                     raise ValueError(f"Unhandled action: {action}")
 
         except Exception as e:
-            logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
-            return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
+            logger.error(
+                "SWAG tool error - action: %s, error: %s",
+                action.value,
+                str(e),
+                exc_info=True,
+            )
+            return formatter.format_error_result(
+                "Tool execution failed due to an unexpected error. Check server logs for details.",
+                action.value,
+            )
 
     @mcp.tool
     async def swag_help() -> str:

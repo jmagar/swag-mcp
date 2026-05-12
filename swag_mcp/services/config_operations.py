@@ -159,6 +159,12 @@ class ConfigOperations:
         if not await self.fs.exists(str(config_file)):
             raise FileNotFoundError(f"Configuration file {validated_name} not found")
 
+        if config_file.is_symlink():
+            raise ValueError(
+                f"Configuration file {validated_name} is a symlink — "
+                "reading symlinks is not permitted for security reasons"
+            )
+
         content = await self.file_ops.read_text_safe(
             str(config_file), f"configuration file {validated_name}"
         )
@@ -241,9 +247,9 @@ class ConfigOperations:
 
                 # Render template with validated variables
                 content = await self.template_manager.render_template(template_name, template_vars)
-            except ValueError as e:
+            except ValueError:
                 # Template rendering already handles TemplateNotFound and other exceptions
-                raise e
+                raise
 
             # CRITICAL SAFETY FEATURE: Validate nginx syntax before writing
             # Write to temporary file first for validation

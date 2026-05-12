@@ -48,16 +48,15 @@ RUN mkdir -p /proxy-confs /app/.swag-mcp /app/logs && \
 
 # Environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
-    SWAG_MCP_SWAG_CONFIG_PATH=/proxy-confs \
+    SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs \
     SWAG_MCP_TEMPLATE_PATH=/app/templates \
-    SWAG_MCP_MCP_HOST=0.0.0.0 \
-    SWAG_MCP_MCP_PORT=8000 \
+    SWAG_MCP_HOST=0.0.0.0 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Health check
+# Health check — port is always 8000 internally
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${SWAG_MCP_MCP_PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Expose port
 EXPOSE 8000

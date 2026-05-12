@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.2] - 2026-05-11
+## [1.1.3] - 2026-05-12
+
+### Fixed
+- **Security: SSH command injection** — `shlex.quote()` now escapes paths in the SSH `tail` command (`ssh_filesystem.py`).
+- **Security: OAuth fails-open** — Exceptions during Google OAuth setup now propagate instead of silently disabling auth.
+- **Security: Exception details leaked to clients** — Catch-all handler in `swag.py` now returns a generic message and keeps full details in server logs only.
+- **Security: Symlink traversal** — `read_config()` now rejects symlinks before reading config files.
+- **Security: CORS comment** — Added prominent security warning in `mcp-location.conf` about reflected-origin risk.
+- **Correct Dockerfile ENV vars** — Fixed `SWAG_MCP_SWAG_CONFIG_PATH` → `SWAG_MCP_PROXY_CONFS_PATH`, `SWAG_MCP_MCP_HOST` → `SWAG_MCP_HOST`, removed redundant `SWAG_MCP_MCP_PORT`. Health check now uses hardcoded port 8000.
+- **mcp_operations.py error wrapping** — `FileNotFoundError` and `ValueError` are now re-raised unchanged; only unexpected exceptions become `RuntimeError`.
+- **nginx validation fail-open** — Unexpected exceptions in `validate_nginx_syntax` now return `False` instead of silently returning `True`.
+- **Bare re-raise** — `except ValueError as e: raise e` replaced with bare `raise` in `config_operations.py`.
+- **Startup cleanup non-blocking** — `cleanup_old_backups()` is now scheduled as a background task on startup, not awaited before serving.
+- **Lazy logging** — Replaced eager f-string logger calls with `%s` lazy formatting in `server.py`, `health_monitor.py`, and `middleware/error_handling.py`.
+- **SettingsConfigDict** — `SwagConfig.model_config` now uses typed `SettingsConfigDict` instead of a plain dict.
+- **Stale CHANGELOG reference** — Noted that `docs/AUTHENTICATION.md` was consolidated into `docs/mcp/AUTH.md`.
+- **Docker publish gated on tests** — `docker-publish.yml` now requires the test job to pass before building the image.
+- **Documentation** — Added `swag_help` tool to README tools table; updated `.env.example` auth comments to accurately describe server behaviour.
+
+### Removed
+- `swag_mcp/services/swag_manager.py.backup` and `.monolith` — stale archive files deleted from the package directory.
 
 ### Fixed
 - Wired the Docker entrypoint to prepare writable runtime directories before starting the app.
@@ -52,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **docs/AUTHENTICATION.md**: New setup guide covering token generation and client config.
+  *(Note: this file has since been consolidated into `docs/mcp/AUTH.md`)*
 - **README Authentication section**: Added quick-start examples and link to full guide.
 
 
