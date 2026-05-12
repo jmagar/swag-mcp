@@ -19,11 +19,16 @@ Standard task runner recipes. Run `just --list` to see all available recipes.
 | Recipe | Command | Description |
 | --- | --- | --- |
 | `just build` | `docker build -t swag-mcp .` | Build Docker image |
-| `just up` | `docker compose up -d` | Start containers |
+| `just check-network` | validate/create `${DOCKER_NETWORK:-swag-mcp}` | Ensure external Compose network exists |
+| `just check-port` | inspect `${SWAG_MCP_BIND_ADDRESS:-127.0.0.1}:${SWAG_MCP_PORT:-49152}` | Ensure published host port is free |
+| `just preflight` | network, port, compose config | Validate deployment prerequisites |
+| `just up` | `just preflight` then `docker compose up -d` | Start containers |
 | `just down` | `docker compose down` | Stop containers |
 | `just restart` | `docker compose restart` | Restart containers |
+| `just redeploy` | `docker compose down` then validated startup | Stop existing service, start clean, and log deployment |
+| `just rollback <image>` | run selected image tag/digest | Roll back container image and log deployment |
 | `just logs` | `docker compose logs -f` | Stream container logs |
-| `just health` | `curl http://localhost:8082/health` | Check server health |
+| `just health` | `curl http://127.0.0.1:${SWAG_MCP_PORT:-49152}/health` | Check server health |
 
 ## Testing
 

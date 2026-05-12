@@ -2,9 +2,13 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
 from swag_mcp.core.config import config
 from swag_mcp.server import (
+    StaticBearerTokenProvider,
+    _build_auth_provider,
     _extract_service_name,
+    _validate_bearer_token,
     cleanup_old_backups,
     create_mcp_server,
     detect_execution_context,
@@ -53,6 +57,43 @@ class TestServerFunctions:
             result = await create_mcp_server()
             assert result == mock_app
             mock_fastmcp.assert_called_once_with("SWAG Configuration Manager", auth=None)
+
+    async def test_static_bearer_token_provider_accepts_only_configured_token(self):
+        """Static bearer provider accepts only the configured secret token."""
+        provider = StaticBearerTokenProvider("expected-token")
+
+        valid_token = await provider.verify_token("expected-token")
+        invalid_token = await provider.verify_token("wrong-token")
+
+        assert valid_token is not None
+        assert valid_token.token == "expected-token"
+        assert invalid_token is None
+
+    def test_build_auth_provider_uses_static_bearer_token(self, monkeypatch):
+        """SWAG_MCP_TOKEN wires FastMCP auth instead of being advisory only."""
+        monkeypatch.setenv("SWAG_MCP_TOKEN", "expected-token")
+        monkeypatch.delenv("FASTMCP_SERVER_AUTH", raising=False)
+
+        provider = _build_auth_provider()
+
+        assert isinstance(provider, StaticBearerTokenProvider)
+
+    def test_validate_bearer_token_fails_closed_without_auth(self, monkeypatch):
+        """Startup refuses unauthenticated mode unless explicitly requested."""
+        monkeypatch.delenv("SWAG_MCP_TOKEN", raising=False)
+        monkeypatch.delenv("FASTMCP_SERVER_AUTH", raising=False)
+        monkeypatch.setenv("SWAG_MCP_NO_AUTH", "false")
+
+        with pytest.raises(SystemExit):
+            _validate_bearer_token()
+
+    def test_validate_bearer_token_allows_explicit_no_auth(self, monkeypatch):
+        """Explicit no-auth mode remains available for stdio or loopback-only use."""
+        monkeypatch.delenv("SWAG_MCP_TOKEN", raising=False)
+        monkeypatch.delenv("FASTMCP_SERVER_AUTH", raising=False)
+        monkeypatch.setenv("SWAG_MCP_NO_AUTH", "true")
+
+        _validate_bearer_token()
 
     async def test_register_resources(self):
         """Test resource registration function."""

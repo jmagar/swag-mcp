@@ -56,7 +56,9 @@ SWAG_MCP_PROXY_CONFS_PATH=/mnt/appdata/swag/nginx/proxy-confs
 SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:/mnt/appdata/swag/nginx/proxy-confs
 ```
 
-SSH mode requires passwordless key-based authentication. The server reads `~/.ssh/config` for host aliases and key paths.
+SSH mode requires passwordless key-based authentication. For Docker, copy only
+the key, SSH config, and `known_hosts` entries this service needs into
+`SWAG_MCP_SSH_HOST_PATH` rather than mounting the full user `~/.ssh` directory.
 
 ### Log path
 
@@ -79,7 +81,8 @@ Or directly:
 uv run python -m swag_mcp
 ```
 
-The server starts on `http://localhost:8000` by default.
+The local development server starts on `http://localhost:8000` by default.
+Set `SWAG_MCP_TOKEN` or `SWAG_MCP_NO_AUTH=true` before starting.
 
 ## 5. Start via Docker
 
@@ -93,7 +96,10 @@ Or manually:
 docker compose up -d
 ```
 
-The Docker Compose configuration mounts `~/.ssh` as read-only for remote SSH access and reads environment from `~/.claude-homelab/.env`.
+Docker Compose reads the required repo-local `.env`, publishes
+`127.0.0.1:49152` by default, and mounts the SSH directory from
+`SWAG_MCP_SSH_HOST_PATH` as read-only for remote SSH access. `just up` validates
+the Docker network and selected host port before starting.
 
 ## 6. Verify
 
@@ -107,10 +113,16 @@ Or:
 curl http://localhost:8000/health
 ```
 
+For Docker, use:
+
+```bash
+curl http://127.0.0.1:${SWAG_MCP_PORT:-49152}/health
+```
+
 Expected response:
 
 ```json
-{"status": "healthy", "service": "swag-mcp", "version": "1.0.1"}
+{"status": "healthy", "service": "swag-mcp", "version": "1.1.4"}
 ```
 
 ## 7. Install as Claude Code plugin
@@ -135,7 +147,7 @@ Configure the proxy-confs path when prompted, or set it in the plugin's userConf
 - Verify SSH key-based auth works: `ssh swag-server ls /mnt/appdata/swag/nginx/proxy-confs/`
 - Check the URI format: `[user@]host[:port]:/absolute/path`
 - Ensure `asyncssh` is installed: `uv add asyncssh`
-- In Docker, verify `~/.ssh` is mounted: check `docker compose.yaml` volumes
+- In Docker, verify `SWAG_MCP_SSH_HOST_PATH` exists and is mounted: check `docker-compose.yaml` volumes
 
 ### "Template not found" at startup
 

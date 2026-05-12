@@ -23,11 +23,7 @@
 *.log
 logs
 backups
-docs
-scripts
 specs
-*.md
-!README.md
 __pycache__
 *.pyc
 .pytest_cache
@@ -46,6 +42,5 @@ biome.json
 lefthook.yml
 .prettierrc
 .prettierignore
-tests
 
 .claude

@@ -77,7 +77,9 @@ chmod 600 .env
 docker compose up -d
 ```
 
-The container always runs on internal port 8000. Set `SWAG_MCP_PORT` to control the host port.
+The container always runs on internal port 8000. Compose publishes it on
+`127.0.0.1:49152` by default; set `SWAG_MCP_PORT` to control the host port and
+`SWAG_MCP_BIND_ADDRESS` only when you intentionally expose it beyond loopback.
 
 ### Local development
 
@@ -112,9 +114,10 @@ See [docs/CONFIG.md](docs/CONFIG.md) for full variable reference. All variables 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `SWAG_MCP_HOST` | no | `127.0.0.1` | Bind address for the MCP server |
-| `SWAG_MCP_PORT` | no | `8000` | Host-side port (Docker only; container always uses 8000) |
-| `SWAG_MCP_TOKEN` | no | `` | Bearer token. Note: the server itself does not enforce it — secure at the proxy/network layer |
-| `SWAG_MCP_NO_AUTH` | no | `false` | Set `true` to suppress the "no token" warning |
+| `SWAG_MCP_BIND_ADDRESS` | no | `127.0.0.1` | Docker host bind address for the published MCP port |
+| `SWAG_MCP_PORT` | no | `49152` | Host-side port (Docker only; container always uses 8000) |
+| `SWAG_MCP_TOKEN` | recommended | `` | Bearer token enforced by FastMCP for direct MCP server access |
+| `SWAG_MCP_NO_AUTH` | no | `false` | Set `true` only for loopback/proxy-isolated deployments without server auth |
 
 ### Defaults
 
@@ -260,7 +263,7 @@ SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:2222:/mnt/appdata/swag/nginx/proxy-co
 
 Requirements:
 - SSH key-based (passwordless) access to the remote host
-- Mount `~/.ssh` into the container (see `docker-compose.yaml`)
+- Mount an app-specific SSH directory with only the needed key, config, and `known_hosts` entries into the container (see `SWAG_MCP_SSH_HOST_PATH` in `.env.example`)
 - `SWAG_MCP_SWAG_LOG_BASE_PATH` should point to the log base path on the same remote host
 
 When `SWAG_MCP_PROXY_CONFS_URI` is set it takes precedence over `SWAG_MCP_PROXY_CONFS_PATH`.
@@ -385,6 +388,7 @@ swag action=health_check domain=jellyfin.example.com timeout=10 follow_redirects
 | `status_code` | integer or null | HTTP status code returned |
 | `response_time_ms` | integer or null | Round-trip time in milliseconds |
 | `error` | string or null | Error message if the probe failed |
+| `endpoint_results` | array | Per-endpoint probe attempts with URL, success flag, status, timing, and error detail |
 
 `timeout` accepts 1–300 seconds (default 30). The server adds a 10-second buffer on top of `timeout` for its own wait.
 
@@ -403,9 +407,27 @@ just build        # docker build
 just up           # docker compose up -d
 just down         # docker compose down
 just logs         # docker compose logs -f
-just health       # curl http://localhost:8082/health | jq
+just health       # curl http://127.0.0.1:${SWAG_MCP_PORT:-49152}/health | jq
 just gen-token    # generate a random bearer token
 ```
+
+## Operations
+
+The Docker service publishes `127.0.0.1:49152` by default. Keep production MCP
+ports on high-numbered, documented ports and run `just preflight` before
+deployment to validate the external Docker network and selected host port.
+
+Operational failure signals include Docker health becoming unhealthy, repeated
+tool error responses, timeout messages for create/edit/update/log operations,
+slow-operation warnings, health-check failures for known-good domains, and
+nginx error log spikes. Use [docs/mcp/LOGS.md](docs/mcp/LOGS.md) for signal
+triage and [docs/mcp/DEPLOY.md](docs/mcp/DEPLOY.md) for rollback and restore.
+
+Backups are created before destructive edits, updates, and removals. To restore,
+list backups with `swag(action="backups", backup_action="list")`, copy the
+chosen backup content back with `swag(action="edit", create_backup=true)`,
+validate nginx syntax, reload SWAG, and record the restore in
+`.docs/deployment-log.md`.
 
 ## Verification
 
@@ -419,7 +441,7 @@ Check the server health endpoint:
 
 ```bash
 just health
-# {"status": "healthy", "service": "swag-mcp", "version": "1.0.1"}
+# {"status": "healthy", "service": "swag-mcp", "version": "1.1.4"}
 ```
 
 The `/health` endpoint is also used by the Docker `HEALTHCHECK` directive. It always returns:

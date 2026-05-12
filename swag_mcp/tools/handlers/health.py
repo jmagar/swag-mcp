@@ -7,7 +7,6 @@ from fastmcp import Context
 from fastmcp.tools import ToolResult
 
 from swag_mcp.models.config import SwagHealthCheckRequest
-from swag_mcp.models.enums import SwagAction
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
 from swag_mcp.utils.tool_helpers import (
@@ -38,7 +37,6 @@ async def _handle_health_check_action(
 
         # Validate and create health check request
         health_request = SwagHealthCheckRequest(
-            action=SwagAction.HEALTH_CHECK,
             domain=domain,
             timeout=timeout,
             follow_redirects=follow_redirects,
@@ -64,6 +62,9 @@ async def _handle_health_check_action(
             "status_code": health_result.status_code,
             "response_time_ms": health_result.response_time_ms,
             "error": getattr(health_result, "error", None),
+            "endpoint_results": [
+                endpoint.model_dump() for endpoint in health_result.endpoint_results
+            ],
         }
 
         return formatter.format_health_check_result(result_data)

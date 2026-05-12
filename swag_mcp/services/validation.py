@@ -35,8 +35,8 @@ class ValidationService:
             # Check if nginx is available
             nginx_cmd = shutil.which("nginx")
             if not nginx_cmd:
-                logger.warning("nginx command not found, skipping syntax validation")
-                return True  # Assume valid if nginx not available
+                logger.error("nginx command not found; failing syntax validation closed")
+                return False
 
             # Run nginx syntax test
             result = await asyncio.create_subprocess_exec(

@@ -8,7 +8,6 @@ from fastmcp import Context
 from fastmcp.tools import ToolResult
 
 from swag_mcp.models.config import SwagLogsRequest
-from swag_mcp.models.enums import SwagAction
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
 from swag_mcp.utils.tool_helpers import log_action_start, log_action_success
@@ -30,7 +29,6 @@ async def _handle_logs_action(
         await ctx.info("Accessing SWAG container logs...")
 
         logs_request = SwagLogsRequest(
-            action=SwagAction.LOGS,
             log_type=cast(
                 "Literal['nginx-access', 'nginx-error', 'fail2ban', 'letsencrypt', 'renewal']",
                 log_type,

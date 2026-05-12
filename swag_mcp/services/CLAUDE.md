@@ -30,28 +30,18 @@ class SwagManagerService:
     - Health checks with multiple endpoint fallbacks
     """
 
-    def __init__(self, config: SwagConfig):
-        self.config = config
-        self.template_env = self._setup_secure_template_env()
-        self.file_locks = {}  # Per-file operation locking
-        self.http_session = None  # Lazy-initialized for health checks
+    async def __aenter__(self) -> "SwagManagerService":
+        ...
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
 ```
 
 ## Core Service Methods
 
 ### Configuration Management
 ```python
-async def create_configuration(
-    self,
-    service_name: str,
-    server_name: str,
-    upstream_app: str,
-    upstream_port: int,
-    upstream_proto: str = "http",
-    config_type: str = "subdomain",  # Only "subdomain" is supported
-    auth_method: str = "authelia",
-    enable_quic: bool = False
-) -> Dict[str, Any]:
+async def create_config(self, request: SwagConfigRequest) -> SwagConfigResult:
     """
     Creates new SWAG configuration with atomic transaction support.
 
@@ -66,34 +56,19 @@ async def create_configuration(
 
 ### File Operations
 ```python
-async def list_configurations(self, config_type: str = "all") -> Dict[str, Any]:
+async def list_configs(self, list_filter: ListFilterType = "all") -> SwagListResult:
     """List configurations with metadata and filtering"""
 
-async def view_configuration(self, config_name: str) -> Dict[str, Any]:
+async def read_config(self, config_name: str) -> str:
     """Read configuration file content with encoding detection"""
 
-async def edit_configuration(
-    self,
-    config_name: str,
-    new_content: str,
-    create_backup: bool = True
-) -> Dict[str, Any]:
+async def update_config(self, edit_request: SwagEditRequest) -> SwagConfigResult:
     """Edit configuration with atomic replacement and backup"""
 
-async def update_configuration_field(
-    self,
-    config_name: str,
-    field: str,
-    value: str,
-    create_backup: bool = True
-) -> Dict[str, Any]:
-    """Update specific field in configuration (port, upstream, app)"""
+async def update_config_field(self, update_request: SwagUpdateRequest) -> SwagConfigResult:
+    """Update specific field in configuration (port, upstream, app, add_mcp)"""
 
-async def remove_configuration(
-    self,
-    config_name: str,
-    create_backup: bool = True
-) -> Dict[str, Any]:
+async def remove_config(self, remove_request: SwagRemoveRequest) -> SwagConfigResult:
     """Remove configuration with optional backup"""
 ```
 
@@ -101,10 +76,8 @@ async def remove_configuration(
 ```python
 async def health_check(
     self,
-    domain: str,
-    timeout: int = 30,
-    follow_redirects: bool = True
-) -> Dict[str, Any]:
+    request: SwagHealthCheckRequest
+) -> SwagHealthCheckResult:
     """
     Comprehensive health check with smart endpoint detection.
 
@@ -123,7 +96,7 @@ async def health_check(
 
 ### Backup Management
 ```python
-async def cleanup_backups(self, retention_days: int = None) -> Dict[str, Any]:
+async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
     """
     Clean up old backup files based on retention policy.
 
@@ -137,11 +110,7 @@ async def cleanup_backups(self, retention_days: int = None) -> Dict[str, Any]:
 
 ### Log Access
 ```python
-async def get_logs(
-    self,
-    log_type: str = "nginx-error",
-    lines: int = 50
-) -> Dict[str, Any]:
+async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
     """
     Access SWAG container logs with type filtering.
 
@@ -248,8 +217,8 @@ class FileTransaction:
 
 ### Usage Example
 ```python
-async def create_configuration(self, ...):
-    config_path = self.config.proxy_confs_path / f"{service_name}.subdomain.conf"
+async def create_config(self, request: SwagConfigRequest):
+    config_path = self.config.proxy_confs_path / request.config_name
 
     async with FileTransaction(config_path, create_backup=False) as tx:
         # Render template
@@ -325,7 +294,7 @@ class ValidationError(SwagServiceError):
 
 ### Error Context Enrichment
 ```python
-async def create_configuration(self, ...):
+async def create_config(self, request: SwagConfigRequest):
     try:
         # ... implementation
     except TemplateNotFound as e:
@@ -344,13 +313,13 @@ async def create_configuration(self, ...):
 ### Service Testing
 ```bash
 # Test service operations
-uv run pytest tests/test_swag_actions.py::TestSwagManagerService -v
+uv run pytest tests/test_swag_manager_service.py -v
 
 # Test specific service methods
-uv run pytest tests/test_swag_actions.py -k "test_create_configuration" -v
+uv run pytest tests/test_swag_manager_service.py -k "create_config" -v
 
 # Test error handling
-uv run pytest tests/test_error_handling.py::TestServiceErrors -v
+uv run pytest tests/test_swag_manager_comprehensive.py -k "error" -v
 ```
 
 ### Manual Service Testing

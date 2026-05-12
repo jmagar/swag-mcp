@@ -13,6 +13,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_CACHE_MISS = object()
+
 
 class MCPCache:
     """Thread-safe cache with TTL support optimized for MCP operations.
@@ -51,30 +53,37 @@ class MCPCache:
 
         """
         async with self._lock:
-            # Check if key exists and hasn't expired
-            if key in self._cache:
-                age = time.time() - self._timestamps[key]
-                ttl_to_use = ttl or self.default_ttl
+            cached_value = await self._get_value_unlocked(key, ttl)
+            if cached_value is not _CACHE_MISS:
+                logger.debug("Cache hit for key: %s", key)
+                return cached_value
 
-                if age < ttl_to_use:
-                    # Update access time for LRU
-                    self._access_times[key] = time.time()
-                    logger.debug(f"Cache hit for key: {key}")
-                    return self._cache[key]["value"]
-                else:
-                    # Expired, remove from cache
-                    logger.debug(f"Cache expired for key: {key}")
-                    await self._remove_key(key)
+        logger.debug("Cache miss for key: %s, computing value", key)
+        try:
+            value = await factory()
+        except Exception as e:
+            logger.error("Error computing cache value for key %s: %s", key, e)
+            raise
 
-            # Not in cache or expired, compute new value
-            logger.debug(f"Cache miss for key: {key}, computing value")
-            try:
-                value = await factory()
-                await self._set_value(key, value, ttl)
-                return value
-            except Exception as e:
-                logger.error(f"Error computing cache value for key {key}: {e}")
-                raise
+        async with self._lock:
+            await self._set_value(key, value, ttl)
+        return value
+
+    async def _get_value_unlocked(self, key: str, ttl: int | None = None) -> Any:
+        """Get a cached value while the caller already holds the cache lock."""
+        if key not in self._cache:
+            return _CACHE_MISS
+
+        age = time.time() - self._timestamps[key]
+        ttl_to_use = ttl or self._cache[key]["ttl"]
+
+        if age >= ttl_to_use:
+            logger.debug("Cache expired for key: %s", key)
+            await self._remove_key(key)
+            return _CACHE_MISS
+
+        self._access_times[key] = time.time()
+        return self._cache[key]["value"]
 
     async def _set_value(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set cache value with TTL and LRU management."""

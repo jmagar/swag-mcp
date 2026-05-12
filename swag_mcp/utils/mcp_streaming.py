@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
@@ -148,13 +149,13 @@ class LogStreamer(StreamingResponse):
             Live log entries
 
         """
-        start_time = asyncio.get_event_loop().time()
+        start_time = time.monotonic()
         end_time = start_time + duration
 
         yield f"# Live {log_type} log stream starting\n"
         yield f"# Duration: {duration} seconds\n\n"
 
-        while asyncio.get_event_loop().time() < end_time:
+        while time.monotonic() < end_time:
             timestamp = datetime.now().isoformat()
             yield f"[{timestamp}] Live {log_type} entry\n"
             await asyncio.sleep(1)

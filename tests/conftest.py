@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
-async def mock_nginx_validation():
+async def mock_nginx_validation(request: pytest.FixtureRequest):
     """Mock nginx syntax validation for all tests.
 
     The generated configs reference /config/nginx/*.conf include files that only
@@ -25,6 +25,10 @@ async def mock_nginx_validation():
     CI will always fail due to missing includes even when nginx is installed.
     This fixture skips the external process call and treats all configs as valid.
     """
+    if request.node.get_closest_marker("real_nginx_validation"):
+        yield
+        return
+
     with patch(
         "swag_mcp.services.validation.ValidationService.validate_nginx_syntax",
         new=AsyncMock(return_value=True),

@@ -6,11 +6,12 @@ a wide range of inputs, improving robustness and finding edge cases.
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from swag_mcp.models.config import SwagConfigRequest
+from swag_mcp.models.config import SwagConfigRequest, SwagEditRequest
 from swag_mcp.models.enums import SwagAction
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.utils.error_codes import ErrorCode, SwagValidationError
@@ -471,3 +472,53 @@ class TestPropertyBasedIntegration:
 
         except Exception as e:
             pytest.fail(f"Config request creation failed with valid inputs: {e}")
+
+
+class TestSharedModelValidation:
+    """Tests for validation behavior shared by create and edit request models."""
+
+    def _create_payload(self, field_name: str, field_value: str) -> dict[str, Any]:
+        """Build a create request payload with a dynamic upstream field."""
+        payload: dict[str, Any] = {
+            "action": SwagAction.CREATE,
+            "config_name": "app.subdomain.conf",
+            "server_name": "app.example.com",
+            "upstream_app": "app",
+            "upstream_port": 8080,
+        }
+        payload[field_name] = field_value
+        return payload
+
+    def _edit_payload(self, field_name: str, field_value: str) -> dict[str, Any]:
+        """Build an edit request payload with a dynamic upstream field."""
+        return {
+            "action": SwagAction.EDIT,
+            "config_name": "app.subdomain.conf",
+            "new_content": "server {}",
+            field_name: field_value,
+        }
+
+    @pytest.mark.parametrize("field_name", ["upstream_app", "mcp_upstream_app"])
+    def test_upstream_app_validation_normalizes_consistently_for_create_and_edit(
+        self, field_name
+    ):
+        """Create and edit models should share upstream app normalization rules."""
+        create_payload = self._create_payload(field_name, " ａｐｐ ")
+        edit_payload = self._edit_payload(field_name, " ａｐｐ ")
+
+        assert getattr(SwagConfigRequest(**create_payload), field_name) == "app"
+        assert getattr(SwagEditRequest(**edit_payload), field_name) == "app"
+
+    @pytest.mark.parametrize("field_name", ["upstream_app", "mcp_upstream_app"])
+    def test_upstream_app_validation_rejects_paths_consistently_for_create_and_edit(
+        self, field_name
+    ):
+        """Create and edit models should reject path-like upstream app names."""
+        create_payload = self._create_payload(field_name, "../app")
+        edit_payload = self._edit_payload(field_name, "../app")
+
+        with pytest.raises(ValueError):
+            SwagConfigRequest(**create_payload)
+
+        with pytest.raises(ValueError):
+            SwagEditRequest(**edit_payload)

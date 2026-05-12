@@ -338,31 +338,31 @@ swag logs nginx-error 1001
 swag logs nginx-error -1
 ```
 
-## 9. CLEANUP_BACKUPS Action Commands
+## 9. BACKUPS Action Commands
 
 ### Basic Cleanup Commands
 ```bash
 # Cleanup with default retention (uses config default)
-swag cleanup_backups
+swag backups cleanup
 
 # Cleanup with zero retention (uses config default)
-swag cleanup_backups 0
+swag backups cleanup 0
 
 # Cleanup with specific retention periods
-swag cleanup_backups 1
-swag cleanup_backups 7
-swag cleanup_backups 30
-swag cleanup_backups 90
-swag cleanup_backups 365
+swag backups cleanup 1
+swag backups cleanup 7
+swag backups cleanup 30
+swag backups cleanup 90
+swag backups cleanup 365
 ```
 
 ### Cleanup Edge Cases
 ```bash
 # Very large retention period
-swag cleanup_backups 9999
+swag backups cleanup 9999
 
 # Negative retention (should fail)
-swag cleanup_backups -1
+swag backups cleanup -1
 ```
 
 ## 10. HEALTH_CHECK Action Commands
@@ -454,7 +454,7 @@ swag edit testapp.subdomain.conf "modified content"
 swag remove testapp.subdomain.conf
 
 # 8. Cleanup old backups
-swag cleanup_backups 7
+swag backups cleanup 7
 
 # 9. Check logs
 swag logs nginx-error 100

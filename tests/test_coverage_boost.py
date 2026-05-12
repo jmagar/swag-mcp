@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -163,6 +164,40 @@ class TestFormatters:
         assert "✅" in message
         assert "200" in message
         assert status == "successful"
+
+    def test_format_health_check_result_handles_object_and_bytes_url(self):
+        """Test health check formatting normalizes object input before rendering."""
+        result = SimpleNamespace(
+            success=True,
+            status_code="200 OK",
+            response_time_ms=1500,
+            response_body=" ready ",
+            url=b"https://example.com/health",
+            redirect_url="https://example.com/login",
+        )
+
+        message, status = format_health_check_result(result)
+
+        assert (
+            message
+            == "✅ example.com - 200 (1.5s) -> https://example.com/login\nResponse: ready"
+        )
+        assert status == "successful"
+
+    def test_format_health_check_result_formats_failed_status_with_error(self):
+        """Test failed health check rendering uses normalized status and error fields."""
+        result = {
+            "success": False,
+            "status_code": "404 Not Found",
+            "response_time_ms": 25,
+            "url": "https://example.com/missing",
+            "error": "not found",
+        }
+
+        message, status = format_health_check_result(result)
+
+        assert message == "❌ example.com - 404 (25.0ms) - not found"
+        assert status == "failed: not found"
 
     def test_get_possible_sample_filenames(self):
         """Test sample filename generation."""

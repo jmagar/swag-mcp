@@ -77,6 +77,26 @@ Selection is determined by `SWAG_MCP_PROXY_CONFS_URI`:
 - Starts with `/` or not set: LocalFilesystem
 - Matches `[user@]host[:port]:/path`: SSHFilesystem
 
+## Operational constraints
+
+Service lifecycle
+
+- Each `swag` tool call opens `SwagManagerService` with an async context manager and closes it before returning.
+- Remote SSH/SFTP and HTTP health-check sessions are scoped to the request. Long-running clients should expect connection setup cost per operation.
+- Handler timeouts protect expensive operations: create uses 180 seconds, edit uses 300 seconds, update uses 120 seconds, logs use 60 seconds, and health checks use the requested timeout plus a small buffer.
+
+Filesystem safety
+
+- File writes use atomic temp-file-and-rename behavior where supported by the backend.
+- Per-file locks serialize concurrent changes to the same config file, but they do not make multi-file workflows transactional.
+- Backup creation is part of destructive edit/update/remove paths; restore remains an operator workflow using the generated backup files.
+- Nginx syntax validation depends on an available nginx binary or container context. Treat validation warnings or validation unavailability as operational risk before deployment.
+
+Health and readiness
+
+- The `/health` endpoint proves the MCP process is alive. It does not prove proxy-confs are writable, SSH is reachable, nginx validation is available, or SWAG can reload generated configs.
+- The `health_check` action tests external HTTP reachability for a domain and records per-endpoint attempts, but it does not replace SWAG reload validation or auth-path testing.
+
 ## Template system
 
 Single template: `templates/mcp.subdomain.conf.j2`

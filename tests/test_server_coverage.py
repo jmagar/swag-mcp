@@ -378,6 +378,7 @@ class TestLoggingIntegration:
                 log_directory=Path(temp_dir) / "logs",
                 log_level="DEBUG",
                 log_file_enabled=True,
+                log_file_backup_count=3,
             )
 
             (Path(temp_dir) / "proxy-confs").mkdir()
@@ -386,3 +387,4 @@ class TestLoggingIntegration:
             # Test that config is valid
             assert config.log_level == "DEBUG"
             assert config.log_file_enabled is True
+            assert config.log_file_backup_count == 3

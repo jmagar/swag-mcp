@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-05-12
+
+### Fixed
+- **Security: direct MCP auth enforcement** — `SWAG_MCP_TOKEN` now wires a FastMCP bearer-token verifier, and startup fails closed unless token auth, `FASTMCP_SERVER_AUTH`, or explicit `SWAG_MCP_NO_AUTH=true` is configured.
+- **Security: session route OAuth** — generated `/session` and `/sessions` nginx routes now use `auth_request /_oauth_verify`.
+- **Security: Compose exposure** — Docker Compose now publishes the MCP server on `127.0.0.1:49152` by default instead of all interfaces on port 8000.
+- **Resource lifecycle** — Tool-created `SwagManagerService` instances now use the async context manager so HTTP sessions, file locks, and filesystem backends are cleaned up after each tool call.
+- **Testing stability** — `bounded_gather()` now cancels outstanding wrapper tasks and closes unstarted coroutines after exceptions, eliminating unawaited-coroutine warnings.
+- **Testing stability** — Removed the ignored `aiohttp.TCPConnector(enable_cleanup_closed=True)` flag to eliminate Python 3.12 deprecation warnings.
+- **Security: symlink disclosure** — Config reads and shared safe-read operations now reject symlinks through the configured filesystem backend, including remote backends.
+- **Security: nginx validation fail-closed** — Missing `nginx` now fails syntax validation instead of treating configs as valid.
+- **Health checks** — Health check results now include per-endpoint attempt details while preserving existing top-level success/failure fields.
+- **Update semantics** — `upstream` updates now reject `app:port`; docs now state that `upstream` updates app only and `app` updates app plus port.
+- **Logging** — Rotating file logs now retain configurable backups via `SWAG_MCP_LOG_FILE_BACKUP_COUNT`.
+- **Timing** — Health-check response timing and live-stream duration tracking now use monotonic clocks.
+- **Documentation** — Updated auth, environment, and deployment docs to match the enforced auth and safer Compose defaults.
+
 ## [1.1.3] - 2026-05-12
 
 ### Fixed
@@ -22,7 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Startup cleanup non-blocking** — `cleanup_old_backups()` is now scheduled as a background task on startup, not awaited before serving.
 - **Lazy logging** — Replaced eager f-string logger calls with `%s` lazy formatting in `server.py`, `health_monitor.py`, and `middleware/error_handling.py`.
 - **SettingsConfigDict** — `SwagConfig.model_config` now uses typed `SettingsConfigDict` instead of a plain dict.
-- **Stale CHANGELOG reference** — Noted that `docs/AUTHENTICATION.md` was consolidated into `docs/mcp/AUTH.md`.
 - **Docker publish gated on tests** — `docker-publish.yml` now requires the test job to pass before building the image.
 - **Documentation** — Added `swag_help` tool to README tools table; updated `.env.example` auth comments to accurately describe server behaviour.
 
@@ -69,14 +85,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **OAuth discovery 401 cascade**: BearerAuthMiddleware was blocking GET /.well-known/oauth-protected-resource, causing MCP clients to surface generic "unknown error". Added WellKnownMiddleware (RFC 9728) to return resource metadata.
-
-### Added
-- **docs/AUTHENTICATION.md**: New setup guide covering token generation and client config.
-  *(Note: this file has since been consolidated into `docs/mcp/AUTH.md`)*
-- **README Authentication section**: Added quick-start examples and link to full guide.
-
-
-
 
 ### Added
 - `swag_help` tool — second required MCP tool listing all actions

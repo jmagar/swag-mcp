@@ -172,14 +172,15 @@ class TestSwagManagerServiceBasic:
 
     async def test_health_check_invalid_domain(self, service):
         """Test health check with invalid domain."""
-        request = SwagHealthCheckRequest(
-            action=SwagAction.HEALTH_CHECK,
-            domain="invalid.domain.that.does.not.exist.anywhere",
-            timeout=1,
-            follow_redirects=False,
-        )
+        async with service:
+            request = SwagHealthCheckRequest(
+                action=SwagAction.HEALTH_CHECK,
+                domain="invalid.domain.that.does.not.exist.anywhere",
+                timeout=1,
+                follow_redirects=False,
+            )
 
-        result = await service.health_check(request)
+            result = await service.health_check(request)
         assert result.success is False
 
     def test_create_secure_template_environment(self, service):

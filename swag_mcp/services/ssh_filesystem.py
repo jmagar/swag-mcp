@@ -9,14 +9,42 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import fnmatch
+import inspect
 import logging
 import os
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 from swag_mcp.services.filesystem import FileStat
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+class SSHRunResultProtocol(Protocol):
+    """Minimal command result returned by SSH tail execution."""
+
+    stdout: str | bytes | None
+
+
+class SSHConnectionProtocol(Protocol):
+    """Minimal async SSH connection interface used by this backend."""
+
+    def start_sftp_client(self) -> Any:
+        """Start an SFTP client."""
+        ...
+
+    async def run(self, command: str, check: bool) -> SSHRunResultProtocol:
+        """Run a remote command."""
+        ...
+
+    def close(self) -> None:
+        """Close the SSH connection."""
+        ...
 
 
 class SSHFilesystem:
@@ -25,6 +53,9 @@ class SSHFilesystem:
     Connects lazily on first filesystem operation and reuses the connection.
     Automatically recovers from connection failures by reconnecting once.
     """
+
+    MAX_TAIL_LINES = 4096
+    MAX_TAIL_FALLBACK_BYTES = 1024 * 1024
 
     def __init__(
         self,
@@ -43,8 +74,8 @@ class SSHFilesystem:
         self._host = host
         self._port = port
         self._username = username
-        self._conn: Any = None  # asyncssh.SSHClientConnection
-        self._sftp: Any = None  # asyncssh.SFTPClient
+        self._conn: SSHConnectionProtocol | None = None
+        self._sftp: Any = None
         self._lock = asyncio.Lock()  # Protects connection setup
 
     async def _ensure_connected(self) -> Any:
@@ -81,8 +112,9 @@ class SSHFilesystem:
                 # ~/.ssh/config when omitted but crashes on None (asyncssh 2.22+)
                 if self._username is not None:
                     connect_kwargs["username"] = self._username
-                self._conn = await asyncssh.connect(**connect_kwargs)
-                self._sftp = await self._conn.start_sftp_client()
+                conn = cast("SSHConnectionProtocol", await asyncssh.connect(**connect_kwargs))
+                self._conn = conn
+                self._sftp = await conn.start_sftp_client()
                 logger.info(f"SSH connection established to {self._host}")
                 return self._sftp
             except Exception as e:
@@ -96,7 +128,9 @@ class SSHFilesystem:
             return self._sftp
         return await self._ensure_connected()
 
-    async def _with_reconnect(self, operation: Any) -> Any:
+    async def _with_reconnect(
+        self, operation: Callable[[Any], Awaitable[T]]
+    ) -> T:
         """Execute an operation with automatic reconnection on failure.
 
         Args:
@@ -286,28 +320,63 @@ class SSHFilesystem:
         """Read last N lines of a remote file.
 
         Uses SSH command execution (tail) for efficiency on large
-        files, falling back to SFTP read if command execution fails.
+        files, falling back to a bounded SFTP read if command execution fails.
         """
+        line_count = max(0, min(int(n), self.MAX_TAIL_LINES))
+        if line_count == 0:
+            return []
+
         # Try efficient tail via SSH command first
         if self._conn is not None:
             try:
                 result = await self._conn.run(
-                    f"tail -n {n} {shlex.quote(path)}",
+                    f"tail -n {line_count} {shlex.quote(path)}",
                     check=True,
                 )
-                lines: list[str] = result.stdout.splitlines(keepends=True)
+                stdout = result.stdout or ""
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode("utf-8", errors="ignore")
+                lines: list[str] = stdout.splitlines(keepends=True)
                 return lines
             except Exception:
                 logger.debug(f"SSH tail command failed for {path}, falling back to SFTP read")
 
-        # Fallback: read entire file via SFTP and take last N lines
         try:
-            content = await self.read_text(path, encoding="utf-8")
-            all_lines = content.splitlines(keepends=True)
-            return all_lines[-n:] if len(all_lines) > n else all_lines
+            return await self._read_tail_lines_bounded(path, line_count)
         except Exception as e:
             logger.warning(f"Failed to read tail lines from {path}: {e}")
             return []
+
+    async def _read_tail_lines_bounded(self, path: str, n: int) -> list[str]:
+        """Read a bounded byte window from the end of a remote file."""
+
+        async def _read_tail(sftp: Any) -> list[str]:
+            attrs = await sftp.stat(path)
+            size = max(0, int(attrs.size or 0))
+            read_size = min(size, self.MAX_TAIL_FALLBACK_BYTES)
+            offset = max(0, size - read_size)
+
+            async with sftp.open(path, "rb") as remote_file:
+                if offset:
+                    seek_result = remote_file.seek(offset)
+                    if inspect.isawaitable(seek_result):
+                        await seek_result
+
+                raw = await remote_file.read(read_size)
+
+            if offset and raw:
+                newline_index = raw.find(b"\n")
+                if newline_index >= 0:
+                    raw = raw[newline_index + 1 :]
+
+            lines = raw.decode("utf-8", errors="ignore").splitlines(keepends=True)
+            return lines[-n:] if len(lines) > n else lines
+
+        return await self._with_reconnect(_read_tail)
+
+    def requires_remote_nginx_validation(self) -> bool:
+        """SSH-backed files must be validated on the remote SWAG host."""
+        return True
 
     async def close(self) -> None:
         """Close SSH and SFTP connections."""

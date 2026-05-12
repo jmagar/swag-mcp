@@ -12,6 +12,81 @@ from swag_mcp.core.constants import DOMAIN_PATTERN, VALID_NAME_PATTERN
 
 logger = logging.getLogger(__name__)
 
+_DIRECTIONAL_OVERRIDE_CHARS = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
+_DANGEROUS_SERVICE_NAME_CATEGORIES = {
+    "Cf",  # Format characters like zero-width space
+    "Co",  # Private use area
+    "Cn",  # Unassigned characters
+}
+_EMOJI_RANGES = (
+    (0x2600, 0x26FF),  # Miscellaneous Symbols
+    (0x2700, 0x27BF),  # Dingbats
+    (0x1F300, 0x1F64F),  # Miscellaneous Symbols and Pictographs
+    (0x1F680, 0x1F6FF),  # Transport and Map Symbols
+    (0x1F900, 0x1F9FF),  # Supplemental Symbols and Pictographs
+)
+_ASCII_LOOKALIKE_CHARS = frozenset(
+    {
+        "а",  # Cyrillic 'a'
+        "е",  # Cyrillic 'e'
+        "о",  # Cyrillic 'o'
+        "р",  # Cyrillic 'p'
+        "с",  # Cyrillic 'c'
+        "х",  # Cyrillic 'x'
+        "у",  # Cyrillic 'y'
+        "κ",  # Greek kappa
+        "ο",  # Greek omicron
+        "ρ",  # Greek rho
+        "υ",  # Greek upsilon
+    }
+)
+
+
+def _is_emoji_codepoint(codepoint: int) -> bool:
+    """Return True when a codepoint is covered by the service-name emoji policy."""
+    return codepoint > 0xFFFF or any(start <= codepoint <= end for start, end in _EMOJI_RANGES)
+
+
+def _is_service_name_body_character(char: str, *, allow_emoji: bool) -> bool:
+    """Return True when a character is valid inside a service name."""
+    category = unicodedata.category(char)
+    return (
+        category.startswith("L")
+        or category.startswith("N")
+        or char in "_-"
+        or (allow_emoji and _is_emoji_codepoint(ord(char)))
+    )
+
+
+def _is_service_name_start_character(char: str, *, allow_emoji: bool) -> bool:
+    """Return True when a character is valid at the start of a service name."""
+    category = unicodedata.category(char)
+    return category.startswith(("L", "N")) or (allow_emoji and _is_emoji_codepoint(ord(char)))
+
+
+def _warn_on_service_name_homographs(service_name: str) -> None:
+    """Document and log non-blocking homograph signals for service names.
+
+    The current compatibility policy allows Unicode service names, including
+    mixed-script and lookalike characters. These checks intentionally do not
+    reject names; they provide a single place to tighten policy later.
+    """
+    if any(char in _ASCII_LOOKALIKE_CHARS for char in service_name):
+        logger.debug("Service name contains Unicode lookalike characters: %r", service_name)
+
+    scripts = {
+        unicodedata.name(char, "").split(" ")[0] or "UNKNOWN"
+        for char in service_name
+        if char.isalpha()
+    }
+    non_latin_scripts = scripts - {"LATIN", "UNKNOWN"}
+    if len(non_latin_scripts) > 2:
+        logger.debug(
+            "Service name contains multiple non-Latin scripts %s: %r",
+            sorted(non_latin_scripts),
+            service_name,
+        )
+
 
 def _validate_dangerous_characters(text: str, context: str) -> None:
     """Check for dangerous characters in text.
@@ -228,16 +303,6 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     except ValueError as e:
         raise ValueError(f"Service name contains invalid Unicode: {str(e)}") from e
 
-    # Additional service name specific validation
-    dangerous_categories_for_names = {
-        "Cf",  # Format characters (like zero-width space) - problematic for names
-        "Co",  # Private use area - could be used for spoofing
-        "Cn",  # Unassigned characters - unstable
-    }
-
-    # Note: We no longer block 'Cs' (surrogates) here since
-    # normalize_unicode_text handles them properly
-
     # Check characters with emoji awareness
     has_emoji = False
     for i, char in enumerate(validated_unicode):
@@ -245,7 +310,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         codepoint = ord(char)
 
         # Block dangerous Unicode categories (but allow surrogates if they're properly paired)
-        if category in dangerous_categories_for_names:
+        if category in _DANGEROUS_SERVICE_NAME_CATEGORIES:
             char_name = unicodedata.name(char, "UNKNOWN")
             raise ValueError(
                 f"Service name contains dangerous Unicode character at position {i}: "
@@ -258,24 +323,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
                 f"Service name contains control character at position {i}: U+{codepoint:04X}"
             )
 
-        # Check for emoji and extended Unicode
-        if codepoint > 0xFFFF:  # Extended Unicode plane (includes most emoji)
-            has_emoji = True
-            if not allow_emoji:
-                char_name = unicodedata.name(char, "UNKNOWN")
-                raise ValueError(
-                    f"Service name contains emoji/extended Unicode character at position {i}: "
-                    f"U+{codepoint:04X} ({char_name}). Set allow_emoji=True to permit."
-                )
-
-        # Check for common emoji ranges even in the Basic Multilingual Plane
-        elif (
-            0x2600 <= codepoint <= 0x26FF  # Miscellaneous Symbols
-            or 0x2700 <= codepoint <= 0x27BF  # Dingbats
-            or 0x1F300 <= codepoint <= 0x1F64F  # Miscellaneous Symbols and Pictographs
-            or 0x1F680 <= codepoint <= 0x1F6FF  # Transport and Map Symbols
-            or 0x1F900 <= codepoint <= 0x1F9FF
-        ):  # Supplemental Symbols and Pictographs
+        if _is_emoji_codepoint(codepoint):
             has_emoji = True
             if not allow_emoji:
                 char_name = unicodedata.name(char, "UNKNOWN")
@@ -285,7 +333,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
                 )
 
         # Block directional override characters (security risk)
-        if char in "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069":
+        if char in _DIRECTIONAL_OVERRIDE_CHARS:
             raise ValueError(
                 f"Service name contains directional override character at position {i}: "
                 f"U+{codepoint:04X}"
@@ -300,22 +348,8 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
         # For names with emoji, do manual validation since regex is complex
         for i, char in enumerate(normalized_name):
             codepoint = ord(char)
-            category = unicodedata.category(char)
 
-            # Allow letters, numbers, hyphens, underscores, and emoji
-            if not (
-                category.startswith("L")  # Letters (any script)
-                or category.startswith("N")  # Numbers (any script)
-                or char in "_-"  # Allowed punctuation
-                or codepoint > 0xFFFF  # Extended Unicode (emoji range)
-                or (
-                    0x2600 <= codepoint <= 0x26FF  # Miscellaneous Symbols
-                    or 0x2700 <= codepoint <= 0x27BF  # Dingbats
-                    or 0x1F300 <= codepoint <= 0x1F64F  # Miscellaneous Symbols and Pictographs
-                    or 0x1F680 <= codepoint <= 0x1F6FF  # Transport and Map Symbols
-                    or 0x1F900 <= codepoint <= 0x1F9FF
-                )
-            ):  # Supplemental Symbols and Pictographs
+            if not _is_service_name_body_character(char, allow_emoji=True):
                 char_name = unicodedata.name(char, "UNKNOWN")
                 raise ValueError(
                     f"Service name contains invalid character at position {i}: "
@@ -332,29 +366,7 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
     # Must start with letter or number (Unicode-aware)
     if normalized_name:
         first_char = normalized_name[0]
-        first_category = unicodedata.category(first_char)
-        first_codepoint = ord(first_char)
-
-        # Allow starting with letter, number, or emoji (if emoji are allowed)
-        valid_start = (
-            first_category.startswith("L")  # Letters
-            or first_category.startswith("N")
-        )  # Numbers
-
-        if allow_emoji and has_emoji:
-            # Also allow starting with emoji
-            valid_start = valid_start or (
-                first_codepoint > 0xFFFF  # Extended Unicode
-                or (
-                    0x2600 <= first_codepoint <= 0x26FF  # Miscellaneous Symbols
-                    or 0x2700 <= first_codepoint <= 0x27BF  # Dingbats
-                    or 0x1F300
-                    <= first_codepoint
-                    <= 0x1F64F  # Miscellaneous Symbols and Pictographs
-                    or 0x1F680 <= first_codepoint <= 0x1F6FF  # Transport and Map Symbols
-                    or 0x1F900 <= first_codepoint <= 0x1F9FF
-                )  # Supplemental Symbols and Pictographs
-            )
+        valid_start = _is_service_name_start_character(first_char, allow_emoji=allow_emoji)
 
         if not valid_start:
             if allow_emoji:
@@ -362,52 +374,15 @@ def validate_service_name(service_name: str, allow_emoji: bool = False) -> str:
             else:
                 raise ValueError("Service name must start with a letter or number")
 
-    # Additional security check: ensure no homograph attacks
-    # Check for suspicious character combinations that might be used for spoofing
-    ascii_lookalikes = {
-        "а": "a",  # Cyrillic 'a'
-        "е": "e",  # Cyrillic 'e'
-        "о": "o",  # Cyrillic 'o'
-        "р": "p",  # Cyrillic 'p'
-        "с": "c",  # Cyrillic 'c'
-        "х": "x",  # Cyrillic 'x'
-        "у": "y",  # Cyrillic 'y'
-        "κ": "k",  # Greek kappa
-        "ο": "o",  # Greek omicron
-        "ρ": "p",  # Greek rho
-        "υ": "y",  # Greek upsilon
-        # Add more as needed
-    }
-
-    # Warn about potential homograph characters (don't block, just log)
-    for char in normalized_name:
-        if char in ascii_lookalikes:
-            # Don't block, but this could be logged for security monitoring
-            pass
-
-    # Check for mixed scripts that might indicate spoofing attempts
-    scripts = set()
-    for char in normalized_name:
-        if char.isalpha():  # Only check alphabetic characters
-            script = (
-                unicodedata.name(char, "").split(" ")[0]
-                if unicodedata.name(char, "")
-                else "UNKNOWN"
-            )
-            if script not in ["LATIN", "UNKNOWN"]:
-                scripts.add(script)
-
-    # Allow mixed scripts but be aware of potential issues
-    if len(scripts) > 2:  # More than 2 non-Latin scripts might be suspicious
-        # Don't block, but this could be logged for review
-        pass
+    _warn_on_service_name_homographs(normalized_name)
 
     # Final length check after all processing
     if len(normalized_name) == 0:
         raise ValueError("Service name cannot be empty after normalization")
 
-    # Validate against VALID_NAME_PATTERN and check for leading/trailing hyphens
-    if not re.match(VALID_NAME_PATTERN, normalized_name):
+    # Emoji names use the Unicode-aware manual policy above; VALID_NAME_PATTERN is
+    # retained for the non-emoji path to preserve existing ASCII-compatible errors.
+    if not (has_emoji and allow_emoji) and not re.match(VALID_NAME_PATTERN, normalized_name):
         raise ValueError("Service name can only contain letters, numbers, hyphens, and underscores")
 
     if normalized_name.startswith("-") or normalized_name.endswith("-"):

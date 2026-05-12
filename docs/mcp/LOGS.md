@@ -75,6 +75,22 @@ Operations exceeding `SWAG_MCP_SLOW_OPERATION_THRESHOLD_MS` (default: 1000ms) ar
 WARNING  swag_mcp.middleware.timing: Slow operation: create took 2345ms
 ```
 
+## Operational signals
+
+swag-mcp does not ship an external alerting stack. Operators should monitor logs, Docker health state, and SWAG/nginx logs for these incident signals:
+
+| Signal | Likely impact | First check |
+| --- | --- | --- |
+| Repeated `Tool execution failed due to an unexpected error` | MCP tool calls failing | Server logs around the request ID/action |
+| `Create operation timed out`, `Edit operation timed out`, or `Update operation timed out` | File/validation/backend operation stuck or too slow | Filesystem/SSH availability and nginx validation |
+| `Log retrieval operation timed out` | SWAG logs inaccessible or backend command slow | Log volume mounts, SSH command execution, SWAG container state |
+| Slow operation warnings above the configured threshold | Degraded backend or upstream latency | Timing middleware logs and recent filesystem/backend changes |
+| Docker health check unhealthy | MCP process or `/health` endpoint unavailable | `docker compose ps` and `docker compose logs --tail=200 swag-mcp` |
+| Health-check action failures for known-good domains | Proxy, auth, DNS, TLS, or upstream outage | `endpoint_results`, nginx error logs, upstream container health |
+| Backup cleanup removes unexpectedly high counts | Retention misconfiguration or backup naming issue | Backup list output and `SWAG_MCP_BACKUP_RETENTION_DAYS` |
+
+Treat `/health` as a liveness signal only. It does not confirm proxy config write access, nginx syntax validation, SWAG reload status, remote SSH reachability, or generated route correctness.
+
 ## SWAG log access
 
 The `logs` action reads SWAG container log files at paths defined in `DOCKER_LOG_PATHS`:

@@ -7,9 +7,10 @@ including adding MCP location blocks to existing configurations.
 import logging
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from swag_mcp.models.config import SwagConfigResult
+from swag_mcp.services.filesystem import requires_remote_nginx_validation
 from swag_mcp.utils.validators import (
     validate_config_filename,
     validate_mcp_path,
@@ -24,6 +25,14 @@ if TYPE_CHECKING:
     from swag_mcp.services.validation import ValidationService
 
 logger = logging.getLogger(__name__)
+
+
+class ConfigReader(Protocol):
+    """Protocol for configuration readers used by MCP operations."""
+
+    async def read_config(self, config_name: str) -> str:
+        """Read a validated SWAG configuration by name."""
+        ...
 
 
 class MCPOperations:
@@ -54,7 +63,11 @@ class MCPOperations:
         self.validation = validation
         self.file_ops = file_ops
         self.backup_manager = backup_manager
-        self._config_ops = config_ops
+        self.config_reader: ConfigReader | None = config_ops
+
+    def attach_config_reader(self, config_reader: ConfigReader) -> None:
+        """Explicitly attach the configuration reader used for MCP config reads."""
+        self.config_reader = config_reader
 
     @property
     def fs(self) -> "FilesystemBackend":
@@ -77,8 +90,8 @@ class MCPOperations:
             ValueError: If file content is not safe to read
 
         """
-        if self._config_ops is not None:
-            return await self._config_ops.read_config(config_name)
+        if self.config_reader is not None:
+            return await self.config_reader.read_config(config_name)
 
         # Fallback: read directly via file_ops
         validated_name = validate_config_filename(config_name)
@@ -135,12 +148,12 @@ class MCPOperations:
         if dup_pat.search(content):
             raise ValueError(f"MCP location {mcp_path} already exists in configuration")
 
-        # Create backup if requested
-        backup_name = None
-        if create_backup and self.backup_manager:
-            backup_name = await self.backup_manager.create_backup(config_name)
-
         try:
+            # Create backup if requested
+            backup_name = None
+            if create_backup and self.backup_manager:
+                backup_name = await self.backup_manager.create_backup(config_name)
+
             # Begin atomic transaction
             async with self.file_ops.begin_transaction(f"add_mcp:{config_name}") as txn:
                 # Render MCP location block from existing server-level variables.
@@ -157,14 +170,11 @@ class MCPOperations:
                 )
 
                 # Validate nginx syntax before committing (abort on failure)
-                # eqf.14: Skip local nginx -t in SSH mode — local nginx cannot validate
-                # remote SWAG configs (different nginx version/modules on remote host).
-                # The remote SWAG will validate on reload; errors surface there instead.
-                from swag_mcp.services.ssh_filesystem import SSHFilesystem  # noqa: PLC0415
-
-                if isinstance(self.fs, SSHFilesystem):
+                # Skip local nginx -t when the filesystem backend reports that
+                # remote SWAG owns authoritative validation.
+                if requires_remote_nginx_validation(self.fs):
                     logger.warning(
-                        "SSH mode: skipping local nginx syntax validation for %s. "
+                        "Remote filesystem mode: skipping local nginx syntax validation for %s. "
                         "Remote SWAG will validate on next reload.",
                         config_name,
                     )

@@ -109,6 +109,12 @@ class SwagConfig(BaseSettings):
         default=10485760, description="Maximum size of log files before rotation (10MB default)"
     )
 
+    log_file_backup_count: int = Field(
+        default=5,
+        ge=0,
+        description="Number of rotated log file backups to keep",
+    )
+
     log_directory: Path = Field(
         default=Path("/app/.swag-mcp/logs"), description="Directory for log files"
     )

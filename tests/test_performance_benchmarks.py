@@ -15,6 +15,7 @@ import psutil
 import pytest
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.utils.async_utils import AsyncLineReader, bounded_gather
+from swag_mcp.utils.mcp_cache import get_cache
 
 
 class PerformanceTracker:
@@ -221,7 +222,7 @@ class TestSwagManagerPerformance:
         """Test configuration listing performance with varying numbers of files."""
 
         # Test with different numbers of config files
-        file_counts = [10, 50, 100, 200]
+        file_counts = [100, 500, 1000, 2000]
         performance_data = []
 
         for count in file_counts:
@@ -229,6 +230,7 @@ class TestSwagManagerPerformance:
             for i in range(count):
                 config_file = swag_service.config_path / f"test{i:03d}.subdomain.conf"
                 config_file.write_text(f"# Test config {i}\nserver_name test{i}.example.com;")
+            await get_cache().invalidate()
 
             # Benchmark listing
             tracker = PerformanceTracker()
@@ -311,7 +313,7 @@ class TestSwagManagerPerformance:
 
         # Create many old backup files matching the expected pattern:
         # name.backup.YYYYMMDD_HHMMSS_microseconds_uuid
-        backup_count = 500
+        backup_count = 2000
         for i in range(backup_count):
             backup_file = (
                 swag_service.config_path / f"test{i:03d}.backup.20200101_120000_{i:06d}_{i:08x}"
@@ -330,11 +332,11 @@ class TestSwagManagerPerformance:
 
         # Should clean up efficiently
         assert cleaned_count > 0, "Should have cleaned some backups"
-        assert tracker.elapsed_time < 10.0, "Backup cleanup too slow"
+        assert tracker.elapsed_time < 8.0, "Backup cleanup too slow"
 
         # Performance should be reasonable for the number of files
         time_per_file = tracker.elapsed_time / max(cleaned_count, 1)
-        assert time_per_file < 0.1, f"Too slow per file: {time_per_file:.3f}s"
+        assert time_per_file < 0.02, f"Too slow per file: {time_per_file:.3f}s"
 
 
 @pytest.mark.benchmark

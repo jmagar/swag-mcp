@@ -9,6 +9,7 @@ import logging
 import re
 import tempfile
 from pathlib import Path
+from re import Pattern
 
 from swag_mcp.core.config import config
 from swag_mcp.core.constants import LIST_FILTERS, VALID_UPSTREAM_PATTERN
@@ -29,6 +30,7 @@ from swag_mcp.services.template_manager import TemplateManager
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.formatters import build_template_filename
+from swag_mcp.utils.mcp_cache import get_cache
 from swag_mcp.utils.validators import (
     validate_config_filename,
     validate_domain_format,
@@ -37,6 +39,9 @@ from swag_mcp.utils.validators import (
 )
 
 logger = logging.getLogger(__name__)
+
+CONFIG_READ_CACHE_TTL_SECONDS = 30
+CONFIG_LIST_CACHE_TTL_SECONDS = 15
 
 
 class ConfigOperations:
@@ -80,6 +85,7 @@ class ConfigOperations:
         self.backup_manager = backup_manager
         self.file_ops = file_ops
         self.updaters = updaters
+        self._cache_namespace = str(self.config_path)
 
         logger.info(f"Initialized ConfigOperations with path: {config_path}")
 
@@ -92,11 +98,41 @@ class ConfigOperations:
         """Ensure the configuration directory exists (delegates to file_ops)."""
         await self.file_ops.ensure_config_directory()
 
-    async def list_configs(self, list_filter: ListFilterType = "all") -> SwagListResult:
+    def _config_read_cache_key(self, config_name: str) -> str:
+        """Build a path-scoped cache key for config reads."""
+        return f"config:read:{self._cache_namespace}:{config_name}"
+
+    def _config_list_cache_key(
+        self, list_filter: ListFilterType, offset: int, limit: int | None
+    ) -> str:
+        """Build a path-scoped cache key for config lists."""
+        return f"list:{self._cache_namespace}:{list_filter}:{offset}:{limit}"
+
+    def _config_cache_pattern(self, config_name: str | None = None) -> Pattern[str]:
+        """Build a regex for invalidating path-scoped config cache entries."""
+        namespace = re.escape(self._cache_namespace)
+        if config_name is None:
+            return re.compile(rf"^(config:read|list):{namespace}:")
+        return re.compile(
+            rf"^(config:read:{namespace}:{re.escape(config_name)}|list:{namespace}:)"
+        )
+
+    async def _invalidate_config_cache(self, config_name: str | None = None) -> None:
+        """Invalidate cached read/list entries for this config path."""
+        await get_cache().invalidate(self._config_cache_pattern(config_name))
+
+    async def list_configs(
+        self,
+        list_filter: ListFilterType = "all",
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> SwagListResult:
         """List configuration files based on filter type.
 
         Args:
             list_filter: Filter type - "all", "active", or "samples"
+            offset: Number of matching configs to skip
+            limit: Maximum number of configs to return
 
         Returns:
             SwagListResult containing list of configs and total count
@@ -105,35 +141,52 @@ class ConfigOperations:
             ValueError: If list_filter is invalid
 
         """
-        # Validate filter parameter
-        if list_filter not in LIST_FILTERS:
-            valid_options = ", ".join(sorted(LIST_FILTERS))
-            raise ValueError(
-                f"Invalid list filter '{list_filter}'. Must be one of: {valid_options}"
-            )
+        if offset < 0:
+            raise ValueError("offset must be greater than or equal to 0")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be greater than or equal to 1")
 
-        logger.info(f"Listing configurations of type: {list_filter}")
-        await self._ensure_config_directory()
+        async def _list_uncached() -> SwagListResult:
+            # Validate filter parameter
+            if list_filter not in LIST_FILTERS:
+                valid_options = ", ".join(sorted(LIST_FILTERS))
+                raise ValueError(
+                    f"Invalid list filter '{list_filter}'. Must be one of: {valid_options}"
+                )
 
-        configs = []
+            logger.info(f"Listing configurations of type: {list_filter}")
+            await self._ensure_config_directory()
 
-        if list_filter in ["all", "active"]:
-            # List active configurations (.conf files, not .sample)
-            active_files = await self.fs.glob(str(self.config_path), "*.conf")
-            active_configs = [f for f in active_files if not f.endswith(".sample")]
-            configs.extend(active_configs)
+            configs = []
 
-        if list_filter in ["all", "samples"]:
-            # List sample configurations (.sample files)
-            sample_configs = await self.fs.glob(str(self.config_path), "*.sample")
-            configs.extend(sample_configs)
+            if list_filter in ["all", "active"]:
+                # List active configurations (.conf files, not .sample)
+                active_files = await self.fs.glob(str(self.config_path), "*.conf")
+                active_configs = [f for f in active_files if not f.endswith(".sample")]
+                configs.extend(active_configs)
 
-        # Remove duplicates and sort
-        configs = sorted(set(configs))
+            if list_filter in ["all", "samples"]:
+                # List sample configurations (.sample files)
+                sample_configs = await self.fs.glob(str(self.config_path), "*.sample")
+                configs.extend(sample_configs)
 
-        logger.info(f"Found {len(configs)} configurations")
+            # Remove duplicates and sort
+            configs = sorted(set(configs))
 
-        return SwagListResult(configs=configs, total_count=len(configs), list_filter=list_filter)
+            logger.info(f"Found {len(configs)} configurations")
+
+            total_count = len(configs)
+            if limit is not None:
+                configs = configs[offset : offset + limit]
+            elif offset:
+                configs = configs[offset:]
+
+            return SwagListResult(configs=configs, total_count=total_count, list_filter=list_filter)
+
+        cache_key = self._config_list_cache_key(list_filter, offset, limit)
+        return await get_cache().get_or_set(
+            cache_key, _list_uncached, ttl=CONFIG_LIST_CACHE_TTL_SECONDS
+        )
 
     async def read_config(self, config_name: str) -> str:
         """Read configuration file content.
@@ -150,27 +203,35 @@ class ConfigOperations:
             OSError: For file system errors
 
         """
-        logger.info(f"Reading configuration: {config_name}")
-        await self._ensure_config_directory()
-
         validated_name = validate_config_filename(config_name)
-        config_file = self.config_path / validated_name
 
-        if not await self.fs.exists(str(config_file)):
-            raise FileNotFoundError(f"Configuration file {validated_name} not found")
+        async def _read_uncached() -> str:
+            logger.info(f"Reading configuration: {config_name}")
+            await self._ensure_config_directory()
 
-        if config_file.is_symlink():
-            raise ValueError(
-                f"Configuration file {validated_name} is a symlink — "
-                "reading symlinks is not permitted for security reasons"
+            config_file = self.config_path / validated_name
+
+            if not await self.fs.exists(str(config_file)):
+                raise FileNotFoundError(f"Configuration file {validated_name} not found")
+
+            if await self.fs.is_symlink(str(config_file)):
+                raise ValueError(
+                    f"Configuration file {validated_name} is a symlink — "
+                    "reading symlinks is not permitted for security reasons"
+                )
+
+            content = await self.file_ops.read_text_safe(
+                str(config_file), f"configuration file {validated_name}"
             )
 
-        content = await self.file_ops.read_text_safe(
-            str(config_file), f"configuration file {validated_name}"
-        )
+            logger.info(f"Successfully read {len(content)} characters from {validated_name}")
+            return content
 
-        logger.info(f"Successfully read {len(content)} characters from {validated_name}")
-        return content
+        return await get_cache().get_or_set(
+            self._config_read_cache_key(validated_name),
+            _read_uncached,
+            ttl=CONFIG_READ_CACHE_TTL_SECONDS,
+        )
 
     async def create_config(self, request: SwagConfigRequest) -> SwagConfigResult:
         """Create new configuration from template with nginx validation.
@@ -269,6 +330,7 @@ class ConfigOperations:
             )
 
         logger.info(f"Successfully created configuration: {filename}")
+        await self._invalidate_config_cache(filename)
 
         return SwagConfigResult(filename=filename, content=content)
 
@@ -325,6 +387,7 @@ class ConfigOperations:
         )
 
         logger.info(f"Successfully updated configuration: {validated_name}")
+        await self._invalidate_config_cache(validated_name)
 
         return SwagConfigResult(
             filename=validated_name,
@@ -362,12 +425,14 @@ class ConfigOperations:
             )
 
         # Delegate to ConfigFieldUpdaters service
-        return await self.updaters.update_field(
+        result = await self.updaters.update_field(
             update_request=update_request,
             current_content=content,
             backup_name=backup_name,
             config_path=self.config_path,
         )
+        await self._invalidate_config_cache(update_request.config_name)
+        return result
 
     async def remove_config(self, remove_request: SwagRemoveRequest) -> SwagConfigResult:
         """Remove configuration with optional backup.
@@ -415,6 +480,7 @@ class ConfigOperations:
             ) from e
 
         logger.info(f"Successfully removed configuration: {validated_name}")
+        await self._invalidate_config_cache(validated_name)
 
         return SwagConfigResult(
             filename=validated_name, content=content, backup_created=backup_name

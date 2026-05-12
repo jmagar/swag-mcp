@@ -1,7 +1,12 @@
-FROM python:3.11-slim AS builder
+ARG PYTHON_BASE_IMAGE=python:3.11-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.10.10
+
+FROM ${UV_IMAGE} AS uv-bin
+
+FROM ${PYTHON_BASE_IMAGE} AS builder
 
 # Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:0.10.10 /uv /uvx /usr/local/bin/
+COPY --from=uv-bin /uv /uvx /usr/local/bin/
 
 # Set working directory
 WORKDIR /app
@@ -17,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY swag_mcp/ ./swag_mcp/
 COPY templates/ ./templates/
 
-FROM python:3.11-slim AS runtime
+FROM ${PYTHON_BASE_IMAGE} AS runtime
 
 # Install system dependencies in one layer
 RUN apt-get update && \
@@ -51,12 +56,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
     SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs \
     SWAG_MCP_TEMPLATE_PATH=/app/templates \
     SWAG_MCP_HOST=0.0.0.0 \
+    SWAG_MCP_REQUIRE_WRITABLE_LOG_DIRECTORY=true \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Health check — port is always 8000 internally
+# The entrypoint starts as root only to align PUID/PGID and bind-mount ownership,
+# then execs the application as the unprivileged runtime user.
+
+# Health/readiness check. Port is always 8000 internally.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import json, os, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)); assert data.get('status') == 'healthy'; assert os.access(os.environ['SWAG_MCP_LOG_DIRECTORY'], os.W_OK); assert os.path.isdir(os.environ['SWAG_MCP_PROXY_CONFS_PATH'])"
 
 # Expose port
 EXPOSE 8000

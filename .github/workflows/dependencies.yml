@@ -45,8 +45,13 @@ jobs:
 
     - name: Run pip-audit
       run: |
-        uv run pip-audit --format=json --output=audit-report.json || true
-        uv run pip-audit --format=cyclonedx-json --output=audit-sbom.json || true
+        if ! uv run pip-audit --format=json --output=audit-report.json; then
+          echo "pip-audit found vulnerabilities while generating JSON report."
+        fi
+        if ! uv run pip-audit --format=cyclonedx-json --output=audit-sbom.json; then
+          echo "pip-audit found vulnerabilities while generating CycloneDX report."
+        fi
+        uv run pip-audit
 
     - name: Upload audit results
       if: always()
@@ -69,6 +74,30 @@ jobs:
     name: Update Dependencies
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - fastmcp
+          - pydantic
+          - pydantic-settings
+          - jinja2
+          - aiofiles
+          - aiohttp
+          - pyyaml
+          - regex
+          - docker
+          - asyncssh
+          - pytest
+          - pytest-asyncio
+          - pytest-cov
+          - ruff
+          - ty
+          - bandit
+          - pip-audit
+          - hypothesis
+          - pytest-benchmark
+          - psutil
 
     steps:
     - name: Checkout code
@@ -82,24 +111,25 @@ jobs:
     - name: Set up Python
       run: uv python install 3.12
 
-    - name: Update dependencies
-      run: |
-        uv sync --upgrade
-        uv lock --upgrade
+    - name: Update ${{ matrix.package }} dependency
+      run: uv lock --upgrade-package "${{ matrix.package }}"
+
+    - name: Validate locked environment
+      run: uv sync --locked --all-extras --dev
 
     - name: Create Pull Request
       uses: peter-evans/create-pull-request@v6
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        commit-message: "chore: update dependencies"
-        title: "🔄 Weekly dependency updates"
+        commit-message: "chore: update ${{ matrix.package }}"
+        title: "chore: update ${{ matrix.package }}"
         body: |
-          ## Automated Dependency Updates
+          ## Automated Dependency Update
 
-          This PR contains weekly dependency updates generated automatically.
+          This PR updates `${{ matrix.package }}` and any required transitive lockfile changes.
 
           ### Changes
-          - Updated dependencies to their latest compatible versions
+          - Updated one direct dependency instead of a broad lockfile upgrade
           - Regenerated lock file
 
           ### Testing
@@ -109,6 +139,6 @@ jobs:
 
           ---
           *This PR was created automatically by the dependency update workflow.*
-        branch: automated/dependency-updates
+        branch: automated/dependency-update-${{ matrix.package }}
         delete-branch: true
         draft: false

@@ -152,6 +152,18 @@ class TestServiceNameValidation:
         with pytest.raises(ValueError):
             validate_service_name(emoji_name, allow_emoji=False)
 
+    @pytest.mark.parametrize("emoji_name", ["app☀", "app✈", "app😀"])
+    def test_service_name_emoji_policy_consistent_across_unicode_ranges(self, emoji_name):
+        """Test service name emoji policy for BMP and extended emoji ranges."""
+        assert validate_service_name(emoji_name, allow_emoji=True) == emoji_name
+
+        with pytest.raises(ValueError, match="emoji"):
+            validate_service_name(emoji_name, allow_emoji=False)
+
+    def test_service_name_allows_documented_homograph_scripts(self):
+        """Test documented homograph policy remains non-blocking."""
+        assert validate_service_name("арр", allow_emoji=False) == "арр"
+
 
 class TestConfigFilenameValidation:
     """Test configuration filename validation."""

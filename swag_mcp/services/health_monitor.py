@@ -9,6 +9,7 @@ import aiohttp
 
 from swag_mcp.core.config import config
 from swag_mcp.models.config import (
+    HealthEndpointResult,
     SwagHealthCheckRequest,
     SwagHealthCheckResult,
     SwagLogsRequest,
@@ -16,6 +17,9 @@ from swag_mcp.models.config import (
 from swag_mcp.services.filesystem import FilesystemBackend, LocalFilesystem
 
 logger = logging.getLogger(__name__)
+
+
+_EndpointCheckOutcome = tuple[HealthEndpointResult, str | None]
 
 
 class HealthMonitor:
@@ -61,7 +65,6 @@ class HealthMonitor:
                     limit_per_host=5,  # Max connections per host
                     ttl_dns_cache=300,  # DNS cache TTL in seconds
                     use_dns_cache=True,
-                    enable_cleanup_closed=True,
                 )
 
                 # Create session with timeout and connector
@@ -87,94 +90,26 @@ class HealthMonitor:
         endpoints_to_try = ["/health", "/mcp", "/"]
         urls_to_try = [f"https://{request.domain}{endpoint}" for endpoint in endpoints_to_try]
 
-        for url in urls_to_try:
-            logger.debug("Trying health check URL: %s", url)
+        outcomes = await asyncio.gather(
+            *(
+                self._check_health_endpoint(request, endpoint, url)
+                for endpoint, url in zip(endpoints_to_try, urls_to_try, strict=True)
+            )
+        )
+        endpoint_results = [outcome[0] for outcome in outcomes]
 
-            try:
-                # Get pooled HTTP session
-                session = await self.get_session()
-
-                # Record start time
-                start_time = time.time()
-
-                # Use custom timeout for this request
-                timeout = aiohttp.ClientTimeout(total=request.timeout)
-
-                async with session.get(
-                    url, allow_redirects=request.follow_redirects, timeout=timeout
-                ) as response:
-                    # Calculate response time
-                    response_time_ms = int((time.time() - start_time) * 1000)
-
-                    # Read response body (limited to 1000 chars)
-                    response_text = await response.text()
-                    response_body = response_text[:1000]
-                    if len(response_text) > 1000:
-                        response_body += "... (truncated)"
-
-                    # Determine success based on endpoint and status code
-                    endpoint = url.split(request.domain)[1] if request.domain in url else "unknown"
-
-                    if 200 <= response.status < 300:
-                        # 2xx is always successful
-                        success = True
-                    elif response.status == 406 and endpoint == "/mcp":
-                        # 406 for /mcp means endpoint exists (MCP requires POST)
-                        success = True
-                    elif response.status == 404 and endpoint in ["/health", "/"]:
-                        # 404 for /health or / means try next endpoint
-                        success = False
-                    else:
-                        # Any other HTTP response means proxy is working
-                        success = True
-
-                    logger.info(
-                        "Health check for %s - URL: %s, Status: %s, Time: %dms, Success: %s",
-                        request.domain, url, response.status, response_time_ms, success,
-                    )
-
-                    if success:
-                        # Return successful result immediately
-                        return SwagHealthCheckResult(
-                            domain=request.domain,
-                            url=url,
-                            status_code=response.status,
-                            response_time_ms=response_time_ms,
-                            response_body=response_body,
-                            success=True,
-                            error=None,
-                        )
-                    else:
-                        # Log the failure and continue to next endpoint
-                        logger.debug(
-                            "Endpoint %s failed with %s, trying next endpoint",
-                            endpoint, response.status,
-                        )
-                        continue
-
-            except TimeoutError:
-                error_msg = f"Timeout after {request.timeout} seconds"
-                logger.warning("Health check timeout for %s: %s", url, error_msg)
-                # Continue to try next URL
-                continue
-
-            except aiohttp.ClientConnectorError as e:
-                error_msg = f"Connection failed: {str(e)}"
-                logger.warning("Health check connection error for %s: %s", url, error_msg)
-                # Continue to try next URL
-                continue
-
-            except aiohttp.ClientResponseError as e:
-                error_msg = f"HTTP error: {e.status} {e.message}"
-                logger.warning("Health check HTTP error for %s: %s", url, error_msg)
-                # Continue to try next URL for HTTP errors
-                continue
-
-            except Exception as e:
-                error_msg = f"Unexpected error: {str(e)}"
-                logger.warning("Health check unexpected error for %s: %s", url, error_msg)
-                # Continue to try next URL
-                continue
+        for endpoint_result, response_body in outcomes:
+            if endpoint_result.success:
+                return SwagHealthCheckResult(
+                    domain=request.domain,
+                    url=endpoint_result.url,
+                    status_code=endpoint_result.status_code,
+                    response_time_ms=endpoint_result.response_time_ms,
+                    response_body=response_body,
+                    success=True,
+                    error=None,
+                    endpoint_results=endpoint_results,
+                )
 
         # If we get here, all URLs failed
         error_msg = f"All health check URLs failed for domain {request.domain}"
@@ -188,7 +123,93 @@ class HealthMonitor:
             response_body=None,
             success=False,
             error=error_msg,
+            endpoint_results=endpoint_results,
         )
+
+    async def _check_health_endpoint(
+        self, request: SwagHealthCheckRequest, endpoint: str, url: str
+    ) -> _EndpointCheckOutcome:
+        """Check one health endpoint and return structured endpoint detail."""
+        logger.debug("Trying health check URL: %s", url)
+
+        try:
+            session = await self.get_session()
+            start_time = time.perf_counter()
+            timeout = aiohttp.ClientTimeout(total=request.timeout)
+
+            async with session.get(
+                url, allow_redirects=request.follow_redirects, timeout=timeout
+            ) as response:
+                response_time_ms = int((time.perf_counter() - start_time) * 1000)
+                response_text = await response.text()
+                response_body = response_text[:1000]
+                if len(response_text) > 1000:
+                    response_body += "... (truncated)"
+
+                success = self._is_successful_health_response(endpoint, response.status)
+                logger.info(
+                    "Health check for %s - URL: %s, Status: %s, Time: %dms, Success: %s",
+                    request.domain,
+                    url,
+                    response.status,
+                    response_time_ms,
+                    success,
+                )
+
+                return (
+                    HealthEndpointResult(
+                        endpoint=endpoint,
+                        url=url,
+                        success=success,
+                        status_code=response.status,
+                        response_time_ms=response_time_ms,
+                        error=None if success else f"HTTP status {response.status}",
+                    ),
+                    response_body,
+                )
+
+        except TimeoutError:
+            error_msg = f"Timeout after {request.timeout} seconds"
+            logger.warning("Health check timeout for %s: %s", url, error_msg)
+            return (
+                HealthEndpointResult(endpoint=endpoint, url=url, success=False, error=error_msg),
+                None,
+            )
+        except aiohttp.ClientConnectorError as e:
+            error_msg = f"Connection failed: {str(e)}"
+            logger.warning("Health check connection error for %s: %s", url, error_msg)
+            return (
+                HealthEndpointResult(endpoint=endpoint, url=url, success=False, error=error_msg),
+                None,
+            )
+        except aiohttp.ClientResponseError as e:
+            error_msg = f"HTTP error: {e.status} {e.message}"
+            logger.warning("Health check HTTP error for %s: %s", url, error_msg)
+            return (
+                HealthEndpointResult(
+                    endpoint=endpoint,
+                    url=url,
+                    success=False,
+                    status_code=e.status,
+                    error=error_msg,
+                ),
+                None,
+            )
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.warning("Health check unexpected error for %s: %s", url, error_msg)
+            return (
+                HealthEndpointResult(endpoint=endpoint, url=url, success=False, error=error_msg),
+                None,
+            )
+
+    def _is_successful_health_response(self, endpoint: str, status_code: int) -> bool:
+        """Return whether an endpoint HTTP status proves the proxy is reachable."""
+        if 200 <= status_code < 300:
+            return True
+        if status_code == 406 and endpoint == "/mcp":
+            return True
+        return not (status_code == 404 and endpoint in ["/health", "/"])
 
     async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
         """Get SWAG logs by reading log files directly from mounted volume.

@@ -2,9 +2,8 @@
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from swag_mcp.core.config import config
 from swag_mcp.models.config import (
     ListFilterType,
     SwagConfigRequest,
@@ -32,7 +31,17 @@ from swag_mcp.services.template_manager import TemplateManager
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.uri import parse_swag_uri
 
+if TYPE_CHECKING:
+    from swag_mcp.core.config import SwagConfig
+
 logger = logging.getLogger(__name__)
+
+
+def _load_default_config() -> "SwagConfig":
+    """Load the process-wide runtime config for default construction paths."""
+    from swag_mcp.core.config import config
+
+    return config
 
 
 def _create_filesystem_backend(uri: str) -> tuple[FilesystemBackend, str]:
@@ -88,6 +97,7 @@ class SwagManagerService:
         config_path: Path | None = None,
         template_path: Path | None = None,
         fs: FilesystemBackend | None = None,
+        settings: "SwagConfig | None" = None,
     ) -> None:
         """Initialize the SWAG manager orchestrator service.
 
@@ -95,18 +105,23 @@ class SwagManagerService:
             config_path: Path to SWAG proxy configurations directory
             template_path: Path to Jinja2 templates directory
             fs: Filesystem backend (auto-detected from config if not provided)
+            settings: Optional runtime settings object for this service instance
 
         """
+        runtime_config = settings if settings is not None else _load_default_config()
+
         # Determine filesystem backend and config path
         if fs is not None:
             # Explicit backend provided (e.g., for testing)
             self.fs = fs
             self.config_path = (
-                Path(config_path) if config_path is not None else Path(config.proxy_confs_path)
+                Path(config_path)
+                if config_path is not None
+                else Path(runtime_config.proxy_confs_path)
             )
-        elif config.proxy_confs_uri:
+        elif runtime_config.proxy_confs_uri:
             # URI configured - parse it to determine backend
-            self.fs, config_path_str = _create_filesystem_backend(config.proxy_confs_uri)
+            self.fs, config_path_str = _create_filesystem_backend(runtime_config.proxy_confs_uri)
             self.config_path = Path(config_path_str)
         elif config_path is not None:
             # Explicit local path
@@ -115,10 +130,10 @@ class SwagManagerService:
         else:
             # Default local path
             self.fs = LocalFilesystem()
-            self.config_path = Path(config.proxy_confs_path)
+            self.config_path = Path(runtime_config.proxy_confs_path)
 
         self.template_path: Path = (
-            Path(template_path) if template_path is not None else Path(config.template_path)
+            Path(template_path) if template_path is not None else Path(runtime_config.template_path)
         )
 
         logger.info(f"Initializing SWAG manager with proxy configs path: {self.config_path}")
@@ -129,7 +144,7 @@ class SwagManagerService:
         self.validation_service = ValidationService()
         self.health_monitor = HealthMonitor(
             fs=self.fs,
-            swag_log_base_path=config.swag_log_base_path,
+            swag_log_base_path=runtime_config.swag_log_base_path,
         )
         self.resource_manager = ResourceManager(config_path=self.config_path, fs=self.fs)
 
@@ -166,8 +181,8 @@ class SwagManagerService:
             updaters=self.config_updaters,
         )
 
-        # Wire up config_ops reference to avoid duplicate read_config in MCPOperations
-        self.mcp_operations._config_ops = self.config_operations
+        # Explicitly wire config reads after ConfigOperations exists.
+        self.mcp_operations.attach_config_reader(self.config_operations)
 
         logger.info("Successfully initialized all sub-managers")
 
@@ -329,25 +344,25 @@ class SwagManagerService:
         """
         return self.file_ops.begin_transaction(transaction_id)
 
-    # ----- Template Hooks (For testing) -----
+    # ----- Internal Template Hooks (For tests) -----
 
-    def set_template_hooks(
+    def _set_template_hooks(
         self,
         pre_render_hook: Any = None,
         post_render_hook: Any = None,
         template_vars_hook: Any = None,
     ) -> None:
-        """Set testable hooks for template rendering.
+        """Set internal template rendering hooks.
 
         Delegates to: TemplateManager
         """
-        self.template_manager.set_template_hooks(
+        self.template_manager._set_template_hooks(
             pre_render_hook, post_render_hook, template_vars_hook
         )
 
-    def clear_template_hooks(self) -> None:
-        """Clear all template rendering hooks.
+    def _clear_template_hooks(self) -> None:
+        """Clear internal template rendering hooks.
 
         Delegates to: TemplateManager
         """
-        self.template_manager.clear_template_hooks()
+        self.template_manager._clear_template_hooks()

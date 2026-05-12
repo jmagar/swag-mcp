@@ -16,7 +16,7 @@ def setup_logging() -> None:
     - swag-mcp.log: Main application logs
     - swag-middleware.log: Middleware-specific logs
 
-    Both files use rotation that clears the file when size limit is reached.
+    Both files use rotation with a bounded number of retained backups.
     Console logging continues to work as before.
     """
     # Create log directory if it doesn't exist
@@ -53,7 +53,7 @@ def setup_logging() -> None:
     main_file_handler = logging.handlers.RotatingFileHandler(
         filename=main_log_file,
         maxBytes=config.log_file_max_bytes,
-        backupCount=0,  # Don't keep old files, just clear when size limit hit
+        backupCount=config.log_file_backup_count,
         encoding="utf-8",
     )
     main_file_handler.setFormatter(formatter)
@@ -64,7 +64,7 @@ def setup_logging() -> None:
     middleware_file_handler = logging.handlers.RotatingFileHandler(
         filename=middleware_log_file,
         maxBytes=config.log_file_max_bytes,
-        backupCount=0,  # Don't keep old files, just clear when size limit hit
+        backupCount=config.log_file_backup_count,
         encoding="utf-8",
     )
     middleware_file_handler.setFormatter(formatter)
@@ -104,6 +104,7 @@ def get_logger_config() -> dict[str, Any]:
         "log_file_enabled": config.log_file_enabled,
         "log_directory": str(config.log_directory),
         "log_file_max_bytes": config.log_file_max_bytes,
+        "log_file_backup_count": config.log_file_backup_count,
         "console_logging": True,  # Always enabled
     }
 

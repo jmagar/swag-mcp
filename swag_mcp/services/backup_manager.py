@@ -5,8 +5,10 @@ import errno
 import logging
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from re import Pattern
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -17,6 +19,15 @@ from swag_mcp.services.filesystem import FilesystemBackend
 from swag_mcp.utils.validators import validate_config_filename
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _BackupCleanupCandidate:
+    """Backup file metadata captured during cleanup scanning."""
+
+    filename: str
+    path: str
+    stat: Any
 
 
 class BackupManager:
@@ -99,9 +110,16 @@ class BackupManager:
 
                 return backup_name
 
-    async def list_backups(self) -> list[dict[str, Any]]:
-        """List all backup files with metadata."""
+    async def list_backups(
+        self, offset: int = 0, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """List backup files with metadata and optional pagination."""
         from swag_mcp.core.constants import BACKUP_MARKER
+
+        if offset < 0:
+            raise ValueError("offset must be greater than or equal to 0")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be greater than or equal to 1")
 
         logger.info("Listing all backup files")
         backup_files = []
@@ -134,8 +152,17 @@ class BackupManager:
             logger.warning(f"Error scanning backup files: {e}")
             return []
 
-        # Sort by modification time, newest first
-        return sorted(backup_files, key=lambda x: x["modified_time"], reverse=True)
+        # Sort by modification time, newest first, then name for deterministic paging.
+        sorted_backups = sorted(
+            backup_files,
+            key=lambda x: (x["modified_time"], x["name"]),
+            reverse=True,
+        )
+        if limit is not None:
+            return sorted_backups[offset : offset + limit]
+        if offset:
+            return sorted_backups[offset:]
+        return sorted_backups
 
     async def cleanup_old_backups(self, retention_days: int | None = None) -> int:
         """Clean up old backup files beyond retention period with proper concurrency control."""
@@ -151,97 +178,98 @@ class BackupManager:
             cutoff_time = datetime.now().timestamp() - (retention_days * 24 * 60 * 60)
             cleaned_count = 0
 
-            # Enhanced pattern: filename.backup.YYYYMMDD_HHMMSS_microseconds_uuid
-            # This matches our improved backup naming scheme
-            backup_pattern = re.compile(r"^.+\.backup\.\d{8}_\d{6}_\d{6}_[a-f0-9]{8}$")
-
-            # Get list of backup files first (snapshot in time to avoid race conditions)
-            backup_candidates = []
-            try:
-                filenames = await self.fs.glob(str(self.config_path), "*.backup.*")
-                for filename in filenames:
-                    full_path = str(self.config_path / filename)
-                    if await self.fs.is_file(full_path):
-                        backup_candidates.append((filename, full_path))
-            except OSError as e:
-                logger.warning(f"Error scanning backup files: {e}")
-                return 0
+            backup_candidates = await self._scan_backup_candidates()
 
             # Process each candidate backup file
-            for filename, backup_file_path in backup_candidates:
-                try:
-                    # Double-check file still exists (another process might have cleaned it)
-                    if not await self.fs.exists(backup_file_path):
-                        continue
-
-                    # Additional safety checks:
-                    # 1. Must match our exact timestamp format
-                    # 2. Must be a regular file (not directory)
-                    # 3. Must be older than retention period
-                    # 4. Must not be currently being written (check for temp files)
-
-                    if not backup_pattern.match(filename):
-                        logger.debug(f"Skipping file (wrong format): {filename}")
-                        continue
-
-                    if not await self.fs.is_file(backup_file_path):
-                        logger.debug(f"Skipping non-file: {filename}")
-                        continue
-
-                    # Check if file is currently being written (has corresponding temp file)
-                    backup_path_obj = Path(backup_file_path)
-                    temp_file = backup_path_obj.with_suffix(
-                        f"{backup_path_obj.suffix}.tmp.{os.getpid()}"
-                    )
-                    if await self.fs.exists(str(temp_file)):
-                        logger.debug(f"Skipping backup being written: {filename}")
-                        continue
-
-                    # Check modification time
-                    try:
-                        file_stat = await self.fs.stat(backup_file_path)
-                        if file_stat.st_mtime >= cutoff_time:
-                            continue  # File is not old enough to delete
-                    except OSError as e:
-                        logger.debug(f"Could not get stats for {filename}: {e}")
-                        continue
-
-                    # Check if file is currently locked by getting its lock (non-blocking)
-                    file_lock = await self.file_ops.get_file_lock(Path(backup_file_path))
-                    if file_lock.locked():
-                        logger.debug(f"Skipping locked backup file: {filename}")
-                        continue
-
-                    # Attempt to acquire lock briefly for deletion
-                    try:
-                        # Use asyncio.wait_for to timeout if lock can't be acquired
-                        # quickly
-                        async with asyncio.timeout(1.0):  # 1 second timeout
-                            async with file_lock:
-                                # Double-check file still exists and meets criteria
-                                if (
-                                    await self.fs.exists(backup_file_path)
-                                    and await self.fs.is_file(backup_file_path)
-                                    and (await self.fs.stat(backup_file_path)).st_mtime
-                                    < cutoff_time
-                                ):
-                                    logger.debug(f"Deleting old backup: {filename}")
-                                    await self.fs.unlink(backup_file_path)
-                                    cleaned_count += 1
-
-                    except TimeoutError:
-                        logger.debug(f"Timeout acquiring lock for cleanup of {filename}")
-                        continue
-                    except (PermissionError, OSError) as e:
-                        logger.warning(f"Failed to delete backup {filename}: {e}")
-                        continue
-                    except Exception as e:
-                        logger.warning(f"Unexpected error cleaning up backup {filename}: {e}")
-                        continue
-
-                except Exception as e:
-                    logger.warning(f"Error processing backup file {filename}: {e}")
-                    continue
+            for candidate in backup_candidates:
+                if await self._delete_backup_candidate(candidate, cutoff_time):
+                    cleaned_count += 1
 
             logger.info(f"Cleaned up {cleaned_count} old backup files")
             return cleaned_count
+
+    def _cleanup_backup_pattern(self) -> Pattern[str]:
+        """Return the accepted backup filename pattern for cleanup deletion."""
+        return re.compile(r"^.+\.backup\.\d{8}_\d{6}_\d{6}_[a-f0-9]{8}$")
+
+    async def _scan_backup_candidates(self) -> list[_BackupCleanupCandidate]:
+        """Scan backup files and capture metadata once for cleanup processing."""
+        backup_candidates: list[_BackupCleanupCandidate] = []
+        try:
+            filenames = await self.fs.glob(str(self.config_path), "*.backup.*")
+            for filename in filenames:
+                full_path = str(self.config_path / filename)
+                file_stat = await self.fs.stat(full_path)
+                if file_stat.is_file:
+                    backup_candidates.append(
+                        _BackupCleanupCandidate(filename=filename, path=full_path, stat=file_stat)
+                    )
+        except OSError as e:
+            logger.warning(f"Error scanning backup files: {e}")
+            return []
+
+        return backup_candidates
+
+    async def _is_backup_being_written(self, backup_file_path: str) -> bool:
+        """Return whether a process-local temporary file exists for a backup."""
+        backup_path_obj = Path(backup_file_path)
+        temp_file = backup_path_obj.with_suffix(f"{backup_path_obj.suffix}.tmp.{os.getpid()}")
+        return await self.fs.exists(str(temp_file))
+
+    async def _delete_backup_candidate(
+        self,
+        candidate: _BackupCleanupCandidate,
+        cutoff_time: float,
+    ) -> bool:
+        """Delete one cleanup candidate when it still meets all safety checks."""
+        try:
+            if not await self.fs.exists(candidate.path):
+                return False
+
+            if not self._cleanup_backup_pattern().match(candidate.filename):
+                logger.debug(f"Skipping file (wrong format): {candidate.filename}")
+                return False
+
+            if not candidate.stat.is_file:
+                logger.debug(f"Skipping non-file: {candidate.filename}")
+                return False
+
+            if await self._is_backup_being_written(candidate.path):
+                logger.debug(f"Skipping backup being written: {candidate.filename}")
+                return False
+
+            if candidate.stat.st_mtime >= cutoff_time:
+                return False
+
+            file_lock = await self.file_ops.get_file_lock(Path(candidate.path))
+            if file_lock.locked():
+                logger.debug(f"Skipping locked backup file: {candidate.filename}")
+                return False
+
+            try:
+                async with asyncio.timeout(1.0):
+                    async with file_lock:
+                        if (
+                            await self.fs.exists(candidate.path)
+                            and candidate.stat.is_file
+                            and candidate.stat.st_mtime < cutoff_time
+                        ):
+                            logger.debug(f"Deleting old backup: {candidate.filename}")
+                            await self.fs.unlink(candidate.path)
+                            return True
+            except TimeoutError:
+                logger.debug(f"Timeout acquiring lock for cleanup of {candidate.filename}")
+                return False
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Failed to delete backup {candidate.filename}: {e}")
+                return False
+            except Exception as e:
+                logger.warning(
+                    f"Unexpected error cleaning up backup {candidate.filename}: {e}"
+                )
+                return False
+        except Exception as e:
+            logger.warning(f"Error processing backup file {candidate.filename}: {e}")
+            return False
+
+        return False

@@ -1,6 +1,6 @@
 [project]
 name = "swag-mcp"
-version = "1.1.3"
+version = "1.1.4"
 description = "SWAG reverse proxy configuration generator MCP server"
 readme = "README.md"
 license = { text = "MIT" }
@@ -9,16 +9,16 @@ authors = [
     { name = "SWAG MCP Team" }
 ]
 dependencies = [
-    "fastmcp>=3.2.4",
-    "pydantic>=2.11.7",
-    "pydantic-settings>=2.7.0",
-    "jinja2>=3.1.6",
-    "aiofiles>=24.1.0",
-    "aiohttp>=3.9.0",
-    "pyyaml>=6.0.0",
-    "regex>=2024.5.15",
-    "docker>=7.1.0",
-    "asyncssh>=2.14.0",
+    "fastmcp>=3.2.4,<4.0.0",
+    "pydantic>=2.11.7,<3.0.0",
+    "pydantic-settings>=2.7.0,<3.0.0",
+    "jinja2>=3.1.6,<4.0.0",
+    "aiofiles>=24.1.0,<25.0.0",
+    "aiohttp>=3.9.0,<4.0.0",
+    "pyyaml>=6.0.0,<7.0.0",
+    "regex>=2024.5.15,<2027.0.0",
+    "docker>=7.1.0,<8.0.0",
+    "asyncssh>=2.14.0,<3.0.0",
 ]
 
 
@@ -31,17 +31,23 @@ packages = ["swag_mcp"]
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0.0",
-    "ruff>=0.8.0",
-    "ty>=0.0.24",
-    "bandit>=1.7.0",
-    "pip-audit>=2.0.0",
-    "hypothesis>=6.0.0", # Property-based testing
-    "pytest-benchmark>=4.0.0", # Performance testing
-    "psutil>=5.9.0", # System monitoring for benchmarks
+    "pytest>=7.0.0,<9.0.0",
+    "pytest-asyncio>=0.21.0,<2.0.0",
+    "pytest-cov>=4.0.0,<7.0.0",
+    "ruff>=0.8.0,<1.0.0",
+    "ty>=0.0.24,<1.0.0",
+    "bandit>=1.7.0,<2.0.0",
+    "pip-audit>=2.0.0,<3.0.0",
+    "hypothesis>=6.0.0,<7.0.0", # Property-based testing
+    "pytest-benchmark>=4.0.0,<6.0.0", # Performance testing
+    "psutil>=5.9.0,<8.0.0", # System monitoring for benchmarks
 ]
+
+[tool.swag-mcp.dependency-policy]
+direct_dependencies = "Pin every direct runtime and dev dependency to a reviewed lower bound plus an upper bound. Prefer the next major version; use the next calendar-year major for calendar-versioned packages such as regex and aiofiles."
+lockfile = "uv.lock is the reproducible source for transitive dependencies and must be regenerated with uv lock after dependency range changes."
+automation = "Scheduled dependency automation upgrades one direct dependency per pull request and must pass tests, type checks, linting, and pip-audit before merge."
+docker_images = "Published production images should be consumed by immutable tag or digest. Dockerfile base images support digest-pinned build args when the operator has reviewed the current upstream digest."
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -52,6 +58,7 @@ python_functions = ["test_*"]
 cache_dir = ".cache/pytest"
 markers = [
     "slow: marks tests as slow (potentially network-dependent)",
+    "real_nginx_validation: disables the default nginx validation mock for this test",
 ]
 
 [tool.ruff]

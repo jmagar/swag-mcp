@@ -12,6 +12,18 @@ The `utils/` module provides shared utility functions for:
 - Unicode text processing and normalization
 - File safety checks and encoding detection
 
+## Unicode and Homograph Policy
+
+Validation utilities normalize text before applying field-specific rules. The current policy is:
+
+- Use Unicode normalization (`NFC` for service/file safety utilities, `NFKC` in request models where compatibility folding is desired) before validation.
+- Reject path traversal, path separators, null/control characters, private-use characters, unassigned characters in strict mode, unpaired surrogates, and bidirectional override/isolate characters.
+- Allow Unicode letters and numbers in service names, plus `_` and `-`; emoji and other extended-plane characters require explicit `allow_emoji=True`.
+- Treat ASCII lookalikes and mixed scripts as spoofing signals rather than hard failures unless they also violate a dangerous Unicode category or the final field pattern.
+- Keep config filenames, upstream identifiers, and domains conservative because they become nginx config text and operator-facing filesystem names.
+
+Do not document homograph detection as a blocking validator unless the implementation changes to raise errors for those cases.
+
 ## Key Files
 
 ### `validators.py` - Input Validation Functions
@@ -315,24 +327,19 @@ def build_template_filename(config_type: str) -> str:
 
 def format_health_check_result(result: Dict[str, Any]) -> str:
     """Format health check results for user display"""
-    data = result.get('data', {})
-    domain = data.get('domain', 'unknown')
-    accessible = data.get('accessible', False)
+    domain = result.get('domain', 'unknown')
+    success = result.get('success', False)
 
-    if accessible:
-        status_code = data.get('status_code', 'unknown')
-        response_time = data.get('response_time_ms', 0)
+    if success:
+        status_code = result.get('status_code', 'unknown')
+        response_time = result.get('response_time_ms', 0)
 
         status = f"✅ {domain} is accessible"
         status += f" (HTTP {status_code}, {format_duration(response_time)})"
 
-        redirect_url = data.get('redirect_url')
-        if redirect_url and redirect_url != f"https://{domain}":
-            status += f" → {redirect_url}"
-
         return status
     else:
-        error_msg = data.get('error_message', 'Unknown error')
+        error_msg = result.get('error', 'Unknown error')
         return f"❌ {domain} is not accessible: {error_msg}"
 
 def format_config_list(configs: List[Dict[str, Any]], total_count: int) -> str:
@@ -522,8 +529,8 @@ def build_validation_error_response(validation_errors: List[Dict]) -> str:
             suggestions.append("Port numbers must be between 1 and 65535")
         elif 'domain' in field or 'server_name' in field:
             suggestions.append("Domain names must be valid hostnames (e.g., example.com)")
-        elif 'service_name' in field:
-            suggestions.append("Service names can only contain letters, numbers, dashes, and underscores")
+        elif 'config_name' in field:
+            suggestions.append("Config names must be safe .conf or .conf.sample filenames")
 
     error_msg = "; ".join(error_details)
     return build_error_response(error_msg, "Validation Error", list(set(suggestions)))
