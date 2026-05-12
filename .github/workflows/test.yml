@@ -12,20 +12,15 @@ env:
 
 jobs:
   test:
-    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Test Python ${{ matrix.python-version }} on Ubuntu
+    runs-on: ubuntu-latest
     permissions:
       contents: read
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12"]
-        exclude:
-          # Python 3.12 only on Ubuntu for now
-          - os: macos-latest
-            python-version: "3.12"
 
     steps:
     - name: Checkout code
@@ -57,7 +52,7 @@ jobs:
         uv run ruff format --check .
 
     - name: Type check with ty
-      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+      if: matrix.python-version == '3.12'
       run: |
         uv run ty check swag_mcp/
       continue-on-error: false  # Enforce type checking (fail CI on type errors)
@@ -92,8 +87,7 @@ jobs:
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-    - name: Test Docker build (Ubuntu only)
-      if: matrix.os == 'ubuntu-latest'
+    - name: Test Docker build
       run: |
         docker build -t swag-mcp:test .
 
