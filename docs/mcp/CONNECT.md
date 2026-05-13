@@ -67,11 +67,11 @@ The `gemini-extension.json` manifest configures stdio transport:
 
 Settings configured via the extension settings UI:
 - `SWAG_MCP_PROXY_CONFS_PATH`: Path to proxy-confs directory
-- `SWAG_MCP_DEFAULT_AUTH_METHOD`: Default auth method
+- `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD`: Default generated web endpoint auth method
 
 ## Codex CLI
 
-The `.codex-plugin/plugin.json` provides discovery metadata. Configure the MCP server via `.mcp.json`:
+The `.codex-plugin/plugin.json` provides discovery metadata. Configure the MCP server via `plugins/swag-mcp/.mcp.json` or a project-local `.mcp.json`:
 
 ```json
 {

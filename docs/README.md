@@ -29,7 +29,7 @@ filesystem and remote SSH access modes are supported.
 - `templates/mcp.subdomain.conf.j2`: Jinja2 nginx config template with MCP/OAuth support
 - `config/nginx/mcp-server.conf`: Server-level MCP identity/discovery/auth sidecar
 - `config/nginx/mcp-location.conf`: Location-level MCP transport overrides (buffering, timeouts, SSE, CORS)
-- `skills/swag/SKILL.md`: Client-facing skill documentation
+- `plugins/swag-mcp/skills/swag/SKILL.md`: Client-facing skill documentation
 - `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `gemini-extension.json`: Client manifests
 - `docker-compose.yaml`, `Dockerfile`, `entrypoint.sh`: Container deployment
 

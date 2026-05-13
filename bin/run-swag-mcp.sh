@@ -18,12 +18,8 @@ if is_placeholder "${CLAUDE_PLUGIN_DATA:-}"; then
 else
   DATA_ROOT="${CLAUDE_PLUGIN_DATA}"
 fi
-VENV_DIR="${DATA_ROOT}/.venv"
-
-if [[ ! -f "${REPO_ROOT}/uv.lock" ]]; then
-  echo "sync-uv.sh: missing lockfile at ${REPO_ROOT}/uv.lock" >&2
-  exit 1
-fi
 
 mkdir -p "${DATA_ROOT}"
-UV_PROJECT_ENVIRONMENT="${VENV_DIR}" uv sync --project "${REPO_ROOT}"
+export UV_PROJECT_ENVIRONMENT="${DATA_ROOT}/.venv"
+
+exec uv run --project "${REPO_ROOT}" python -m swag_mcp "$@"

@@ -42,7 +42,7 @@ Standard task runner recipes. Run `just --list` to see all available recipes.
 | Recipe | Command | Description |
 | --- | --- | --- |
 | `just check-contract` | `bash scripts/lint-plugin.sh` | Check plugin contract drift |
-| `just validate-skills` | check `skills/swag/SKILL.md` exists | Validate skill files |
+| `just validate-skills` | check `plugins/swag-mcp/skills/swag/SKILL.md` exists | Validate skill files |
 
 ## Utilities
 

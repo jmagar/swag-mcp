@@ -13,6 +13,8 @@ from fastmcp import Client, FastMCP
 from pytest import MonkeyPatch
 from swag_mcp.server import create_mcp_server
 
+os.environ.setdefault("HYPOTHESIS_STORAGE_DIRECTORY", ".cache/hypothesis")
+
 logger = logging.getLogger(__name__)
 
 

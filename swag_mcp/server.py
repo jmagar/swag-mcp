@@ -1,11 +1,12 @@
 """SWAG FastMCP Server - Main entry point."""
 
 import asyncio
+import json
 import logging
 import os
 import secrets
 import sys
-from collections.abc import AsyncGenerator
+from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as metadata_version
 from pathlib import Path
@@ -69,6 +70,7 @@ __all__ = [
     "setup_templates",
     "cleanup_old_backups",
     "StaticBearerTokenProvider",
+    "CompositeAuthProvider",
     "main",
     "main_sync",
     "detect_execution_context",
@@ -101,6 +103,60 @@ class StaticBearerTokenProvider(AuthProvider):
             return None
 
         return AccessToken(token=token, client_id="swag-mcp-token", scopes=[])
+
+
+class CompositeAuthProvider(AuthProvider):
+    """Auth provider that accepts tokens validated by any configured provider."""
+
+    def __init__(self, providers: list[AuthProvider]) -> None:
+        """Initialize with providers in verification order."""
+        if not providers:
+            raise ValueError("CompositeAuthProvider requires at least one provider")
+
+        primary = providers[-1]
+        super().__init__(
+            base_url=primary.base_url,
+            required_scopes=primary.required_scopes,
+            resource_base_url=primary.resource_base_url,
+        )
+        self._providers = providers
+        self._route_provider = primary
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        """Return the first successful provider verification result."""
+        for provider in self._providers:
+            access_token = await provider.verify_token(token)
+            if access_token is not None:
+                if not access_token.scopes and self.required_scopes:
+                    return AccessToken(
+                        token=access_token.token,
+                        client_id=access_token.client_id,
+                        scopes=self.required_scopes,
+                        expires_at=access_token.expires_at,
+                        resource=access_token.resource,
+                        claims=access_token.claims,
+                    )
+                return access_token
+        return None
+
+    def set_mcp_path(self, mcp_path: str | None) -> None:
+        """Propagate the mounted MCP path to all child providers."""
+        super().set_mcp_path(mcp_path)
+        for provider in self._providers:
+            provider.set_mcp_path(mcp_path)
+
+    def get_routes(self, mcp_path: str | None = None) -> list:
+        """Expose routes from the provider that owns OAuth/discovery endpoints."""
+        return self._route_provider.get_routes(mcp_path)
+
+
+def _derive_resource_base_url(base_url: str, mcp_path: str = "/mcp") -> str:
+    """Return the public resource base URL FastMCP should combine with mcp_path."""
+    normalized_base = base_url.rstrip("/")
+    normalized_path = "/" + mcp_path.strip("/")
+    if normalized_base.endswith(normalized_path):
+        return normalized_base[: -len(normalized_path)] or normalized_base
+    return normalized_base
 
 
 def get_package_version() -> str:
@@ -136,70 +192,65 @@ def register_resources(mcp: FastMCP) -> None:
 
     # Register streaming resources for real-time updates
     @mcp.resource("swag://configs/live")
-    async def live_config_updates() -> AsyncGenerator[dict[str, str], None]:
-        """Stream configuration changes in real-time."""
-        from swag_mcp.utils.mcp_streaming import ConfigurationWatcher
-
-        watcher = ConfigurationWatcher(config_path)
-        async for change in watcher.watch_config_changes():
-            yield {
-                "uri": f"swag://configs/live/{change.get('config_name', 'unknown')}",
-                "name": f"Config Change: {change.get('type', 'unknown')}",
-                "description": f"Real-time configuration change: {change.get('message', '')}",
-                "mimeType": "application/json",
-                "text": str(change),
-            }
+    async def live_config_updates() -> str:
+        """Return a current configuration-watch snapshot."""
+        files = sorted(
+            path.name
+            for path in config_path.glob(CONF_PATTERN)
+            if path.is_file() and not path.name.endswith(".sample") and ".backup." not in path.name
+        )
+        return json.dumps(
+            {
+                "type": "watcher_snapshot",
+                "path": str(config_path),
+                "timestamp": datetime.now().isoformat(),
+                "files": files,
+                "total_count": len(files),
+                "message": "Configuration resource snapshot is readable",
+            },
+            indent=2,
+        )
 
     @mcp.resource("swag://health/stream")
-    async def health_status_stream() -> AsyncGenerator[dict[str, str], None]:
-        """Stream health status updates for monitored services."""
+    async def health_status_stream() -> str:
+        """Return a current health-monitor snapshot for active configurations."""
         from swag_mcp.services.swag_manager import SwagManagerService
-        from swag_mcp.utils.mcp_streaming import create_health_streamer
 
         # Get active configurations to monitor
         swag_service = SwagManagerService()
         try:
             configs_result = await swag_service.list_configs("active")
-            # Extract domains from config filenames by parsing the configs
-            domains = []
-            for config_file in configs_result.configs:
-                # Extract service name and try to get server_name if available
-                # For now, just use the config filename as identifier
-                domains.append(str(config_file))
-
-            if domains:
-                streamer = create_health_streamer()
-                async for health_update in streamer.stream_health_updates(domains[:5], 60):
-                    yield {
-                        "uri": f"swag://health/stream/{len(domains)}",
-                        "name": f"Health Monitor ({len(domains)} services)",
-                        "description": "Real-time health monitoring for active SWAG services",
-                        "mimeType": "text/plain",
-                        "text": health_update,
-                    }
+            domains = [str(config_file) for config_file in configs_result.configs[:5]]
+            return json.dumps(
+                {
+                    "type": "health_snapshot",
+                    "timestamp": datetime.now().isoformat(),
+                    "monitored_count": len(domains),
+                    "domains": domains,
+                    "message": "Health resource snapshot is readable",
+                },
+                indent=2,
+            )
         except Exception as e:
-            yield {
-                "uri": "swag://health/stream/error",
-                "name": "Health Monitor Error",
-                "description": f"Error starting health monitoring: {str(e)}",
-                "mimeType": "text/plain",
-                "text": f"Health monitoring error: {str(e)}",
-            }
+            return json.dumps(
+                {
+                    "type": "health_snapshot_error",
+                    "timestamp": datetime.now().isoformat(),
+                    "error": str(e),
+                },
+                indent=2,
+            )
 
     @mcp.resource("swag://logs/stream")
-    async def log_stream() -> AsyncGenerator[dict[str, str], None]:
-        """Stream SWAG logs in real-time."""
+    async def log_stream() -> str:
+        """Return a bounded SWAG nginx error log snapshot."""
         from swag_mcp.utils.mcp_streaming import create_log_streamer
 
-        streamer = create_log_streamer(follow=True)
-        async for log_entry in streamer.stream_live_logs("nginx-error", 300):  # 5 minutes
-            yield {
-                "uri": "swag://logs/stream/nginx-error",
-                "name": "SWAG Nginx Error Logs",
-                "description": "Real-time SWAG nginx error log stream",
-                "mimeType": "text/plain",
-                "text": log_entry,
-            }
+        streamer = create_log_streamer(follow=False)
+        chunks = []
+        async for log_entry in streamer.stream_log_entries("nginx-error", 5):
+            chunks.append(log_entry)
+        return "".join(chunks)
 
 
 def _extract_service_name(filename: str) -> str:
@@ -272,9 +323,13 @@ async def create_mcp_server() -> FastMCP:
 
 def _build_auth_provider() -> AuthProvider | None:
     """Build the configured FastMCP auth provider."""
-    auth_provider = None
+    providers: list[AuthProvider] = []
     fastmcp_auth = os.getenv("FASTMCP_SERVER_AUTH")
     token = os.getenv("SWAG_MCP_TOKEN")
+
+    if token:
+        providers.append(StaticBearerTokenProvider(token))
+        logger.info("Static bearer token authentication enabled")
 
     if fastmcp_auth == "fastmcp.server.auth.providers.google.GoogleProvider":
         try:
@@ -286,6 +341,10 @@ def _build_auth_provider() -> AuthProvider | None:
             client_id = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID")
             client_secret = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET")
             base_url = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "http://localhost:8000")
+            resource_base_url = os.getenv(
+                "FASTMCP_SERVER_AUTH_RESOURCE_BASE_URL",
+                _derive_resource_base_url(base_url),
+            )
             scopes_str = os.getenv("FASTMCP_SERVER_AUTH_GOOGLE_REQUIRED_SCOPES", "")
             scopes = [scope.strip() for scope in scopes_str.split(",") if scope.strip()]
 
@@ -306,11 +365,14 @@ def _build_auth_provider() -> AuthProvider | None:
                 client_id=client_id,
                 client_secret=client_secret,
                 base_url=base_url,
+                resource_base_url=resource_base_url,
                 required_scopes=scopes,
                 redirect_path=redirect_path,
             )
+            providers.append(auth_provider)
             logger.info("✅ Google OAuth authentication enabled")
             logger.info("📍 OAuth base URL: %s", base_url)
+            logger.info("📍 OAuth protected resource base URL: %s", resource_base_url)
             logger.info("🔑 OAuth client ID: %s...", client_id[:20])
             logger.info("🔒 OAuth scopes: %s", scopes)
         except ImportError:
@@ -321,13 +383,16 @@ def _build_auth_provider() -> AuthProvider | None:
             raise
     elif fastmcp_auth:
         raise ValueError(f"Unsupported FASTMCP_SERVER_AUTH provider: {fastmcp_auth}")
-    elif token:
-        auth_provider = StaticBearerTokenProvider(token)
-        logger.info("Static bearer token authentication enabled")
-    else:
-        logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
 
-    return auth_provider
+    if not providers:
+        logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
+        return None
+
+    if len(providers) == 1:
+        return providers[0]
+
+    logger.info("Combined bearer token and FastMCP OAuth authentication enabled")
+    return CompositeAuthProvider(providers)
 
 
 def setup_templates() -> None:
@@ -370,7 +435,9 @@ def _validate_bearer_token() -> None:
     no_auth = os.getenv("SWAG_MCP_NO_AUTH", "").lower() in ("true", "1", "yes")
     fastmcp_auth = os.getenv("FASTMCP_SERVER_AUTH")
 
-    if token:
+    if token and fastmcp_auth:
+        logger.info("SWAG_MCP_TOKEN and FASTMCP_SERVER_AUTH configured; both auth paths enabled")
+    elif token:
         logger.info("SWAG_MCP_TOKEN configured; static bearer auth will be enforced")
     elif fastmcp_auth:
         logger.info("FASTMCP_SERVER_AUTH configured; FastMCP auth provider will be enforced")

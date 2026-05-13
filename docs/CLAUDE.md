@@ -31,7 +31,7 @@ This directory contains comprehensive documentation for the swag-mcp plugin, org
 | File | Purpose |
 | --- | --- |
 | `TEMPLATES.md` | Jinja2 template system reference (MCP/OAuth/nginx) |
-| `mcp-remote-server-analysis.md` | Analysis of remote MCP server patterns |
+| `remote-mcp-upstream-analysis.md` | Historical analysis of remote MCP upstream patterns |
 | `swag-test-commands.md` | Test command examples (600+) |
 | `template-enhancement-proposal.md` | Template system improvement proposals |
 | `token-efficient-formatting.md` | Token-efficient output formatting patterns |

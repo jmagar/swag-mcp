@@ -50,11 +50,17 @@ The server supports optional Google OAuth via FastMCP's built-in GoogleProvider.
 FASTMCP_SERVER_AUTH=fastmcp.server.auth.providers.google.GoogleProvider
 FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID=your-client-id
 FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET=your-secret
-FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL=https://swag.example.com
+FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL=https://swag.example.com/mcp
+FASTMCP_SERVER_AUTH_RESOURCE_BASE_URL=https://swag.example.com
 FASTMCP_SERVER_AUTH_GOOGLE_REQUIRED_SCOPES=openid,email
 ```
 
-This is independent of the generated proxy config auth and is used for direct MCP server access without a proxy.
+`FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL` is the public OAuth/MCP endpoint. If it
+includes `/mcp`, set `FASTMCP_SERVER_AUTH_RESOURCE_BASE_URL` to the public
+origin so protected-resource metadata advertises `https://swag.example.com/mcp`
+instead of duplicating the mount path.
+
+This is independent of the generated proxy config auth and is used for direct MCP server access without a proxy. `SWAG_MCP_TOKEN` can be configured at the same time; in that mode either the static bearer token or a valid OAuth token is accepted.
 
 ## Generated proxy config authentication
 
@@ -69,7 +75,7 @@ When creating nginx proxy configurations, the `auth_method` parameter controls h
 | `authentik` | `authentik-server.conf` / `authentik-location.conf` | Authentik SSO |
 | `tinyauth` | `tinyauth-server.conf` / `tinyauth-location.conf` | Tinyauth lightweight SSO |
 
-The default is configured via `SWAG_MCP_DEFAULT_AUTH_METHOD` (default: `authelia`).
+The default is configured via `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` (default: `authelia`). This controls generated SWAG/nginx web endpoint auth, not MCP server authentication.
 
 ## OAuth 2.1 and Axon Standard for MCP Endpoints
 

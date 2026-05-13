@@ -133,7 +133,7 @@ Always confirm before:
 
 ## Proxy Confs Path
 
-The server manages configs at the path configured via `SWAG_MCP_PROXY_CONFS_PATH` or the SSH URI in `SWAG_MCP_PROXY_CONFS_URI`. These are set via userConfig and synced to `.env` at SessionStart — no manual configuration needed.
+The server manages configs at the path configured via `SWAG_MCP_PROXY_CONFS_PATH` or the SSH URI in `SWAG_MCP_PROXY_CONFS_URI`. Plugin `userConfig` is projected through `swag setup repair` into `~/.swag-mcp/.env`; existing local secrets are preserved unless a replacement option is supplied.
 
 ---
 

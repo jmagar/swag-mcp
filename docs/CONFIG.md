@@ -6,17 +6,16 @@ Complete environment variable reference and configuration options.
 
 | Path | Transport | Credentials source | Auth |
 |------|-----------|-------------------|------|
-| **Plugin (stdio)** | stdio | `userConfig` in plugin.json, interpolated via `.mcp.json` | None |
-| **Plugin (mcp-remote)** | HTTP gateway | Manual `SWAG_MCP_URL` in `.mcp.json` | Bearer token |
+| **Plugin (HTTP)** | http | `userConfig` in plugin.json, interpolated via `plugins/swag-mcp/.mcp.json` | Bearer token |
 | **Docker (HTTP)** | http | `.env` file | Bearer token |
 
 ### Plugin quickstart
 
 Install the plugin in Claude Code. You will be prompted for:
-- **SWAG Proxy Configs Path** -- local filesystem path to proxy-confs directory
-- **SWAG Proxy Configs URI** -- SSH URI for remote access (key-auth only, no passwords)
+- **SWAG MCP Server URL** -- base URL of the running HTTP server
+- **SWAG MCP API Token** -- bearer token for the HTTP server
 
-One of the two is required. See [plugin/CONFIG.md](plugin/CONFIG.md) for details.
+See [plugin/CONFIG.md](plugin/CONFIG.md) for details.
 
 ### Docker quickstart
 
@@ -57,7 +56,7 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
-| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | no | Default auth for new configs: none, basic, ldap, authelia, authentik, tinyauth, oauth |
+| `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | no | Default SWAG/nginx auth for generated web endpoints: none, basic, ldap, authelia, authentik, tinyauth, oauth. This is not MCP server auth |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no | Enable QUIC/HTTP3 by default for new configurations |
 
 ### OAuth gateway
@@ -134,28 +133,50 @@ and `UV_IMAGE` build args. Production Compose deployments should pin
 
 ## Plugin userConfig
 
-When installed as a Claude Code plugin, these fields are declared in `.claude-plugin/plugin.json` and interpolated into `.mcp.json` via `${userConfig.*}`:
+When installed as a Claude Code plugin, these fields are declared in `.claude-plugin/plugin.json` and interpolated into `plugins/swag-mcp/.mcp.json` via `${user_config.*}`:
 
 ```json
 {
   "userConfig": {
-    "swag_proxy_confs_path": {
+    "swag_mcp_proxy_confs_path": {
       "type": "string",
       "title": "SWAG Proxy Configs Path",
-      "description": "Local filesystem path to SWAG nginx proxy-confs directory",
+      "description": "Container/local path where SWAG proxy configurations are mounted",
       "sensitive": false
     },
-    "swag_proxy_confs_uri": {
+    "swag_mcp_proxy_confs_uri": {
       "type": "string",
-      "title": "SWAG Proxy Configs URI (Remote/SSH)",
-      "description": "SSH URI to remote SWAG proxy-confs. Only SSH-key auth supported.",
+      "title": "SWAG Proxy Configs URI",
+      "description": "Optional local path or SSH URI for SWAG proxy configs",
+      "sensitive": false
+    },
+    "swag_mcp_url": {
+      "type": "string",
+      "title": "SWAG MCP URL",
+      "description": "Public HTTP MCP endpoint including /mcp",
+      "sensitive": false
+    },
+    "swag_mcp_token": {
+      "type": "string",
+      "title": "SWAG MCP Token",
+      "description": "Bearer token for HTTP MCP requests",
+      "sensitive": true
+    },
+    "swag_mcp_default_web_auth_method": {
+      "type": "string",
+      "title": "Default Web Endpoint Auth Method",
+      "description": "Default SWAG/nginx auth method for generated web endpoints",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_google_client_secret": {
+      "type": "string",
+      "title": "Google OAuth Client Secret",
+      "description": "Optional Google OAuth client secret for FastMCP authentication",
       "sensitive": true
     }
   }
 }
 ```
-
-HTTP-only fields (`swag_mcp_url`, `swag_mcp_token`) are not needed for plugin (stdio) deployment. For remote gateway access, use the `swag-mcp-remote` entry in `.mcp.json`.
 
 ## .env.example conventions
 

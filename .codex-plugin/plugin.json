@@ -12,9 +12,9 @@
     "homelab",
     "mcp"
   ],
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
-  "apps": "./.app.json",
+  "skills": "./plugins/swag-mcp/skills/",
+  "mcpServers": "./plugins/swag-mcp/.mcp.json",
+  "apps": "./plugins/swag-mcp/.app.json",
   "interface": {
     "displayName": "SWAG MCP",
     "shortDescription": "Manage SWAG reverse proxy configurations",

@@ -10,21 +10,17 @@ swag-mcp supports configuration via the Claude Code plugin `userConfig` system. 
 
 | Field | Key | Type | Sensitive | Description |
 | --- | --- | --- | --- | --- |
-| SWAG MCP Server URL | `swag_mcp_url` | string | no | URL of the MCP server endpoint |
-| SWAG Proxy Configs Path | `swag_proxy_confs_path` | string | no | Local filesystem path to proxy-confs |
-| SWAG Proxy Configs URI | `swag_proxy_confs_uri` | string | no | SSH URI for remote proxy-confs |
-| MCP Server Bearer Token | `swag_mcp_token` | string | yes | Bearer token for authentication |
+| SWAG MCP URL | `SWAG_MCP_URL` | string | no | Public HTTP MCP endpoint including `/mcp` |
+| SWAG MCP Token | `SWAG_MCP_TOKEN` | string | yes | Bearer token for HTTP MCP requests |
+| SWAG Proxy Configs Path | `SWAG_MCP_PROXY_CONFS_PATH` | string | no | Container/local path where SWAG proxy configs are mounted |
+| SWAG Proxy Configs URI | `SWAG_MCP_PROXY_CONFS_URI` | string | no | Optional local path or SSH URI for SWAG proxy configs |
+| Default Web Endpoint Auth Method | `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | string | no | Default SWAG/nginx auth for generated web endpoints, not MCP auth |
 
 ## Sync mechanism
 
-The `sync-uv.sh` hook keeps the repository lockfile and persistent Python environment in sync at session start.
-
-1. Reads userConfig values from the Claude Code plugin context
-2. Writes them to `.env` with appropriate `SWAG_MCP_` prefixes
-3. Uses `flock` for safe concurrent writes
-4. Sets `chmod 600` on the `.env` file
-
-This means users configure once via the plugin UI and the server picks up values from `.env` on next startup.
+Claude Code prompts for `swag_mcp_url` and `swag_mcp_token`, then interpolates those values into `plugins/swag-mcp/.mcp.json`.
+The plugin connects to `${user_config.swag_mcp_url}` with an
+`Authorization: Bearer ${user_config.swag_mcp_token}` header.
 
 ## Manual configuration
 

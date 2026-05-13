@@ -126,7 +126,7 @@ SWAG_MCP_PORT=8000
 ### Default Configuration
 ```bash
 # Default authentication method for new configs
-SWAG_MCP_DEFAULT_AUTH_METHOD=authelia
+SWAG_MCP_DEFAULT_WEB_AUTH_METHOD=authelia
 
 # Default configuration type
 SWAG_MCP_DEFAULT_CONFIG_TYPE=subdomain

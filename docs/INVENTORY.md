@@ -41,7 +41,7 @@ Complete listing of all plugin components.
 | `SWAG_MCP_PORT` | no | `8000` | no |
 | `SWAG_MCP_TOKEN` | no | — | yes |
 | `SWAG_MCP_NO_AUTH` | no | `false` | no |
-| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | no |
+| `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | no |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no |
 | `SWAG_MCP_OAUTH_UPSTREAM` | no | `http://mcp-oauth:8000` | no |
 | `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.tootie.tv` | no |
@@ -67,10 +67,10 @@ Complete listing of all plugin components.
 
 | Surface | Present | Path |
 | --- | --- | --- |
-| Skills | yes | `skills/swag/SKILL.md` |
+| Skills | yes | `plugins/swag-mcp/skills/swag/SKILL.md` |
 | Agents | no | — |
 | Commands | no | — |
-| Hooks | yes | `hooks/hooks.json` |
+| Hooks | yes | `plugins/swag-mcp/hooks/hooks.json` |
 | Channels | no | — |
 | Output styles | no | — |
 | Schedules | no | — |

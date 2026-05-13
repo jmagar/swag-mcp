@@ -193,7 +193,7 @@ operations:
 4. View the backup file through the filesystem backend or operator shell.
 5. Restore its content with `swag(action="edit", config_name="...", new_content="...", create_backup=true)`.
 6. Validate nginx syntax, reload SWAG, run `swag(action="health_check", domain="...")`, and inspect `nginx-error` logs.
-7. Record the image, config, backup filename, port, timestamp, and outcome in `.docs/deployment-log.md`.
+7. Record the image, config, backup filename, port, timestamp, and outcome in `docs/deployment-log.md`.
 
 ## Incident runbook
 
@@ -204,4 +204,4 @@ For production-impacting failures:
 3. Classify the failure: auth, generated config, SWAG reload, upstream outage, remote SSH/filesystem, MCP server, or dependency/image rollout.
 4. Roll back the container image or restore the config backup if the last change caused the incident.
 5. Verify the auth path, `/health`, `health_check` endpoint results, nginx syntax, SWAG reload, and upstream container/service health.
-6. Document the timeline and commands in `.docs/deployment-log.md` or incident notes using `HH:MM:SS | MM/DD/YYYY EST`.
+6. Document the timeline and commands in `docs/deployment-log.md` or incident notes using `HH:MM:SS | MM/DD/YYYY EST`.

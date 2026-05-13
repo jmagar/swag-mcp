@@ -5,8 +5,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from swag_mcp.core.config import config
 from swag_mcp.server import (
+    CompositeAuthProvider,
     StaticBearerTokenProvider,
     _build_auth_provider,
+    _derive_resource_base_url,
     _extract_service_name,
     _validate_bearer_token,
     cleanup_old_backups,
@@ -84,6 +86,58 @@ class TestServerFunctions:
         provider = _build_auth_provider()
 
         assert isinstance(provider, StaticBearerTokenProvider)
+
+    def test_derive_resource_base_url_strips_mcp_mount(self):
+        """Configured public MCP URLs advertise the MCP resource without duplicating /mcp."""
+        assert _derive_resource_base_url("https://swag.tootie.tv/mcp") == "https://swag.tootie.tv"
+        assert _derive_resource_base_url("https://swag.tootie.tv/mcp/") == "https://swag.tootie.tv"
+        assert _derive_resource_base_url("https://swag.tootie.tv") == "https://swag.tootie.tv"
+
+    async def test_composite_auth_provider_accepts_static_token_before_oauth(self):
+        """Combined auth accepts static bearer tokens and falls through to OAuth."""
+        static_provider = StaticBearerTokenProvider("expected-token")
+        oauth_provider = Mock()
+        oauth_provider.base_url = "https://swag.tootie.tv/mcp"
+        oauth_provider.resource_base_url = "https://swag.tootie.tv"
+        oauth_provider.required_scopes = ["openid"]
+        oauth_provider.verify_token = AsyncMock(return_value=None)
+        oauth_provider.set_mcp_path = Mock()
+        oauth_provider.get_routes = Mock(return_value=["oauth-route"])
+
+        provider = CompositeAuthProvider([static_provider, oauth_provider])
+
+        static_token = await provider.verify_token("expected-token")
+        fallback_token = await provider.verify_token("oauth-token")
+
+        assert static_token is not None
+        assert static_token.client_id == "swag-mcp-token"
+        assert static_token.scopes == ["openid"]
+        assert fallback_token is None
+        oauth_provider.verify_token.assert_awaited_once_with("oauth-token")
+        assert provider.get_routes("/mcp") == ["oauth-route"]
+
+    def test_build_auth_provider_combines_bearer_and_google_oauth(self, monkeypatch):
+        """SWAG_MCP_TOKEN remains valid when Google OAuth is also configured."""
+        monkeypatch.setenv("SWAG_MCP_TOKEN", "expected-token")
+        monkeypatch.setenv(
+            "FASTMCP_SERVER_AUTH", "fastmcp.server.auth.providers.google.GoogleProvider"
+        )
+        monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID", "client-id")
+        monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET", "client-secret")
+        monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "https://swag.tootie.tv/mcp")
+
+        with patch("fastmcp.server.auth.providers.google.GoogleProvider") as google_provider:
+            google_instance = google_provider.return_value
+            google_instance.base_url = "https://swag.tootie.tv/mcp"
+            google_instance.resource_base_url = "https://swag.tootie.tv"
+            google_instance.required_scopes = ["openid"]
+
+            provider = _build_auth_provider()
+
+        assert isinstance(provider, CompositeAuthProvider)
+        google_provider.assert_called_once()
+        assert google_provider.call_args.kwargs["base_url"] == "https://swag.tootie.tv/mcp"
+        assert google_provider.call_args.kwargs["resource_base_url"] == "https://swag.tootie.tv"
 
     def test_validate_bearer_token_fails_closed_without_auth(self, monkeypatch):
         """Startup refuses unauthenticated mode unless explicitly requested."""

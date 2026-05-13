@@ -141,7 +141,7 @@ All configuration uses `SWAG_MCP_*` prefix:
 - `SWAG_MCP_PORT`: External port (default: 8000, internal always 8000)
 
 ### Defaults
-- `SWAG_MCP_DEFAULT_AUTH_METHOD`: Default auth (authelia, ldap, authentik, tinyauth, none)
+- `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD`: Default generated web endpoint auth (authelia, ldap, authentik, tinyauth, none)
 - `SWAG_MCP_DEFAULT_CONFIG_TYPE`: Config type (subdomain only)
 - `SWAG_MCP_DEFAULT_QUIC_ENABLED`: Enable QUIC by default (true/false)
 

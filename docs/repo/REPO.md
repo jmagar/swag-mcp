@@ -32,9 +32,8 @@ The `sync-uv.sh` hook keeps the repository lockfile and persistent Python enviro
   scripts/
     lint-plugin.sh           Plugin contract checker
     smoke-test.sh            Smoke test script
-  skills/
-    swag/
-      SKILL.md               Client-facing skill definition
+  plugins/swag-mcp/
+    skills/swag/SKILL.md     Client-facing skill definition
   swag_mcp/                  Python package
     __init__.py
     __main__.py              Module entry point

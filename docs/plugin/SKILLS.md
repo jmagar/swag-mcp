@@ -5,14 +5,15 @@ Patterns for defining skills (domain knowledge modules) within a Claude Code plu
 ## Directory structure
 
 ```
-skills/
-  swag/
-    SKILL.md    # Client-facing skill definition
+plugins/swag-mcp/
+  skills/
+    swag/
+      SKILL.md    # Client-facing skill definition
 ```
 
 ## SKILL.md
 
-The skill file at `skills/swag/SKILL.md` defines:
+The skill file at `plugins/swag-mcp/skills/swag/SKILL.md` defines:
 
 - **Frontmatter**: `name` and `description` with trigger keywords
 - **Mode detection**: MCP mode (preferred) vs HTTP fallback

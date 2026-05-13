@@ -14,19 +14,147 @@
     "homelab",
     "mcp"
   ],
-  "mcpServers": "./.mcp.json",
+  "skills": "./plugins/swag-mcp/skills",
+  "hooks": "./plugins/swag-mcp/hooks/hooks.json",
+  "mcpServers": "./plugins/swag-mcp/.mcp.json",
   "userConfig": {
-    "swag_proxy_confs_path": {
+    "swag_mcp_proxy_confs_path": {
       "type": "string",
       "title": "SWAG Proxy Configs Path",
-      "description": "Local filesystem path to SWAG nginx proxy-confs directory, e.g. /mnt/appdata/swag/nginx/proxy-confs. Required unless swag_proxy_confs_uri is set.",
+      "description": "Container/local path where SWAG proxy configurations are mounted, e.g. /proxy-confs.",
       "sensitive": false
     },
-    "swag_proxy_confs_uri": {
+    "swag_mcp_proxy_confs_uri": {
       "type": "string",
-      "title": "SWAG Proxy Configs URI (Remote/SSH)",
-      "description": "SSH URI to remote SWAG proxy-confs, e.g. user@host:/path/to/proxy-confs. Overrides path if set. Only SSH-key auth is supported — do NOT put passwords in the URI.",
+      "title": "SWAG Proxy Configs URI",
+      "description": "Optional local path or SSH URI for SWAG proxy configs. Overrides SWAG_MCP_PROXY_CONFS_PATH when set.",
+      "sensitive": false
+    },
+    "swag_mcp_swag_log_base_path": {
+      "type": "string",
+      "title": "SWAG Log Base Path",
+      "description": "Base path for SWAG log files on the SWAG host or container.",
+      "sensitive": false
+    },
+    "swag_mcp_log_directory": {
+      "type": "string",
+      "title": "SWAG MCP Log Directory",
+      "description": "Directory for SWAG MCP server logs.",
+      "sensitive": false
+    },
+    "swag_mcp_host": {
+      "type": "string",
+      "title": "SWAG MCP Host",
+      "description": "Host interface the MCP server binds to. Docker deployments normally use 0.0.0.0.",
+      "sensitive": false
+    },
+    "swag_mcp_port": {
+      "type": "string",
+      "title": "SWAG MCP Port",
+      "description": "Published host port for the HTTP MCP server.",
+      "sensitive": false
+    },
+    "swag_mcp_url": {
+      "type": "string",
+      "title": "SWAG MCP URL",
+      "description": "Public HTTP MCP endpoint including /mcp, e.g. https://swag.example.com/mcp.",
+      "sensitive": false
+    },
+    "swag_mcp_token": {
+      "type": "string",
+      "title": "SWAG MCP Token",
+      "description": "Bearer token used to authenticate HTTP MCP requests.",
       "sensitive": true
+    },
+    "swag_mcp_default_web_auth_method": {
+      "type": "string",
+      "title": "Default Web Endpoint Auth Method",
+      "description": "Default SWAG/nginx auth method for generated web endpoints. This is not MCP server authentication.",
+      "sensitive": false
+    },
+    "swag_mcp_default_quic_enabled": {
+      "type": "string",
+      "title": "Default QUIC Enabled",
+      "description": "Whether generated SWAG configs enable QUIC by default.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth": {
+      "type": "string",
+      "title": "FastMCP Auth Provider",
+      "description": "Optional FastMCP auth provider class, e.g. fastmcp.server.auth.providers.google.GoogleProvider.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_google_client_id": {
+      "type": "string",
+      "title": "Google OAuth Client ID",
+      "description": "Google OAuth client ID for FastMCP authentication.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_google_client_secret": {
+      "type": "string",
+      "title": "Google OAuth Client Secret",
+      "description": "Google OAuth client secret for FastMCP authentication.",
+      "sensitive": true
+    },
+    "fastmcp_server_auth_google_base_url": {
+      "type": "string",
+      "title": "Google OAuth Base URL",
+      "description": "Public OAuth/MCP endpoint, including /mcp for path-mounted deployments.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_resource_base_url": {
+      "type": "string",
+      "title": "OAuth Resource Base URL",
+      "description": "Public resource origin used for protected resource metadata.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_google_required_scopes": {
+      "type": "string",
+      "title": "Google OAuth Required Scopes",
+      "description": "Comma-separated OAuth scopes required by FastMCP Google authentication.",
+      "sensitive": false
+    },
+    "fastmcp_server_auth_google_redirect_path": {
+      "type": "string",
+      "title": "Google OAuth Redirect Path",
+      "description": "Redirect callback path for FastMCP Google OAuth.",
+      "sensitive": false
+    },
+    "swag_mcp_backup_retention_days": {
+      "type": "string",
+      "title": "Backup Retention Days",
+      "description": "Number of days to retain generated config backup files.",
+      "sensitive": false
+    },
+    "swag_mcp_log_level": {
+      "type": "string",
+      "title": "Log Level",
+      "description": "Server log level: DEBUG, INFO, WARNING, ERROR, or CRITICAL.",
+      "sensitive": false
+    },
+    "swag_mcp_rate_limit_enabled": {
+      "type": "string",
+      "title": "Rate Limit Enabled",
+      "description": "Whether request rate limiting middleware is enabled.",
+      "sensitive": false
+    },
+    "swag_mcp_rate_limit_rps": {
+      "type": "string",
+      "title": "Rate Limit RPS",
+      "description": "Requests per second limit when rate limiting is enabled.",
+      "sensitive": false
+    },
+    "swag_mcp_rate_limit_burst": {
+      "type": "string",
+      "title": "Rate Limit Burst",
+      "description": "Burst capacity above the configured requests-per-second limit.",
+      "sensitive": false
+    },
+    "swag_mcp_health_check_insecure": {
+      "type": "string",
+      "title": "Health Check Insecure",
+      "description": "Disable TLS verification for health checks. Use only for development/internal networks.",
+      "sensitive": false
     }
   }
 }

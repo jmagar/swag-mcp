@@ -57,16 +57,17 @@ SWAG MCP generates and manages nginx subdomain proxy configurations for [SWAG (S
 Install as a Claude Code plugin. You will be prompted for:
 
 - **SWAG Proxy Configs Path** -- local path to proxy-confs directory
-- **SWAG Proxy Configs URI** -- SSH URI for remote access (key-auth only)
+- **SWAG MCP Server URL** -- base URL of the running HTTP server
+- **SWAG MCP API Token** -- bearer token for the HTTP server
 
-One of the two is required.
+The plugin connects to the server's native streamable-HTTP endpoint.
 
 ```bash
 /plugin marketplace add jmagar/claude-homelab
 /plugin install swag-mcp @jmagar-claude-homelab
 ```
 
-The plugin uses stdio transport by default. A `swag-mcp-remote` entry is also available in `.mcp.json` for users who run swag-mcp as a remote Docker service.
+The plugin uses native HTTP transport and appends `/mcp` to the configured server URL.
 
 ### Docker Compose
 
@@ -94,8 +95,7 @@ Two deployment paths are supported:
 
 | Path | Transport | Credentials | Auth |
 |------|-----------|-------------|------|
-| **Plugin (stdio)** | stdio | `userConfig` in plugin settings | None |
-| **Plugin (mcp-remote)** | HTTP gateway | Manual config | Bearer token |
+| **Plugin (HTTP)** | http | `userConfig` in plugin settings | Bearer token |
 | **Docker (HTTP)** | http | `.env` file | Bearer token |
 
 See [docs/CONFIG.md](docs/CONFIG.md) for full variable reference. All variables use the `SWAG_MCP_` prefix.
@@ -123,7 +123,7 @@ See [docs/CONFIG.md](docs/CONFIG.md) for full variable reference. All variables 
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | Auth method used when `create` omits `auth_method` |
+| `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | Web endpoint auth method used when `create` omits `auth_method`; this is not MCP server auth |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | QUIC default for new configs |
 
 ### Backups
@@ -168,7 +168,7 @@ See [docs/CONFIG.md](docs/CONFIG.md) for full variable reference. All variables 
 
 ## Authentication methods
 
-Pass `auth_method` to `create` to control which SWAG auth snippet the config includes. The default is set by `SWAG_MCP_DEFAULT_AUTH_METHOD`.
+Pass `auth_method` to `create` to control which SWAG auth snippet the config includes. The default is set by `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD`.
 
 | Method | When to use |
 | --- | --- |
@@ -427,7 +427,7 @@ Backups are created before destructive edits, updates, and removals. To restore,
 list backups with `swag(action="backups", backup_action="list")`, copy the
 chosen backup content back with `swag(action="edit", create_backup=true)`,
 validate nginx syntax, reload SWAG, and record the restore in
-`.docs/deployment-log.md`.
+`docs/deployment-log.md`.
 
 ## Verification
 

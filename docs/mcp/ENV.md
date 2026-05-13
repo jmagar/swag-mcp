@@ -8,8 +8,7 @@ swag-mcp supports two deployment models:
 
 | Path | Transport | Credentials | Auth |
 |------|-----------|-------------|------|
-| **Plugin (stdio)** | stdio | `${userConfig.*}` in `.mcp.json` | None (stdio) |
-| **Plugin (mcp-remote)** | HTTP gateway | Manual config in `.mcp.json` | Bearer token |
+| **Plugin (HTTP)** | http | `${user_config.*}` in `plugins/swag-mcp/.mcp.json` | Bearer token |
 | **Docker (HTTP)** | http | `.env` file | Bearer token |
 
 For plugin deployment, see [Plugin CONFIG](../plugin/CONFIG.md).
@@ -50,7 +49,11 @@ SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:2222:/mnt/appdata/swag/nginx/proxy-co
 | `SWAG_MCP_BIND_ADDRESS` | no | `127.0.0.1` | no | Docker host bind address for the published MCP port |
 | `SWAG_MCP_PORT` | no | `49152` | no | External port. Internal container port is fixed at 8000 |
 | `SWAG_MCP_TOKEN` | recommended | — | yes | Static bearer token enforced by FastMCP |
+| `SWAG_MCP_URL` | no | — | no | Public HTTP MCP endpoint, including `/mcp`, used by smoke tests and remote clients |
 | `SWAG_MCP_NO_AUTH` | no | `false` | no | Explicitly allow startup without server auth |
+| `FASTMCP_SERVER_AUTH` | no | — | no | Optional FastMCP auth provider, e.g. GoogleProvider |
+| `FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL` | no | — | no | Public OAuth/MCP endpoint. Use `https://host/mcp` for path-mounted deployments |
+| `FASTMCP_SERVER_AUTH_RESOURCE_BASE_URL` | no | derived | no | Public origin used for protected-resource metadata. Set to `https://host` when Google base URL includes `/mcp` |
 | `SWAG_MCP_TEMPLATE_PATH` | no | `templates` | no | Jinja2 template directory |
 | `SWAG_MCP_LOG_DIRECTORY` | no | `/app/.swag-mcp/logs` | no | Server log file directory |
 
@@ -58,7 +61,7 @@ SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:2222:/mnt/appdata/swag/nginx/proxy-co
 
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
-| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | no | Default auth for new configs |
+| `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | no | Default SWAG/nginx auth for generated web endpoints; this is not MCP server auth |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no | Default QUIC/HTTP3 setting |
 | `SWAG_MCP_OAUTH_UPSTREAM` | no | `http://mcp-oauth:8000` | no | OAuth gateway upstream address |
 | `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.tootie.tv` | no | Public OAuth authorization server URL |

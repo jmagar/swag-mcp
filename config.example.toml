@@ -1,0 +1,8 @@
+# SWAG MCP local preferences.
+# Runtime secrets and deployment-specific values live in ~/.swag-mcp/.env.
+
+[paths]
+env_file = "~/.swag-mcp/.env"
+
+[setup]
+managed_by = "swag setup repair"

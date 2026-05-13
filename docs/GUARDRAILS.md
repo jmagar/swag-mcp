@@ -55,7 +55,7 @@ Backups are created before destructive configuration edits, updates, and removal
 3. Copy the backup content back to the original config filename using `swag(action="edit", config_name="...", new_content="...", create_backup=true)`.
 4. Validate nginx syntax and reload SWAG using the normal SWAG operational process.
 5. Run `swag(action="health_check", domain="...")` and inspect `nginx-error` logs.
-6. Record the restore in `.docs/deployment-log.md` or the active incident notes.
+6. Record the restore in `docs/deployment-log.md` or the active incident notes.
 
 Do not run backup cleanup during an active incident or before confirming whether a rollback requires older backup files.
 
@@ -186,4 +186,4 @@ Use this minimum runbook for production-impacting failures:
 3. Classify impact: auth failure, bad generated config, SWAG reload failure, upstream outage, remote filesystem/SSH failure, or MCP server failure.
 4. Roll back if needed using the backup restore workflow above.
 5. Verify with nginx syntax validation, SWAG reload status, `swag(action="health_check", domain="...")`, and a client request through the expected auth path.
-6. Document timestamps, commands, affected service, port, backup filename, and outcome in `.docs/deployment-log.md` or incident notes.
+6. Document timestamps, commands, affected service, port, backup filename, and outcome in `docs/deployment-log.md` or incident notes.

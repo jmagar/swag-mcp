@@ -47,21 +47,20 @@ check "Plugin has name" "jq -e '.name' .claude-plugin/plugin.json"
 check "Plugin has version" "jq -e '.version' .claude-plugin/plugin.json"
 
 # Check plugin structure
-check "Plugin has SKILL.md" "test -f skills/unraid/SKILL.md"
-check "Plugin has README.md" "test -f skills/unraid/README.md"
-check "Plugin has scripts directory" "test -d skills/unraid/scripts"
-check "Plugin has examples directory" "test -d skills/unraid/examples"
-check "Plugin has references directory" "test -d skills/unraid/references"
+check "Plugin has SKILL.md" "test -f plugins/swag-mcp/skills/swag/SKILL.md"
+check "Plugin has hooks" "test -f plugins/swag-mcp/hooks/hooks.json"
+check "Plugin has MCP config" "test -f plugins/swag-mcp/.mcp.json"
+check "Plugin has app config" "test -f plugins/swag-mcp/.app.json"
 
 # Validate plugin is listed in marketplace
-check "Plugin listed in marketplace" "jq -e '.plugins[] | select(.name == \"unraid\")' .claude-plugin/marketplace.json"
+check "Plugin listed in marketplace" "jq -e '.plugins[] | select(.name == \"swag-mcp\")' .claude-plugin/marketplace.json"
 
 # Check marketplace metadata
 check "Marketplace has repository" "jq -e '.repository' .claude-plugin/marketplace.json"
 check "Marketplace has owner" "jq -e '.owner' .claude-plugin/marketplace.json"
 
 # Verify source path
-PLUGIN_SOURCE=$(jq -r '.plugins[]? | select(.name == "unraid") | .source // empty' .claude-plugin/marketplace.json 2>/dev/null || true)
+PLUGIN_SOURCE=$(jq -r '.plugins[]? | select(.name == "swag-mcp") | .source // empty' .claude-plugin/marketplace.json 2>/dev/null || true)
 if [ -n "$PLUGIN_SOURCE" ]; then
     check "Plugin source path is valid" "test -d \"$PLUGIN_SOURCE\""
 else

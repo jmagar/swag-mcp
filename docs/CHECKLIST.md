@@ -18,7 +18,7 @@ Pre-release and quality checklist. Complete all items before tagging a release.
 
 - [ ] `CLAUDE.md` is current and matches repo structure
 - [ ] `README.md` has up-to-date tool reference and environment variable table
-- [ ] `skills/swag/SKILL.md` has correct frontmatter and action reference
+- [ ] `plugins/swag-mcp/skills/swag/SKILL.md` has correct frontmatter and action reference
 - [ ] Setup instructions work from a clean clone
 
 ## Security

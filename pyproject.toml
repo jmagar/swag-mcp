@@ -56,6 +56,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 cache_dir = ".cache/pytest"
+addopts = [
+    "--benchmark-storage=.cache/benchmarks",
+]
 markers = [
     "slow: marks tests as slow (potentially network-dependent)",
     "real_nginx_validation: disables the default nginx validation mock for this test",

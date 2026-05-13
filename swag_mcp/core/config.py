@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..utils.validators import validate_empty_string
@@ -65,7 +65,12 @@ class SwagConfig(BaseSettings):
 
     # Default settings
     default_auth_method: str = Field(
-        default="authelia", description="Default authentication method for new configurations"
+        default="authelia",
+        validation_alias=AliasChoices(
+            "SWAG_MCP_DEFAULT_WEB_AUTH_METHOD",
+            "SWAG_MCP_DEFAULT_AUTH_METHOD",
+        ),
+        description="Default web endpoint authentication method for new configurations",
     )
 
     # OAuth gateway settings (used in MCP template generation)

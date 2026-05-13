@@ -31,7 +31,7 @@ From `lefthook.yml`:
 
 ## Session hooks
 
-Separate from git hooks, swag-mcp has Claude Code session hooks defined in `hooks/hooks.json`:
+Separate from git hooks, swag-mcp has Claude Code session hooks defined in `plugins/swag-mcp/hooks/hooks.json`:
 
 SessionStart
 

@@ -63,7 +63,7 @@ jobs:
         SWAG_MCP_PROXY_CONFS_PATH: /tmp/swag-test/proxy-confs
         SWAG_MCP_LOG_DIRECTORY: /tmp/swag-test/.swag-mcp/logs
         SWAG_MCP_LOG_FILE_ENABLED: false
-        SWAG_MCP_DEFAULT_AUTH_METHOD: authelia
+        SWAG_MCP_DEFAULT_WEB_AUTH_METHOD: authelia
       run: |
         # Create test directories
         mkdir -p /tmp/swag-test/proxy-confs

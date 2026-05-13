@@ -94,7 +94,7 @@ redeploy: down preflight
     #!/usr/bin/env bash
     set -euo pipefail
     docker compose up -d
-    mkdir -p .docs
+    mkdir -p docs
     timestamp="$(TZ=America/New_York date '+%H:%M:%S | %m/%d/%Y EST')"
     image="${SWAG_MCP_IMAGE:-ghcr.io/jmagar/swag-mcp:latest}"
     port="${SWAG_MCP_PORT:-49152}"
@@ -106,7 +106,7 @@ redeploy: down preflight
       printf -- '- Port: `%s -> 8000`\n' "$port"
       printf -- '- Status: Started; run `just health` for readiness details.\n'
       printf -- '- Notes: Existing Compose service was stopped before redeploy; external network and port were validated before startup.\n'
-    } >> .docs/deployment-log.md
+    } >> docs/deployment-log.md
 
 # Roll back to a known image tag, for example: just rollback ghcr.io/jmagar/swag-mcp:1.1.4
 rollback image:
@@ -115,7 +115,7 @@ rollback image:
     SWAG_MCP_IMAGE="{{image}}" docker compose pull swag-mcp
     SWAG_MCP_IMAGE="{{image}}" docker compose down
     SWAG_MCP_IMAGE="{{image}}" docker compose up -d
-    mkdir -p .docs
+    mkdir -p docs
     timestamp="$(TZ=America/New_York date '+%H:%M:%S | %m/%d/%Y EST')"
     port="${SWAG_MCP_PORT:-49152}"
     {
@@ -126,7 +126,7 @@ rollback image:
       printf -- '- Port: `%s -> 8000`\n' "$port"
       printf -- '- Status: Started; run `just health` for readiness details.\n'
       printf -- '- Notes: Previous Compose service was stopped before starting the rollback image.\n'
-    } >> .docs/deployment-log.md
+    } >> docs/deployment-log.md
 
 # Show logs
 logs:
@@ -156,7 +156,7 @@ check-contract:
 # Validate skills
 validate-skills:
     @echo "Validating skills..."
-    @test -f skills/swag/SKILL.md && echo "OK: skills/swag/SKILL.md" || echo "MISSING: skills/swag/SKILL.md"
+    @test -f plugins/swag-mcp/skills/swag/SKILL.md && echo "OK: plugins/swag-mcp/skills/swag/SKILL.md" || echo "MISSING: plugins/swag-mcp/skills/swag/SKILL.md"
 
 # Generate a standalone CLI for this server (requires running server)
 generate-cli:

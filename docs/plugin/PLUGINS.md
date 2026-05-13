@@ -24,11 +24,13 @@ Structure and conventions for plugin manifest files.
   "repository": "https://github.com/jmagar/swag-mcp",
   "license": "MIT",
   "keywords": ["swag", "nginx", "reverse-proxy", "homelab", "mcp"],
+  "mcpServers": "./plugins/swag-mcp/.mcp.json",
   "userConfig": {
-    "swag_mcp_url": { "type": "string", "default": "https://swag.tootie.tv/mcp" },
-    "swag_proxy_confs_path": { "type": "string" },
-    "swag_proxy_confs_uri": { "type": "string" },
-    "swag_mcp_token": { "type": "string", "sensitive": true }
+    "swag_mcp_proxy_confs_path": { "type": "string" },
+    "swag_mcp_proxy_confs_uri": { "type": "string" },
+    "swag_mcp_url": { "type": "string" },
+    "swag_mcp_token": { "type": "string", "sensitive": true },
+    "swag_mcp_default_web_auth_method": { "type": "string" }
   }
 }
 ```
@@ -41,9 +43,9 @@ Structure and conventions for plugin manifest files.
 {
   "name": "swag-mcp",
   "version": "1.0.1",
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
-  "apps": "./.app.json",
+  "skills": "./plugins/swag-mcp/skills/",
+  "mcpServers": "./plugins/swag-mcp/.mcp.json",
+  "apps": "./plugins/swag-mcp/.app.json",
   "interface": {
     "displayName": "SWAG MCP",
     "category": "Infrastructure",
@@ -69,7 +71,7 @@ Structure and conventions for plugin manifest files.
   },
   "settings": [
     { "envVar": "SWAG_MCP_PROXY_CONFS_PATH" },
-    { "envVar": "SWAG_MCP_DEFAULT_AUTH_METHOD" }
+    { "envVar": "SWAG_MCP_DEFAULT_WEB_AUTH_METHOD" }
   ]
 }
 ```
