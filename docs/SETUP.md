@@ -122,7 +122,7 @@ curl http://127.0.0.1:${SWAG_MCP_PORT:-49152}/health
 Expected response:
 
 ```json
-{"status": "healthy", "service": "swag-mcp", "version": "1.1.5"}
+{"status": "healthy", "service": "swag-mcp", "version": "1.1.6"}
 ```
 
 ## 7. Install as Claude Code plugin

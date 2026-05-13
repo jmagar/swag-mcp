@@ -5,7 +5,7 @@ networks:
 
 services:
   swag-mcp:
-    image: ${SWAG_MCP_IMAGE:-ghcr.io/jmagar/swag-mcp:1.1.5}
+    image: ${SWAG_MCP_IMAGE:-ghcr.io/jmagar/swag-mcp:1.1.6}
     pull_policy: ${SWAG_MCP_PULL_POLICY:-missing}
 
     container_name: swag-mcp

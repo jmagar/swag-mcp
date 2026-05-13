@@ -47,3 +47,12 @@
 - Version: `1.1.5`
 - Status: Healthy; `http://127.0.0.1:8012/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.5"}`
 - Notes: Recreated only `swag-mcp` after stabilizing FastMCP consent CSRF reuse and nginx OAuth helper rewrites. Verified duplicate consent GETs keep the same CSRF token and the first rendered form POST returns `302` instead of `400`.
+
+## 15:28:33 | 05/13/2026 EDT - swag-mcp
+
+- Service: `swag-mcp`
+- Deployment method: `docker build --no-cache -t ghcr.io/jmagar/swag-mcp:1.1.6 .` then `docker compose up -d --force-recreate swag-mcp`
+- Port: `127.0.0.1:8012 -> 8000`
+- Version: `1.1.6`
+- Status: Healthy; `http://127.0.0.1:8012/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.6"}`
+- Notes: Recreated only `swag-mcp` after treating authenticated MCP `/mcp` responses (`401`, `403`) as successful reachability probes. Verified `health_check` for `axon.tootie.tv` now succeeds on `/mcp` with `401` while preserving `/health` `502` endpoint detail for the down web upstream.

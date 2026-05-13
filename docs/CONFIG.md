@@ -112,7 +112,7 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 | `PUID` | no | `1000` | no | UID for container process |
 | `PGID` | no | `1000` | no | GID for container process |
 | `DOCKER_NETWORK` | no | `swag-mcp` | no | External Docker network name |
-| `SWAG_MCP_IMAGE` | no | `ghcr.io/jmagar/swag-mcp:1.1.5` | no | Compose image reference. Pin to a release tag or digest in production |
+| `SWAG_MCP_IMAGE` | no | `ghcr.io/jmagar/swag-mcp:1.1.6` | no | Compose image reference. Pin to a release tag or digest in production |
 | `SWAG_MCP_PULL_POLICY` | no | `missing` | no | Compose image pull policy |
 | `SWAG_MCP_LOG_HOST_PATH` | no | `/tmp/swag-mcp/logs` | no | Host bind path for MCP server logs |
 | `SWAG_MCP_PROXY_CONFS_HOST_PATH` | no | `/mnt/appdata/swag/nginx/proxy-confs` | no | Host bind path for SWAG proxy configs |

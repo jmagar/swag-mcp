@@ -250,6 +250,14 @@ async def test_health_check_short_circuits_after_first_success() -> None:
     assert requested == ["/health", "/mcp"]
 
 
+@pytest.mark.parametrize("mcp_status", [401, 403, 406])
+def test_mcp_auth_rejections_count_as_reachable(mcp_status: int) -> None:
+    """Auth-protected MCP endpoints can prove proxy reachability without a token."""
+    service = SwagManagerService(config_path=Path("/tmp"), template_path=Path("templates"))
+
+    assert service.health_monitor._is_successful_health_response("/mcp", mcp_status) is True
+
+
 @pytest.mark.asyncio
 async def test_health_check_rejects_localhost_targets() -> None:
     """Health checks reject localhost targets before any outbound request."""

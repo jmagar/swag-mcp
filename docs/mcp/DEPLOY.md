@@ -153,11 +153,11 @@ just health
 ## Image pinning
 
 Compose uses `SWAG_MCP_IMAGE` and defaults to
-`ghcr.io/jmagar/swag-mcp:1.1.5`. Production deployments can pin this to an
+`ghcr.io/jmagar/swag-mcp:1.1.6`. Production deployments can pin this to an
 immutable digest for stricter provenance, for example:
 
 ```env
-SWAG_MCP_IMAGE=ghcr.io/jmagar/swag-mcp:1.1.5
+SWAG_MCP_IMAGE=ghcr.io/jmagar/swag-mcp:1.1.6
 # or after reviewing the published digest:
 SWAG_MCP_IMAGE=ghcr.io/jmagar/swag-mcp@sha256:<digest>
 ```
@@ -180,7 +180,7 @@ has been resolved from the registry.
 Container rollback uses a previously reviewed image:
 
 ```bash
-just rollback ghcr.io/jmagar/swag-mcp:1.1.5
+just rollback ghcr.io/jmagar/swag-mcp:1.1.6
 just health
 ```
 

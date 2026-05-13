@@ -441,7 +441,7 @@ Check the server health endpoint:
 
 ```bash
 just health
-# {"status": "healthy", "service": "swag-mcp", "version": "1.1.5"}
+# {"status": "healthy", "service": "swag-mcp", "version": "1.1.6"}
 ```
 
 The `/health` endpoint is also used by the Docker `HEALTHCHECK` directive. It always returns:

@@ -47,7 +47,7 @@ uvx swag-mcp
 Published as `ghcr.io/jmagar/swag-mcp`. Pull with:
 
 ```bash
-docker pull ghcr.io/jmagar/swag-mcp:1.1.5
+docker pull ghcr.io/jmagar/swag-mcp:1.1.6
 ```
 
 ## Version coordination

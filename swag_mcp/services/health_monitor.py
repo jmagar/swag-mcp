@@ -382,8 +382,9 @@ class HealthMonitor:
         """Return whether an endpoint HTTP status proves the proxy is reachable."""
         if 200 <= status_code < 300:
             return True
-        # A 406 from /mcp means the streamable-HTTP endpoint is reachable but rejected a GET.
-        return status_code == 406 and endpoint == "/mcp"
+        # Streamable HTTP may reject GETs, and protected MCP endpoints may reject
+        # anonymous probes while still proving that the proxy reached the upstream.
+        return endpoint == "/mcp" and status_code in {401, 403, 406}
 
     async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:
         """Get SWAG logs by reading log files directly from mounted volume.

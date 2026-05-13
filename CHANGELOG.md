@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-05-13
+
+### Fixed
+
+- **Health checks** — Treat authenticated MCP `/mcp` responses (`401` and `403`) as successful reachability probes, matching existing `406` streamable-HTTP handling.
+
 ## [1.1.5] - 2026-05-13
 
 ### Fixed
