@@ -22,18 +22,17 @@ async def swag(
     ctx: Context,
     action: SwagAction,
     # Action-specific parameters (most optional)
-    service_name: str = "",
+    config_name: str = "",
     server_name: str = "",
     upstream_app: str = "",
     upstream_port: int = 0,
-    config_name: str = "",
     # ... 20+ more parameters
-) -> str:
+) -> ToolResult:
     """
     Unified SWAG reverse proxy configuration management tool.
 
-    Supports 10 actions through single tool interface:
-    - list, create, view, edit, update, config, remove, logs, cleanup_backups, health_check
+    Supports the unified action set:
+    - list, create, view, edit, update, remove, logs, backups, health_check
     """
 ```
 
@@ -46,127 +45,50 @@ The tool uses a centralized dispatch pattern to route requests to appropriate ha
 async def swag(ctx: Context, action: SwagAction, **kwargs) -> str:
     """Main tool function with action-based routing"""
 
-    # Initialize service with configuration
-    service = SwagManagerService(ctx.config)
+    formatter = TokenEfficientFormatter()
 
-    # Action dispatch with parameter validation
-    if action == SwagAction.LIST:
-        return await _handle_list_action(service, kwargs)
-    elif action == SwagAction.CREATE:
-        return await _handle_create_action(service, kwargs)
-    elif action == SwagAction.VIEW:
-        return await _handle_view_action(service, kwargs)
-    # ... handle all 10 actions
-    else:
-        raise ValueError(f"Unsupported action: {action}")
+    async with SwagManagerService() as service:
+        match action:
+            case SwagAction.LIST:
+                return await _handle_list_action(ctx, service, formatter, ...)
+            case SwagAction.CREATE:
+                return await _handle_create_action(ctx, service, formatter, ...)
+            case SwagAction.VIEW:
+                return await _handle_view_action(ctx, service, formatter, ...)
+            # ... handle all supported actions
+            case _:
+                raise ValueError(f"Unsupported action: {action}")
 ```
 
 ### Parameter Validation Strategy
 Each action handler validates parameters using Pydantic models:
 
 ```python
-async def _handle_create_action(service: SwagManagerService, params: Dict) -> str:
+async def _handle_create_action(ctx: Context, service: SwagManagerService, formatter: TokenEfficientFormatter, ...) -> ToolResult:
     """Handle CREATE action with comprehensive validation"""
     try:
         # Validate parameters against Pydantic model
-        request = SwagCreateRequest(**params)
+        request = SwagConfigRequest(...)
 
         # Call service method with validated parameters
-        result = await service.create_configuration(
-            service_name=request.service_name,
-            server_name=request.server_name,
-            upstream_app=request.upstream_app,
-            upstream_port=request.upstream_port,
-            upstream_proto=request.upstream_proto,
-            config_type=request.config_type_create,
-            auth_method=request.auth_method,
-            enable_quic=request.enable_quic
-        )
+        result = await service.create_config(request)
 
-        # Format response for AI assistant
-        return _format_success_response(result)
+        # Format ToolResult with text content and structured_content
+        return formatter.format_create_result(result_data, request.config_name)
 
     except ValidationError as e:
-        return _format_validation_error(e)
+        return formatter.format_error_result(str(e), "create")
     except SwagServiceError as e:
-        return _format_service_error(e)
+        return formatter.format_error_result(str(e), "create")
 ```
 
 ## Action Handlers Deep Dive
 
 ### LIST Action Handler
-```python
-async def _handle_list_action(service: SwagManagerService, params: Dict) -> str:
-    """
-    List SWAG configurations with filtering options.
-
-    Parameters:
-    - config_type: "all" (default), "active", "samples"
-
-    Response includes:
-    - Configuration count by type
-    - File details (name, size, modified time)
-    - Summary statistics
-    """
-    request = SwagListRequest(**params)
-    result = await service.list_configurations(request.config_type)
-
-    # Format user-friendly response
-    configs = result.get('data', {}).get('configs', [])
-    return f"Found {len(configs)} configurations of type '{request.config_type}'"
-```
+The list handler validates `list_filter`, applies query/sort/pagination in the handler, and returns a `ToolResult` whose structured content contains `items`, `total`, `limit`, `offset`, `has_more`, plus legacy formatter keys `configs`, `total_count`, and `list_filter`.
 
 ### CREATE Action Handler
-```python
-async def _handle_create_action(service: SwagManagerService, params: Dict) -> str:
-    """
-    Create new SWAG reverse proxy configuration.
-
-    Required Parameters:
-    - service_name: Identifier for the service
-    - server_name: Domain name for the proxy
-    - upstream_app: Container name or IP
-    - upstream_port: Port number (1-65535)
-
-    Optional Parameters:
-    - upstream_proto: "http" or "https" (default: "http")
-    - config_type_create: Only "subdomain" is supported
-    - auth_method: Authentication method (default: "authelia")
-    - enable_quic: QUIC support (default: false)
-
-    Post-creation actions:
-    - Automatic health check of created service
-    - Backup creation if file exists
-    - Template validation before writing
-    """
-    request = SwagCreateRequest(**params)
-
-    # Create configuration
-    result = await service.create_configuration(
-        service_name=request.service_name,
-        server_name=request.server_name,
-        upstream_app=request.upstream_app,
-        upstream_port=request.upstream_port,
-        upstream_proto=request.upstream_proto,
-        config_type=request.config_type_create,  # Always "subdomain"
-        auth_method=request.auth_method,
-        enable_quic=request.enable_quic
-    )
-
-    # Automatic health check after creation
-    if result['success']:
-        try:
-            health_result = await swag_service.health_check(
-                domain=request.server_name,
-                timeout=10
-            )
-            health_status = "accessible" if health_result['data']['accessible'] else "not accessible"
-            return f"Created {request.service_name} configuration. Service is {health_status}."
-        except Exception:
-            return f"Created {request.service_name} configuration. Health check failed."
-
-    return _format_service_error(result)
-```
+Create requires `config_name`, `server_name`, `upstream_app`, and `upstream_port`. Optional split-routing fields are `mcp_upstream_app`, `mcp_upstream_port`, and `mcp_upstream_proto`; omitted MCP upstream values inherit from the main upstream. The handler builds `SwagConfigRequest`, calls `create_config`, runs a post-create health check, and returns structured keys `success`, `filename`, `content`, `backup_created`, and `health_check`.
 
 ### UPDATE Action Handler
 ```python
@@ -177,7 +99,7 @@ async def _handle_update_action(service: SwagManagerService, params: Dict) -> st
     Supported update fields:
     - port: Update upstream port (validates 1-65535 range)
     - upstream: Update upstream app name/IP
-    - app: Update app name (with optional :port)
+    - app: Update upstream app and port; requires app:port format
 
     Features:
     - Atomic updates with rollback on failure
@@ -194,86 +116,21 @@ async def _handle_update_action(service: SwagManagerService, params: Dict) -> st
         create_backup=request.create_backup
     )
 
-    if result['success']:
-        return f"Updated {request.update_field} for {request.config_name} to {request.update_value}"
-    return _format_service_error(result)
+    return formatter.format_update_result(result_data, request.config_name, request.update_field, request.update_value)
 ```
 
 ### HEALTH_CHECK Action Handler
-```python
-async def _handle_health_check_action(service: SwagManagerService, params: Dict) -> str:
-    """
-    Comprehensive health check of service endpoints.
 
-    Parameters:
-    - domain: Domain to check (required)
-    - timeout: Request timeout in seconds (default: 30, max: 300)
-    - follow_redirects: Follow HTTP redirects (default: true)
-
-    Health check process:
-    1. Try /health endpoint (standard health check)
-    2. Try /mcp endpoint (MCP-specific)
-    3. Try / root endpoint (fallback)
-    4. Report detailed results with timing
-    """
-    request = SwagHealthCheckRequest(**params)
-
-    result = await swag_service.health_check(
-        domain=request.domain,
-        timeout=request.timeout,
-        follow_redirects=request.follow_redirects
-    )
-
-    health_data = result.get('data', {})
-    if health_data.get('accessible'):
-        status_code = health_data.get('status_code', 'unknown')
-        response_time = health_data.get('response_time_ms', 0)
-        return f"✅ {request.domain} is accessible (HTTP {status_code}, {response_time:.1f}ms)"
-    else:
-        error_msg = health_data.get('error_message', 'Unknown error')
-        return f"❌ {request.domain} is not accessible: {error_msg}"
-```
+The health-check handler validates `domain`, builds `SwagHealthCheckRequest`, calls `health_check`, and returns formatter output with `success`, `domain`, `status_code`, `response_time_ms`, `error`, and `endpoint_results`.
 
 ## Response Formatting
 
-### Success Response Formatting
-```python
-def _format_success_response(result: Dict[str, Any]) -> str:
-    """Format successful operation response for AI assistant"""
-    if not result.get('success', False):
-        return _format_service_error(result)
+`TokenEfficientFormatter` builds every MCP response as a `ToolResult` with two parts:
 
-    message = result.get('message', 'Operation completed successfully')
-    data = result.get('data')
+- `content`: concise text optimized for interactive assistants.
+- `structured_content`: action-specific JSON-like data for programmatic clients.
 
-    if data:
-        # Add relevant data details to response
-        if 'total_count' in data:
-            message += f" (Found {data['total_count']} items)"
-        if 'backup_created' in data:
-            message += f" (Backup: {data['backup_created']})"
-
-    return message
-```
-
-### Error Response Formatting
-```python
-def _format_validation_error(error: ValidationError) -> str:
-    """Convert Pydantic validation errors to user-friendly messages"""
-    errors = []
-    for err in error.errors():
-        field = ".".join(str(loc) for loc in err['loc'])
-        msg = err['msg']
-        errors.append(f"{field}: {msg}")
-
-    return f"Validation failed: {'; '.join(errors)}"
-
-def _format_service_error(result: Dict[str, Any]) -> str:
-    """Format service-level errors for user display"""
-    if isinstance(result, dict) and 'message' in result:
-        return f"Error: {result['message']}"
-    return f"Error: {str(result)}"
-```
+Do not document a universal success schema. Some successful actions include `success`; list/log/backup-list responses currently rely on action-specific keys. Error responses include at least `success=false`, `error`, and `action`.
 
 ## Natural Language Integration
 
@@ -285,7 +142,7 @@ The tool is designed to work with natural language commands from AI assistants:
 # Maps to parameters:
 {
     "action": "create",
-    "service_name": "jellyfin",
+    "config_name": "jellyfin.subdomain.conf",
     "server_name": "media.example.com",
     "upstream_app": "jellyfin",
     "upstream_port": 8096
@@ -321,26 +178,26 @@ Responses are formatted to be:
 ```python
 # Parameter validation errors (Pydantic)
 try:
-    request = SwagCreateRequest(**params)
+    request = SwagConfigRequest(...)
 except ValidationError as e:
-    return _format_validation_error(e)
+    return formatter.format_error_result(str(e), "create")
 
 # Service-level errors (business logic)
 try:
-    result = await service.create_configuration(...)
+    result = await service.create_config(request)
 except SwagServiceError as e:
-    return f"Configuration error: {str(e)}"
+    return formatter.format_error_result(str(e), "create")
 
 # System-level errors (I/O, permissions)
 try:
-    result = await service.create_configuration(...)
+    result = await service.create_config(request)
 except OSError as e:
-    return f"System error: {handle_os_error(e)}"
+    return formatter.format_error_result(handle_os_error(e), "create")
 
 # Unexpected errors (programming bugs)
 except Exception as e:
-    logger.error(f"Unexpected error in {action}: {e}", exc_info=True)
-    return f"Unexpected error: {str(e)}"
+    logger.error("Unexpected error in %s: %s", action, e, exc_info=True)
+    return formatter.format_error_result("Tool execution failed due to an unexpected error.", action)
 ```
 
 ### Error Recovery Patterns
@@ -369,11 +226,10 @@ async def swag(
     ctx: Context,
     action: SwagAction,
     # Full parameter list with types and defaults
-    service_name: str = Field(
+    config_name: str = Field(
         default="",
-        description="Service identifier used for filename",
-        max_length=50,
-        pattern=r"^[\w-]*$"
+        description="Configuration filename",
+        max_length=255
     ),
     # ... all parameters with full metadata
 ) -> str:
@@ -383,8 +239,8 @@ async def swag(
     This tool provides comprehensive management of SWAG (Secure Web Application Gateway)
     reverse proxy configurations through natural language commands.
 
-    Supports 10 actions: list, create, view, edit, update, config, remove, logs,
-    cleanup_backups, health_check
+    Supports actions: list, create, view, edit, update, remove, logs,
+    backups, health_check
     """
 ```
 
@@ -450,8 +306,8 @@ asyncio.run(test())
 - File operations use async I/O throughout
 
 ### Response Optimization
-- Responses are strings optimized for AI assistant parsing
-- Large data sets summarized rather than returned in full
+- Responses are `ToolResult` objects with assistant-friendly text plus structured content
+- View and log actions intentionally return full requested content; list responses are paginated
 - Error messages designed for user comprehension, not debugging
 
 ## Important Notes
@@ -468,7 +324,7 @@ asyncio.run(test())
 - Optional parameters don't require explicit None checks
 
 ### AI Integration
-- Responses formatted for AI assistant parsing
-- Context includes configuration for service instantiation
+- Responses formatted for AI assistant parsing and programmatic structured access
+- Service instances are scoped to one tool invocation via async context management
 - Error messages provide actionable feedback for users
 - Success responses include relevant details for follow-up actions

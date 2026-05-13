@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import secrets
 import sys
 from collections.abc import AsyncGenerator
 from importlib.metadata import PackageNotFoundError
@@ -13,6 +14,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from fastmcp.resources import DirectoryResource
+from fastmcp.server.auth import AccessToken, AuthProvider
 from pydantic import AnyUrl
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -66,6 +68,7 @@ __all__ = [
     "get_package_version",
     "setup_templates",
     "cleanup_old_backups",
+    "StaticBearerTokenProvider",
     "main",
     "main_sync",
     "detect_execution_context",
@@ -82,6 +85,22 @@ logger = logging.getLogger(__name__)
 
 # Cache version to avoid redundant calls
 _cached_version: str | None = None
+
+
+class StaticBearerTokenProvider(AuthProvider):
+    """FastMCP token verifier for a single operator-configured bearer token."""
+
+    def __init__(self, token: str) -> None:
+        """Initialize the provider with the expected bearer token."""
+        super().__init__()
+        self._token = token
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        """Return access metadata when the bearer token matches."""
+        if not secrets.compare_digest(token, self._token):
+            return None
+
+        return AccessToken(token=token, client_id="swag-mcp-token", scopes=[])
 
 
 def get_package_version() -> str:
@@ -215,9 +234,49 @@ def _extract_service_name(filename: str) -> str:
 
 async def create_mcp_server() -> FastMCP:
     """Create and configure the FastMCP server."""
-    # Configure Google OAuth authentication if enabled
+    auth_provider = _build_auth_provider()
+
+    # Create FastMCP server instance with or without authentication
+    mcp = FastMCP("SWAG Configuration Manager", auth=auth_provider)
+
+    # Configure all middleware using the setup function
+    setup_middleware(mcp)
+
+    # Register all SWAG tools
+    register_tools(mcp)
+
+    # Register SWAG resources
+    register_resources(mcp)
+
+    # Add health check endpoint for Docker health checks
+    @mcp.custom_route(HEALTH_ENDPOINT, methods=[HTTP_METHOD_GET])
+    async def health_check(request: Request) -> JSONResponse:
+        """Health check endpoint for Docker."""
+        version = get_package_version()
+        payload = {"status": STATUS_HEALTHY, "service": SERVICE_NAME, "version": version}
+        return JSONResponse(
+            content=payload,
+            status_code=200,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
+    logger.info("SWAG MCP Server initialized")
+    logger.info("Version: %s", get_package_version())
+    logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
+    logger.info("SWAG Proxy Confs Path: %s", config.proxy_confs_path)
+    logger.info("Template path: %s", config.template_path)
+    logger.info("MCP Transport: streamable-http on %s:%s", config.host, config.port)
+
+    return mcp
+
+
+def _build_auth_provider() -> AuthProvider | None:
+    """Build the configured FastMCP auth provider."""
     auth_provider = None
-    if os.getenv("FASTMCP_SERVER_AUTH") == "fastmcp.server.auth.providers.google.GoogleProvider":
+    fastmcp_auth = os.getenv("FASTMCP_SERVER_AUTH")
+    token = os.getenv("SWAG_MCP_TOKEN")
+
+    if fastmcp_auth == "fastmcp.server.auth.providers.google.GoogleProvider":
         try:
             from fastmcp.server.auth.providers.google import (
                 GoogleProvider,
@@ -251,50 +310,24 @@ async def create_mcp_server() -> FastMCP:
                 redirect_path=redirect_path,
             )
             logger.info("✅ Google OAuth authentication enabled")
-            logger.info(f"📍 OAuth base URL: {base_url}")
+            logger.info("📍 OAuth base URL: %s", base_url)
             logger.info("🔑 OAuth client ID: %s...", client_id[:20])
-            logger.info(f"🔒 OAuth scopes: {scopes}")
-        except ImportError as e:
-            logger.error(f"Failed to import GoogleProvider: {e}")
-            logger.error("Google OAuth authentication disabled")
-        except Exception as e:
-            logger.error(f"Failed to configure Google OAuth: {e}")
-            logger.error("Google OAuth authentication disabled")
+            logger.info("🔒 OAuth scopes: %s", scopes)
+        except ImportError:
+            logger.exception("Failed to import GoogleProvider — cannot configure Google OAuth")
+            raise
+        except Exception:
+            logger.exception("Failed to configure Google OAuth")
+            raise
+    elif fastmcp_auth:
+        raise ValueError(f"Unsupported FASTMCP_SERVER_AUTH provider: {fastmcp_auth}")
+    elif token:
+        auth_provider = StaticBearerTokenProvider(token)
+        logger.info("Static bearer token authentication enabled")
     else:
         logger.info("Google OAuth authentication disabled (FASTMCP_SERVER_AUTH not set)")
 
-    # Create FastMCP server instance with or without authentication
-    mcp = FastMCP("SWAG Configuration Manager", auth=auth_provider)
-
-    # Configure all middleware using the setup function
-    setup_middleware(mcp)
-
-    # Register all SWAG tools
-    register_tools(mcp)
-
-    # Register SWAG resources
-    register_resources(mcp)
-
-    # Add health check endpoint for Docker health checks
-    @mcp.custom_route(HEALTH_ENDPOINT, methods=[HTTP_METHOD_GET])
-    async def health_check(request: Request) -> JSONResponse:
-        """Health check endpoint for Docker."""
-        version = get_package_version()
-        payload = {"status": STATUS_HEALTHY, "service": SERVICE_NAME, "version": version}
-        return JSONResponse(
-            content=payload,
-            status_code=200,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
-
-    logger.info("SWAG MCP Server initialized")
-    logger.info(f"Version: {get_package_version()}")
-    logger.info("Description: FastMCP server for managing SWAG reverse proxy configurations")
-    logger.info(f"SWAG Proxy Confs Path: {config.proxy_confs_path}")
-    logger.info(f"Template path: {config.template_path}")
-    logger.info(f"MCP Transport: streamable-http on {config.host}:{config.port}")
-
-    return mcp
+    return auth_provider
 
 
 def setup_templates() -> None:
@@ -302,7 +335,7 @@ def setup_templates() -> None:
     # Ensure template directory exists
     template_path = Path(config.template_path)
     if not template_path.exists():
-        logger.warning(f"Template directory {template_path} does not exist, creating...")
+        logger.warning("Template directory %s does not exist, creating...", template_path)
         template_path.mkdir(parents=True, exist_ok=True)
 
     # Check if required templates exist
@@ -313,50 +346,46 @@ def setup_templates() -> None:
     for template_name in required_templates:
         template_file = template_path / template_name
         if not template_file.exists():
-            logger.error(f"Template not found: {template_file}")
+            logger.error("Template not found: %s", template_file)
         else:
-            logger.debug(f"Template found: {template_file}")
+            logger.debug("Template found: %s", template_file)
 
 
 async def cleanup_old_backups() -> None:
     """Clean up old backup files on server startup."""
     try:
-        swag_service = SwagManagerService()
-        cleaned_count = await swag_service.cleanup_old_backups()
+        async with SwagManagerService() as swag_service:
+            cleaned_count = await swag_service.cleanup_old_backups()
         if cleaned_count > 0:
-            logger.info(f"Startup cleanup: removed {cleaned_count} old backup files")
+            logger.info("Startup cleanup: removed %d old backup files", cleaned_count)
         else:
             logger.debug("Startup cleanup: no old backup files to remove")
     except Exception as e:
-        logger.error(f"Failed to cleanup old backups on startup: {e}", exc_info=True)
+        logger.error("Failed to cleanup old backups on startup: %s", e, exc_info=True)
 
 
 def _validate_bearer_token() -> None:
-    """Log auth-related configuration; auth must be enforced externally.
-
-    This function no longer exits the process if SWAG_MCP_TOKEN is absent.
-    Authentication must be implemented at the proxy/network layer or via a
-    dedicated auth mechanism — not via this startup check.
-    """
+    """Validate that direct streamable-http access has an auth decision."""
     token = os.getenv("SWAG_MCP_TOKEN")
     no_auth = os.getenv("SWAG_MCP_NO_AUTH", "").lower() in ("true", "1", "yes")
+    fastmcp_auth = os.getenv("FASTMCP_SERVER_AUTH")
 
     if token:
-        logger.info(
-            "SWAG_MCP_TOKEN is set, but this server does not enforce bearer token auth. "
-            "Ensure access is restricted or authentication is performed by an external component."
-        )
+        logger.info("SWAG_MCP_TOKEN configured; static bearer auth will be enforced")
+    elif fastmcp_auth:
+        logger.info("FASTMCP_SERVER_AUTH configured; FastMCP auth provider will be enforced")
     elif no_auth:
         logger.warning(
-            "SWAG_MCP_NO_AUTH=true — bearer auth is not enforced by this server. "
-            "Make sure the service is secured at the network/proxy level."
+            "SWAG_MCP_NO_AUTH=true; starting without MCP server authentication. "
+            "Bind to loopback or protect access at the proxy/network layer."
         )
     else:
-        logger.info(
-            "No SWAG_MCP_TOKEN configured and SWAG_MCP_NO_AUTH is not set. "
-            "This server does not perform bearer token authentication; "
-            "ensure access control is handled externally."
+        logger.error(
+            "Refusing to start without MCP server authentication. Set SWAG_MCP_TOKEN, "
+            "configure FASTMCP_SERVER_AUTH, or explicitly set SWAG_MCP_NO_AUTH=true "
+            "for loopback/proxy-isolated deployments."
         )
+        sys.exit(1)
 
 
 async def main() -> None:
@@ -370,14 +399,17 @@ async def main() -> None:
 
     setup_templates()
 
-    # Clean up old backup files on startup
-    await cleanup_old_backups()
+    # Kick off cleanup in background — don't block server start
+    asyncio.create_task(cleanup_old_backups())
 
     # Create the MCP server
     mcp_server = await create_mcp_server()
 
     # Use run_async() with streamable-http transport configuration
     # This is the correct method for existing event loops and Claude Desktop
+    # NOTE: We bind to 0.0.0.0 inside the container; Docker's network namespace
+    # provides isolation. SWAG_MCP_HOST controls the bind address but is forced
+    # to 0.0.0.0 for localhost/container deployments so the service is reachable.
     _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
     await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
@@ -391,14 +423,15 @@ def main_sync() -> None:
     setup_templates()
 
     async def _setup_and_run() -> None:
-        # Clean up old backup files on startup
-        await cleanup_old_backups()
+        # Kick off cleanup in background — don't block server start
+        asyncio.create_task(cleanup_old_backups())
 
         # Create the MCP server
         mcp_server = await create_mcp_server()
 
         # Use run() with streamable-http transport configuration
         # Creates its own event loop for synchronous context
+        # NOTE: bind forced to 0.0.0.0 inside container; see main() comment above.
         _host = "0.0.0.0" if config.host in ("127.0.0.1", "localhost", None) else config.host
         await mcp_server.run_async(transport="streamable-http", host=_host, port=config.port)
 
@@ -416,7 +449,7 @@ def detect_execution_context() -> str:
     try:
         # Try to get the running event loop
         loop = asyncio.get_running_loop()
-        logger.debug(f"Detected running event loop: {type(loop)}")
+        logger.debug("Detected running event loop: %s", type(loop))
         return "async"
     except RuntimeError:
         logger.debug("No running event loop detected")
@@ -456,5 +489,5 @@ if __name__ == "__main__":
         else:
             raise
     except Exception as e:
-        logger.error(f"Server error: {str(e)}")
+        logger.error("Server error: %s", e)
         raise

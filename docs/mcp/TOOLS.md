@@ -29,6 +29,8 @@ List proxy configuration files with filtering, pagination, and sorting.
 
 Response includes `items`, `total`, `limit`, `offset`, `has_more` for pagination.
 
+Structured content keys: `items`, `total`, `limit`, `offset`, `has_more`, `configs`, `total_count`, `list_filter`.
+
 ### Action: `create`
 
 Create a new nginx proxy configuration from the Jinja2 template.
@@ -38,9 +40,9 @@ Create a new nginx proxy configuration from the Jinja2 template.
 | `config_name` | string | — | yes | Filename (e.g., `jellyfin.subdomain.conf`) |
 | `server_name` | string (max 253) | — | yes | Domain (e.g., `media.example.com`) |
 | `upstream_app` | string (max 100) | — | yes | Container name or IP |
-| `upstream_port` | int (0-65535) | — | yes | Service port |
+| `upstream_port` | int (1-65535) | — | yes | Service port |
 | `upstream_proto` | `"http"` / `"https"` | `"http"` | no | Upstream protocol |
-| `auth_method` | string | `"authelia"` | no | Auth: none, basic, ldap, authelia, authentik, tinyauth |
+| `auth_method` | string | `"authelia"` | no | Auth: none, basic, ldap, authelia, authentik, tinyauth, oauth |
 | `enable_quic` | bool | `false` | no | Enable QUIC/HTTP3 |
 | `mcp_upstream_app` | string (max 100) | `""` | no | Separate MCP container/IP (enables split routing) |
 | `mcp_upstream_port` | int (0-65535) | `0` | no | MCP service port (inherits upstream_port if 0) |
@@ -50,6 +52,8 @@ Split routing: when `mcp_upstream_app` is set, the config routes `/` to the main
 
 Post-create health check runs automatically against the `server_name`.
 
+Structured content keys on success: `success`, `filename`, `content`, `backup_created`, `health_check`.
+
 ### Action: `view`
 
 Read a configuration file's contents.
@@ -57,6 +61,8 @@ Read a configuration file's contents.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `config_name` | string | yes | Configuration filename |
+
+Structured content keys on success: `success`, `filename`, `config_name`, `content`, `character_count`.
 
 ### Action: `edit`
 
@@ -67,6 +73,8 @@ Replace a configuration file's entire content.
 | `config_name` | string | — | yes | Configuration filename |
 | `new_content` | string | — | yes | Full replacement content |
 | `create_backup` | bool | `true` | no | Create backup before edit |
+
+Structured content keys on success: `success`, `backup_created`.
 
 ### Action: `update`
 
@@ -81,11 +89,13 @@ Update a specific field in an existing configuration.
 
 Field behaviors:
 - `port`: Updates `set $upstream_port` value
-- `upstream`: Updates `set $upstream_app` and optionally port (format: `app:port`)
-- `app`: Updates `set $upstream_app` value
+- `upstream`: Updates `set $upstream_app` only; use an app/container/IP value without `:port`
+- `app`: Updates both `set $upstream_app` and `set $upstream_port`; value must use `app:port`
 - `add_mcp`: Adds MCP location block at the specified path (e.g., `/mcp`)
 
 Post-update health check runs automatically if `server_name` can be extracted.
+
+Structured content keys on success: `success`, `filename`, `backup_created`, `health_check`. The `add_mcp` field also includes `content`.
 
 ### Action: `remove`
 
@@ -95,6 +105,8 @@ Remove a configuration file.
 | --- | --- | --- | --- | --- |
 | `config_name` | string | — | yes | Configuration filename |
 | `create_backup` | bool | `true` | no | Create backup before removal |
+
+Structured content keys on success: `success`, `backup_created`.
 
 ### Action: `logs`
 
@@ -112,6 +124,8 @@ Log paths map to files inside the SWAG container:
 - `letsencrypt` -> `/var/log/letsencrypt/letsencrypt.log`
 - `renewal` -> `/var/log/letsencrypt/renewal.log`
 
+Structured content keys on success: `logs`, `character_count`.
+
 ### Action: `backups`
 
 Manage configuration backup files.
@@ -120,6 +134,10 @@ Manage configuration backup files.
 | --- | --- | --- | --- |
 | `backup_action` | `"list"` / `"cleanup"` | `"list"` | Sub-action |
 | `retention_days` | int (>=0) | `0` | Days to retain (cleanup only; 0 = use server default) |
+
+Structured content keys:
+- `backup_action="list"`: `backup_files`, `total_count`
+- `backup_action="cleanup"`: `cleaned_count`, `retention_days`
 
 ### Action: `health_check`
 
@@ -131,7 +149,29 @@ HTTP health check against a proxied domain.
 | `timeout` | int (1-300) | `30` | no | Request timeout in seconds |
 | `follow_redirects` | bool | `true` | no | Follow HTTP redirects |
 
-Returns success status, HTTP status code, and response time in milliseconds.
+Returns success status, HTTP status code, response time in milliseconds, and per-endpoint attempt details.
+
+Structured content keys on success or checked failure: `success`, `domain`, `status_code`, `response_time_ms`, `error`, `endpoint_results`.
+
+`endpoint_results` is an array of per-endpoint attempts emitted by the health
+monitor. Each entry includes the attempted URL, success flag, HTTP status when
+available, response timing, and error text when the attempt failed.
+
+## Error responses
+
+Handler validation failures, timeouts, and unexpected tool errors return a `ToolResult` with human-readable text and structured content containing at least:
+
+| Key | Description |
+| --- | --- |
+| `success` | `false` |
+| `error` | Sanitized error message |
+| `action` | Action that failed |
+
+The text content is optimized for interactive clients. Programmatic clients
+should prefer `structured_content`, but should tolerate action-specific keys.
+The `list`, `logs`, and `backups` list/cleanup responses currently omit a
+top-level `success` field on success; treat the absence of an error response as
+success for those actions.
 
 ## Tool: `swag_help`
 

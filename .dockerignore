@@ -24,7 +24,7 @@
 logs
 backups
 docs
-scripts
+tests
 specs
 *.md
 !README.md
@@ -46,6 +46,5 @@ biome.json
 lefthook.yml
 .prettierrc
 .prettierignore
-tests
 
 .claude

@@ -15,7 +15,10 @@ Two MCP tools are exposed:
 | `swag` | Unified action router for all SWAG proxy configuration operations |
 | `swag_help` | Returns markdown documentation for all actions and parameters |
 
-The server uses streamable-HTTP transport on port 8000. Authentication is handled externally at the proxy/network layer. Both local filesystem and remote SSH access modes are supported.
+The server uses streamable-HTTP transport on port 8000 internally. Direct HTTP
+access requires `SWAG_MCP_TOKEN`, a FastMCP auth provider, or explicit
+`SWAG_MCP_NO_AUTH=true` for loopback/proxy-isolated deployments. Both local
+filesystem and remote SSH access modes are supported.
 
 ## What this repository ships
 
@@ -86,13 +89,12 @@ docker compose up -d
 
 ## Authentication
 
-SWAG MCP does not enforce bearer token authentication internally. Access control must be handled at the network or proxy layer.
+`SWAG_MCP_TOKEN` enables built-in static bearer-token authentication for direct
+HTTP MCP access. Startup fails closed unless token auth, `FASTMCP_SERVER_AUTH`,
+or explicit `SWAG_MCP_NO_AUTH=true` is configured.
 
-The `SWAG_MCP_TOKEN` and `SWAG_MCP_NO_AUTH` environment variables exist for documentation purposes and to log the current auth posture at startup.
-
-To secure the server, place it behind a reverse proxy (such as SWAG itself) that enforces authentication.
-
-See [AUTH](mcp/AUTH.md) for detailed setup.
+Keep Docker's published port bound to loopback unless a reverse proxy or trusted
+network enforces access controls. See [AUTH](mcp/AUTH.md) for detailed setup.
 
 ## Configuration
 
@@ -110,9 +112,10 @@ chmod 600 .env
 | `SWAG_MCP_PROXY_CONFS_PATH` | yes* | `/swag/nginx/proxy-confs` | Path to SWAG proxy configurations directory |
 | `SWAG_MCP_PROXY_CONFS_URI` | no | — | SSH URI to remote proxy-confs (overrides path if set) |
 | `SWAG_MCP_HOST` | no | `127.0.0.1` | Network interface to bind |
-| `SWAG_MCP_PORT` | no | `8000` | External port mapping (internal always 8000) |
-| `SWAG_MCP_TOKEN` | no | — | Bearer token (informational; auth enforced externally) |
-| `SWAG_MCP_NO_AUTH` | no | `false` | Disable auth warning at startup |
+| `SWAG_MCP_BIND_ADDRESS` | no | `127.0.0.1` | Docker host bind address |
+| `SWAG_MCP_PORT` | no | `49152` | Docker host port mapping (container always uses 8000) |
+| `SWAG_MCP_TOKEN` | recommended | — | Bearer token enforced by FastMCP |
+| `SWAG_MCP_NO_AUTH` | no | `false` | Explicitly allow startup without direct server auth |
 
 *Required when `SWAG_MCP_PROXY_CONFS_URI` is not set.
 
@@ -167,7 +170,7 @@ just logs
 
 # Health check
 just health
-# or: curl http://localhost:8000/health
+# or: curl http://127.0.0.1:49152/health
 
 # Stop
 just down

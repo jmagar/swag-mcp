@@ -1,6 +1,7 @@
 """Async utilities for enhanced performance and concurrency control."""
 
 import asyncio
+import inspect
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -36,13 +37,26 @@ async def bounded_gather(*coros: Awaitable[T], limit: int = 10) -> list[T]:
     semaphore = asyncio.Semaphore(limit)
 
     async def bounded_coro(coro: Awaitable[T]) -> T:
-        async with semaphore:
-            return await coro
+        # If cancelled before semaphore acquisition, close an unstarted coroutine
+        # to avoid "coroutine was never awaited" resource warnings.
+        started = False
+        try:
+            async with semaphore:
+                started = True
+                return await coro
+        finally:
+            if not started and inspect.iscoroutine(coro):
+                coro.close()
 
+    tasks = [asyncio.create_task(bounded_coro(coro)) for coro in coros]
     try:
-        return await asyncio.gather(*[bounded_coro(coro) for coro in coros])
+        return await asyncio.gather(*tasks)
     except Exception as e:
-        logger.error(f"Error in bounded_gather: {e}")
+        logger.error("Error in bounded_gather: %s", e)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         raise
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..utils.validators import validate_empty_string
 from .constants import (
@@ -109,6 +109,12 @@ class SwagConfig(BaseSettings):
         default=10485760, description="Maximum size of log files before rotation (10MB default)"
     )
 
+    log_file_backup_count: int = Field(
+        default=5,
+        ge=0,
+        description="Number of rotated log file backups to keep",
+    )
+
     log_directory: Path = Field(
         default=Path("/app/.swag-mcp/logs"), description="Directory for log files"
     )
@@ -161,12 +167,12 @@ class SwagConfig(BaseSettings):
         create_empty_string_validator(DEFAULT_LOG_LEVEL)
     )
 
-    model_config = {
-        "env_file": ".env",
-        "env_prefix": "SWAG_MCP_",
-        "case_sensitive": False,
-        "extra": "ignore",  # Ignore extra environment variables
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="SWAG_MCP_",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 # Global configuration instance

@@ -152,6 +152,25 @@ class TestServiceNameValidation:
         with pytest.raises(ValueError):
             validate_service_name(emoji_name, allow_emoji=False)
 
+    @pytest.mark.parametrize("emoji_name", ["app☀", "app✈", "app😀"])
+    def test_service_name_emoji_policy_consistent_across_unicode_ranges(self, emoji_name):
+        """Test service name emoji policy for BMP and extended emoji ranges."""
+        assert validate_service_name(emoji_name, allow_emoji=True) == emoji_name
+
+        with pytest.raises(ValueError, match="emoji"):
+            validate_service_name(emoji_name, allow_emoji=False)
+
+    def test_service_name_allows_documented_homograph_scripts(self):
+        """Test documented homograph policy remains non-blocking."""
+        assert validate_service_name("арр", allow_emoji=False) == "арр"
+
+    def test_service_name_logs_mixed_script_spoofing_signal(self, caplog):
+        """Mixed Latin/non-Latin service names remain allowed but visible in logs."""
+        with caplog.at_level("DEBUG", logger="swag_mcp.utils.validators"):
+            assert validate_service_name("app-арр", allow_emoji=False) == "app-арр"
+
+        assert "mixed-script spoofing signals" in caplog.text
+
 
 class TestConfigFilenameValidation:
     """Test configuration filename validation."""

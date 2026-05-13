@@ -19,6 +19,7 @@ from swag_mcp.models.config import (
 )
 from swag_mcp.models.enums import SwagAction
 from swag_mcp.services.errors import SwagServiceError
+from swag_mcp.services.filesystem import FileStat
 from swag_mcp.services.swag_manager import SwagManagerService
 
 
@@ -45,16 +46,11 @@ class TestSwagManagerService:
     @pytest_asyncio.fixture
     async def service(self, temp_config):
         """Create SwagManagerService with temporary config."""
-        service = SwagManagerService(
+        async with SwagManagerService(
             config_path=temp_config.proxy_confs_path, template_path=temp_config.template_path
-        )
-        yield service
-        # Cleanup
-        if (
-            hasattr(service.health_monitor, "_http_session")
-            and service.health_monitor._http_session
-        ):
-            await service.health_monitor._http_session.close()
+        ) as service:
+            service.health_monitor._validate_health_check_host = AsyncMock(return_value=None)
+            yield service
 
     @pytest_asyncio.fixture
     async def sample_config_file(self, temp_config):
@@ -110,6 +106,23 @@ server {
         assert isinstance(result.configs, list)
         assert len(result.configs) == 0
 
+    async def test_config_operations_list_configs_supports_pagination(self, service, temp_config):
+        """ConfigOperations can return only the requested list page."""
+        for i in range(10):
+            (temp_config.proxy_confs_path / f"paged{i:02d}.subdomain.conf").write_text(
+                f"# config {i}"
+            )
+
+        result = await service.config_operations.list_configs("active", offset=3, limit=4)
+
+        assert result.total_count == 10
+        assert result.configs == [
+            "paged03.subdomain.conf",
+            "paged04.subdomain.conf",
+            "paged05.subdomain.conf",
+            "paged06.subdomain.conf",
+        ]
+
     async def test_read_config_existing(self, service, sample_config_file):
         """Test reading existing configuration."""
         content = await service.read_config("test.subdomain.conf")
@@ -126,6 +139,67 @@ server {
         """Test reading config with invalid name."""
         with pytest.raises(ValueError):
             await service.read_config("../etc/passwd")
+
+    async def test_read_config_rejects_backend_symlink(self, temp_config):
+        """Remote/backend symlink detection prevents config disclosure."""
+
+        class SymlinkFilesystem:
+            read_called = False
+
+            async def read_bytes(self, path: str) -> bytes:
+                self.read_called = True
+                return b"secret"
+
+            async def read_text(self, path: str, encoding: str = "utf-8") -> str:
+                return "secret"
+
+            async def write_text(self, path: str, content: str, encoding: str = "utf-8") -> None:
+                return None
+
+            async def exists(self, path: str) -> bool:
+                return True
+
+            async def is_file(self, path: str) -> bool:
+                return True
+
+            async def is_symlink(self, path: str) -> bool:
+                return True
+
+            async def stat(self, path: str) -> FileStat:
+                return FileStat(st_size=6, st_mtime=0, is_file=True, is_dir=False)
+
+            async def glob(self, directory: str, pattern: str) -> list[str]:
+                return []
+
+            async def mkdir(self, path: str, parents: bool = False) -> None:
+                return None
+
+            async def unlink(self, path: str) -> None:
+                return None
+
+            async def rename(self, src: str, dst: str) -> None:
+                return None
+
+            async def statvfs(self, path: str) -> tuple[int, int] | None:
+                return None
+
+            async def read_tail_lines(self, path: str, n: int) -> list[str]:
+                return []
+
+            async def close(self) -> None:
+                return None
+
+        fs = SymlinkFilesystem()
+        service = SwagManagerService(
+            config_path=temp_config.proxy_confs_path,
+            template_path=temp_config.template_path,
+            fs=fs,
+        )
+
+        with pytest.raises(ValueError, match="symlink"):
+            await service.read_config("test.subdomain.conf")
+
+        assert fs.read_called is False
 
     async def test_create_config_success(self, service, temp_config):
         """Test successful config creation."""
@@ -246,6 +320,17 @@ server {
         # Verify upstream was updated
         updated_content = await service.read_config("test.subdomain.conf")
         assert "new-test-app" in updated_content
+        assert "8080" in updated_content
+
+    async def test_update_config_field_upstream_rejects_app_port(self, sample_config_file):
+        """Upstream updates accept an app name only, not app:port."""
+        with pytest.raises(ValidationError):
+            SwagUpdateRequest(
+                action=SwagAction.UPDATE,
+                config_name="test.subdomain.conf",
+                update_field="upstream",
+                update_value="new-test-app:9000",
+            )
 
     async def test_update_config_field_app(self, service, sample_config_file):
         """Test updating app field."""
@@ -263,6 +348,16 @@ server {
         # Verify app was updated
         updated_content = await service.read_config("test.subdomain.conf")
         assert "new-app:7000" in updated_content
+
+    async def test_update_config_field_app_requires_port(self, sample_config_file):
+        """App updates require app:port because they update both app and port."""
+        with pytest.raises(ValidationError):
+            SwagUpdateRequest(
+                action=SwagAction.UPDATE,
+                config_name="test.subdomain.conf",
+                update_field="app",
+                update_value="new-app",
+            )
 
     async def test_update_config_field_invalid_field(self, service, sample_config_file):
         """Test updating with invalid port value."""
@@ -349,6 +444,108 @@ server {
         assert len(backups) == 1
         assert backups[0]["name"] == backup_filename
         assert backups[0]["original_config"] == "test.subdomain.conf"
+
+    async def test_list_backups_supports_pagination(self, service, temp_config):
+        """Backup listing can return only the requested page."""
+        import os
+
+        for i in range(5):
+            backup_path = (
+                temp_config.proxy_confs_path
+                / f"test{i}.subdomain.conf.backup.20260101_12000{i}_123456_deadbeef"
+            )
+            backup_path.write_text(f"backup {i}")
+            os.utime(backup_path, (i, i))
+
+        backups = await service.backup_manager.list_backups(offset=1, limit=2)
+
+        assert [backup["name"] for backup in backups] == [
+            "test3.subdomain.conf.backup.20260101_120003_123456_deadbeef",
+            "test2.subdomain.conf.backup.20260101_120002_123456_deadbeef",
+        ]
+
+    async def test_cleanup_old_backups_restats_candidates_before_unlink(self, service, temp_config):
+        """Cleanup re-checks backup metadata under lock before unlinking."""
+
+        class CountingFilesystem:
+            def __init__(self, root: Path) -> None:
+                self.root = root
+                self.stat_calls = 0
+
+            async def read_bytes(self, path: str) -> bytes:
+                return Path(path).read_bytes()
+
+            async def read_text(self, path: str, encoding: str = "utf-8") -> str:
+                return Path(path).read_text(encoding=encoding)
+
+            async def write_text(self, path: str, content: str, encoding: str = "utf-8") -> None:
+                Path(path).write_text(content, encoding=encoding)
+
+            async def exists(self, path: str) -> bool:
+                return Path(path).exists()
+
+            async def is_file(self, path: str) -> bool:
+                return Path(path).is_file()
+
+            async def is_symlink(self, path: str) -> bool:
+                return Path(path).is_symlink()
+
+            async def stat(self, path: str) -> FileStat:
+                self.stat_calls += 1
+                file_path = Path(path)
+                stat_result = file_path.stat()
+                return FileStat(
+                    st_size=stat_result.st_size,
+                    st_mtime=stat_result.st_mtime,
+                    is_file=file_path.is_file(),
+                    is_dir=file_path.is_dir(),
+                )
+
+            async def glob(self, directory: str, pattern: str) -> list[str]:
+                return sorted(path.name for path in Path(directory).glob(pattern))
+
+            async def mkdir(self, path: str, parents: bool = False) -> None:
+                Path(path).mkdir(parents=parents, exist_ok=True)
+
+            async def unlink(self, path: str) -> None:
+                Path(path).unlink()
+
+            async def rename(self, src: str, dst: str) -> None:
+                Path(src).replace(Path(dst))
+
+            async def statvfs(self, path: str) -> tuple[int, int] | None:
+                return None
+
+            async def read_tail_lines(self, path: str, n: int) -> list[str]:
+                return []
+
+            async def close(self) -> None:
+                return None
+
+        import os
+        import time
+
+        backup_count = 3
+        for i in range(backup_count):
+            backup_path = (
+                temp_config.proxy_confs_path
+                / f"old{i}.subdomain.conf.backup.20200101_12000{i}_123456_deadbeef"
+            )
+            backup_path.write_text(f"old backup {i}")
+            old_time = time.time() - (3 * 24 * 60 * 60)
+            os.utime(backup_path, (old_time, old_time))
+
+        fs = CountingFilesystem(temp_config.proxy_confs_path)
+        service = SwagManagerService(
+            config_path=temp_config.proxy_confs_path,
+            template_path=temp_config.template_path,
+            fs=fs,
+        )
+
+        cleaned_count = await service.cleanup_old_backups(retention_days=1)
+
+        assert cleaned_count == backup_count
+        assert fs.stat_calls == backup_count * 2
 
     async def test_cleanup_old_backups(self, service, temp_config):
         """Test cleanup of old backup files."""
@@ -449,9 +646,14 @@ server {
         mock_response_success.status = 200
         mock_response_success.text = AsyncMock(return_value="OK")
 
+        mock_response_root = AsyncMock()
+        mock_response_root.status = 404
+        mock_response_root.text = AsyncMock(return_value="Not Found")
+
         mock_get.return_value.__aenter__.side_effect = [
             mock_response_fail,  # /health fails
             mock_response_success,  # /mcp succeeds
+            mock_response_root,  # / is checked concurrently
         ]
 
         request = SwagHealthCheckRequest(action=SwagAction.HEALTH_CHECK, domain="test.example.com")
@@ -459,6 +661,39 @@ server {
         result = await service.health_check(request)
 
         assert result.success is True
+        assert result.status_code == 200
+        assert len(result.endpoint_results) == 2
+        assert result.endpoint_results[0].endpoint == "/health"
+        assert result.endpoint_results[0].success is False
+        assert result.endpoint_results[0].status_code == 404
+        assert result.endpoint_results[1].endpoint == "/mcp"
+        assert result.endpoint_results[1].success is True
+        assert result.endpoint_results[1].status_code == 200
+        assert mock_get.call_count == 2
+
+    @patch("aiohttp.ClientSession.get")
+    async def test_health_check_records_endpoint_errors(self, mock_get, service):
+        """Failed health checks include per-endpoint error detail."""
+        mock_get.side_effect = TimeoutError()
+
+        request = SwagHealthCheckRequest(
+            action=SwagAction.HEALTH_CHECK,
+            domain="timeout.example.com",
+            timeout=10,
+        )
+
+        result = await service.health_check(request)
+
+        assert result.success is False
+        assert result.error is not None
+        assert len(result.endpoint_results) == 3
+        assert [endpoint.endpoint for endpoint in result.endpoint_results] == [
+            "/health",
+            "/mcp",
+            "/",
+        ]
+        assert all(endpoint.success is False for endpoint in result.endpoint_results)
+        assert all("Timeout" in (endpoint.error or "") for endpoint in result.endpoint_results)
 
     # Log Access Tests
 

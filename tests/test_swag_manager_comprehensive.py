@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import pytest_asyncio
 from swag_mcp.models.config import (
     SwagHealthCheckRequest,
     SwagLogsRequest,
@@ -239,6 +240,16 @@ class TestFileOperations:
 
         assert test_file.exists()
         assert test_file.read_text() == content
+
+    async def test_read_text_safe_rejects_backend_symlink(self, temp_service):
+        """Safe reads reject symlinks through the filesystem backend."""
+        real_file = temp_service.config_path / "real.conf"
+        real_file.write_text("secret")
+        link_file = temp_service.config_path / "link.conf"
+        link_file.symlink_to(real_file)
+
+        with pytest.raises(ValueError, match="symlink"):
+            await temp_service.file_ops.read_text_safe(str(link_file), "linked config")
 
     async def test_safe_write_file_with_lock(self, temp_service):
         """Test file writing with locking enabled."""
@@ -576,15 +587,63 @@ server {
                 mcp_path="/mcp",
             )
 
+    async def test_add_mcp_location_preserves_duplicate_location_error(self, temp_service):
+        """Expected duplicate-location failures stay actionable."""
+        config_file = temp_service.config_path / "duplicate.subdomain.conf"
+        config_file.write_text(
+            """
+server {
+    listen 443 ssl;
+    server_name duplicate.example.com;
+
+    location /mcp {
+        proxy_pass http://app:8080;
+    }
+}
+            """.strip()
+        )
+
+        with pytest.raises(ValueError, match="already exists"):
+            await temp_service.add_mcp_location(
+                config_name="duplicate.subdomain.conf",
+                mcp_path="/mcp",
+            )
+
+    async def test_add_mcp_location_wraps_unexpected_write_failures(self, temp_service):
+        """Unexpected failures are distinguished from validation errors."""
+        config_file = temp_service.config_path / "unexpected.subdomain.conf"
+        config_file.write_text(
+            """
+server {
+    listen 443 ssl;
+    server_name unexpected.example.com;
+}
+            """.strip()
+        )
+
+        with (
+            patch.object(
+                temp_service.file_ops,
+                "safe_write_file",
+                side_effect=OSError("disk unavailable"),
+            ),
+            pytest.raises(RuntimeError, match="Failed to add MCP location"),
+        ):
+            await temp_service.add_mcp_location(
+                config_name="unexpected.subdomain.conf",
+                mcp_path="/mcp",
+            )
+
 
 class TestHealthCheckMethod:
     """Test health check functionality."""
 
-    @pytest.fixture
-    def temp_service(self):
+    @pytest_asyncio.fixture
+    async def temp_service(self):
         """Create service for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            yield SwagManagerService(Path(temp_dir), Path(temp_dir))
+            async with SwagManagerService(Path(temp_dir), Path(temp_dir)) as service:
+                yield service
 
     @patch("aiohttp.ClientSession.get")
     async def test_health_check_success(self, mock_get, temp_service):
@@ -713,6 +772,7 @@ class TestErrorHandlingEdgeCases:
         with tempfile.TemporaryDirectory() as temp_dir:
             yield SwagManagerService(Path(temp_dir), Path(temp_dir))
 
+    @pytest.mark.real_nginx_validation
     async def test_validate_nginx_syntax_subprocess_error(self, temp_service):
         """Test nginx syntax validation when nginx executable is not found."""
         test_file = temp_service.config_path / "test.conf"
@@ -722,8 +782,7 @@ class TestErrorHandlingEdgeCases:
             # Mock nginx not being found
             mock_which.return_value = None
 
-            # Should handle missing nginx gracefully
+            # Missing nginx fails closed so callers do not silently accept bad configs.
             result = await temp_service.validation_service.validate_nginx_syntax(test_file)
-            # Method should return boolean, True when nginx not available (assume valid)
             assert isinstance(result, bool)
-            assert result is True
+            assert result is False

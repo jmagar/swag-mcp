@@ -1,5 +1,6 @@
 """Configuration field updater module for SWAG MCP."""
 
+import ipaddress
 import logging
 import re
 import tempfile
@@ -9,6 +10,7 @@ from typing import Protocol, runtime_checkable
 
 from swag_mcp.models.config import SwagConfigResult, SwagUpdateRequest
 from swag_mcp.services.file_operations import FileOperations
+from swag_mcp.services.filesystem import requires_remote_nginx_validation
 from swag_mcp.services.validation import ValidationService
 from swag_mcp.utils.error_codes import (
     ErrorCode,
@@ -34,6 +36,93 @@ def _replace_set_value(content: str, variable_name: str, value: str | int) -> tu
     pattern = SET_DIRECTIVE_PATTERN.format(variable_name=variable_name)
     replacement = rf'set ${variable_name} "{value}";'
     return re.subn(pattern, replacement, content)
+
+
+def _validate_service_identifier(value: str, label: str) -> str:
+    """Validate a service/upstream identifier used in nginx upstream settings."""
+    normalized = value.strip()
+    ip_candidate = (
+        normalized[1:-1] if normalized.startswith("[") and normalized.endswith("]") else normalized
+    )
+
+    is_ip_address = False
+    try:
+        ipaddress.ip_address(ip_candidate)
+        is_ip_address = True
+    except ValueError:
+        pass
+
+    if not is_ip_address and not re.match(r"^[A-Za-z0-9_.-]+$", normalized):
+        raise create_validation_error(
+            ErrorCode.INVALID_SERVICE_NAME,
+            f"Invalid {label}: {value}",
+        )
+    return normalized
+
+
+def _parse_port_value(value: str | int, label: str = "port value") -> int:
+    """Parse and validate a TCP port value."""
+    try:
+        port_value = int(value)
+        if not (1 <= port_value <= 65535):
+            raise create_validation_error(
+                ErrorCode.INVALID_PORT_NUMBER,
+                f"Port number must be between 1-65535, got: {port_value}",
+            )
+    except (ValueError, TypeError) as e:
+        raise create_validation_error(
+            ErrorCode.INVALID_PORT_NUMBER,
+            f"Invalid {label}: {value}",
+            context={"original_error": str(e)},
+        ) from e
+
+    return port_value
+
+
+def _replace_template_value_pair(
+    content: str,
+    primary_variable: str,
+    inherited_variable: str,
+    new_value: str | int,
+) -> tuple[str, bool]:
+    """Replace a primary set value and inherited MCP value when it mirrors the primary."""
+    original_primary = _extract_set_value(content, primary_variable)
+    original_inherited = _extract_set_value(content, inherited_variable)
+    updated_content, primary_replacements = _replace_set_value(content, primary_variable, new_value)
+    changes_made = primary_replacements > 0
+
+    if primary_replacements > 0:
+        logger.debug("Updated %s %s references", primary_replacements, primary_variable)
+
+    if original_inherited and original_inherited == original_primary:
+        new_content, inherited_replacements = _replace_set_value(
+            updated_content, inherited_variable, new_value
+        )
+        if inherited_replacements > 0:
+            updated_content = new_content
+            logger.debug(
+                "Updated %s inherited %s references",
+                inherited_replacements,
+                inherited_variable,
+            )
+
+    return updated_content, changes_made
+
+
+def _replace_template_values(
+    content: str, updates: list[tuple[str, str | int]]
+) -> tuple[str, bool]:
+    """Apply multiple nginx set directive replacements."""
+    updated_content = content
+    changes_made = False
+
+    for variable_name, value in updates:
+        new_content, count = _replace_set_value(updated_content, variable_name, value)
+        if count > 0:
+            updated_content = new_content
+            changes_made = True
+
+    return updated_content, changes_made
 
 
 @runtime_checkable
@@ -136,42 +225,14 @@ class ConfigFieldUpdaters:
             ValidationError: If port value is invalid
 
         """
-        # Validate port value
-        try:
-            port_value = int(update_request.update_value)
-            if not (1 <= port_value <= 65535):
-                raise create_validation_error(
-                    ErrorCode.INVALID_PORT_NUMBER,
-                    f"Port number must be between 1-65535, got: {port_value}",
-                )
-        except (ValueError, TypeError) as e:
-            raise create_validation_error(
-                ErrorCode.INVALID_PORT_NUMBER,
-                f"Invalid port value: {update_request.update_value}",
-                context={"original_error": str(e)},
-            ) from e
+        port_value = _parse_port_value(update_request.update_value)
 
-        updated_content = content
-        changes_made = False
-
-        original_upstream_port = _extract_set_value(content, "upstream_port")
-        original_mcp_port = _extract_set_value(content, "mcp_upstream_port")
-
-        new_content, port_replacements = _replace_set_value(
-            updated_content, "upstream_port", port_value
+        updated_content, changes_made = _replace_template_value_pair(
+            content,
+            primary_variable="upstream_port",
+            inherited_variable="mcp_upstream_port",
+            new_value=port_value,
         )
-        if port_replacements > 0:
-            updated_content = new_content
-            changes_made = True
-            logger.debug("Updated %s upstream port references", port_replacements)
-
-        if original_mcp_port and original_mcp_port == original_upstream_port:
-            new_content, mcp_port_replacements = _replace_set_value(
-                updated_content, "mcp_upstream_port", port_value
-            )
-            if mcp_port_replacements > 0:
-                updated_content = new_content
-                logger.debug("Updated %s inherited MCP port references", mcp_port_replacements)
 
         if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
@@ -221,34 +282,16 @@ class ConfigFieldUpdaters:
             ValidationError: If upstream app name is invalid
 
         """
-        # Validate upstream app name
-        if not re.match(r"^[A-Za-z0-9_.-]+$", update_request.update_value):
-            raise create_validation_error(
-                ErrorCode.INVALID_SERVICE_NAME,
-                f"Invalid upstream app name: {update_request.update_value}",
-            )
-
-        updated_content = content
-        changes_made = False
-
-        original_upstream_app = _extract_set_value(content, "upstream_app")
-        original_mcp_app = _extract_set_value(content, "mcp_upstream_app")
-
-        new_content, app_replacements = _replace_set_value(
-            updated_content, "upstream_app", update_request.update_value
+        upstream_app = _validate_service_identifier(
+            update_request.update_value, "upstream app name"
         )
-        if app_replacements > 0:
-            updated_content = new_content
-            changes_made = True
-            logger.debug("Updated %s upstream app references", app_replacements)
 
-        if original_mcp_app and original_mcp_app == original_upstream_app:
-            new_content, mcp_app_replacements = _replace_set_value(
-                updated_content, "mcp_upstream_app", update_request.update_value
-            )
-            if mcp_app_replacements > 0:
-                updated_content = new_content
-                logger.debug("Updated %s inherited MCP app references", mcp_app_replacements)
+        updated_content, changes_made = _replace_template_value_pair(
+            content,
+            primary_variable="upstream_app",
+            inherited_variable="mcp_upstream_app",
+            new_value=upstream_app,
+        )
 
         if not changes_made:
             # Try simple nginx format: proxy_pass http://app:port
@@ -258,20 +301,19 @@ class ConfigFieldUpdaters:
                 port = match.group(2) or ""
                 path = match.group(3) or ""
                 protocol = "https" if "https" in match.group(0) else "http"
-                return f"proxy_pass {protocol}://{update_request.update_value}{port}{path};"
+                return f"proxy_pass {protocol}://{upstream_app}{port}{path};"
 
             new_content, proxy_replacements = re.subn(pattern, replace_proxy_pass, updated_content)
             if proxy_replacements > 0:
                 updated_content = new_content
                 changes_made = True
                 logger.debug(
-                    f"Updated {proxy_replacements} proxy_pass app references to "
-                    f"{update_request.update_value}"
+                    f"Updated {proxy_replacements} proxy_pass app references to {upstream_app}"
                 )
 
         # Update upstream comment
         upstream_comment_pattern = r"(# Upstream: https?://)[^:]+(:\d+)"
-        upstream_comment_replacement = rf"\g<1>{update_request.update_value}\g<2>"
+        upstream_comment_replacement = rf"\g<1>{upstream_app}\g<2>"
         new_content, comment_replacements = re.subn(
             upstream_comment_pattern, upstream_comment_replacement, updated_content
         )
@@ -307,29 +349,8 @@ class ConfigFieldUpdaters:
 
         app, port = update_request.update_value.split(":", 1)
 
-        # Validate app name
-        if not re.match(r"^[A-Za-z0-9_.-]+$", app):
-            raise create_validation_error(
-                ErrorCode.INVALID_SERVICE_NAME, f"Invalid app name: {app}"
-            )
-
-        # Validate port
-        try:
-            port_value = int(port)
-            if not (1 <= port_value <= 65535):
-                raise create_validation_error(
-                    ErrorCode.INVALID_PORT_NUMBER,
-                    f"Port number must be between 1-65535, got: {port_value}",
-                )
-        except (ValueError, TypeError) as e:
-            raise create_validation_error(
-                ErrorCode.INVALID_PORT_NUMBER,
-                f"Invalid port value: {port}",
-                context={"original_error": str(e)},
-            ) from e
-
-        updated_content = content
-        changes_made = False
+        app = _validate_service_identifier(app, "app name")
+        port_value = _parse_port_value(port)
 
         original_upstream_app = _extract_set_value(content, "upstream_app")
         original_mcp_app = _extract_set_value(content, "mcp_upstream_app")
@@ -345,11 +366,7 @@ class ConfigFieldUpdaters:
         if original_mcp_port and original_mcp_port == original_upstream_port:
             template_updates.append(("mcp_upstream_port", port_value))
 
-        for variable_name, value in template_updates:
-            new_content, count = _replace_set_value(updated_content, variable_name, value)
-            if count > 0:
-                updated_content = new_content
-                changes_made = True
+        updated_content, changes_made = _replace_template_values(content, template_updates)
 
         # If template format didn't work, try simple nginx format
         if not changes_made:
@@ -470,6 +487,12 @@ class ConfigFieldUpdaters:
 
         try:
             # Validate nginx syntax before committing changes
+            if requires_remote_nginx_validation(self.file_ops.fs):
+                raise create_operation_error(
+                    ErrorCode.CONFIG_SYNTAX_ERROR,
+                    "Cannot validate nginx syntax for remote filesystem backend without "
+                    "authoritative remote nginx validation",
+                )
             if not await self.validation.validate_nginx_syntax(temp_path):
                 raise create_operation_error(
                     ErrorCode.CONFIG_SYNTAX_ERROR,

@@ -9,24 +9,38 @@ swag-mcp has two authentication boundaries:
 
 ## MCP server authentication
 
-swag-mcp does not enforce bearer token authentication internally. The server logs authentication-related configuration at startup but does not reject unauthenticated requests.
+swag-mcp enforces authentication for direct MCP server access when either
+`SWAG_MCP_TOKEN` or `FASTMCP_SERVER_AUTH` is configured. If neither is set,
+startup fails unless `SWAG_MCP_NO_AUTH=true` is explicitly configured.
 
-Authentication must be enforced at the network or proxy layer:
+For the default static bearer-token mode, generate and set a token:
 
-- Place the MCP server behind SWAG with Authelia, Authentik, or OAuth
-- Use Docker network isolation to restrict access to trusted clients
-- Use SSH tunneling for remote access
+```bash
+SWAG_MCP_TOKEN="$(openssl rand -hex 32)"
+```
+
+Unauthenticated mode is reserved for loopback-only, stdio, or proxy-isolated
+deployments. When using it, keep the Docker published port bound to
+`127.0.0.1` or place the service behind an authenticated proxy.
+
+Authentication can also be enforced at the network or proxy layer:
+
+- Place the MCP server behind SWAG with Authelia, Authentik, or OAuth.
+- Use Docker network isolation to restrict access to trusted clients.
+- Use SSH tunneling for remote access.
 
 ### Environment variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SWAG_MCP_TOKEN` | — | Bearer token (logged at startup, not enforced) |
-| `SWAG_MCP_NO_AUTH` | `false` | When `true`, suppresses the "no token" warning |
+| `SWAG_MCP_TOKEN` | — | Static bearer token enforced by FastMCP |
+| `SWAG_MCP_NO_AUTH` | `false` | Explicitly allow startup without server auth |
 
-### Why external auth
+### Why fail closed
 
-MCP servers sit behind reverse proxies in production. Implementing auth at both the proxy and application layers creates maintenance overhead and token synchronization issues. The proxy layer (SWAG, Traefik, Caddy) is the canonical auth enforcement point.
+The HTTP MCP transport can perform configuration writes, read generated configs,
+and inspect logs. Direct network exposure without authentication is unsafe, so
+the server requires a concrete auth decision at startup.
 
 ## Google OAuth support
 
@@ -83,7 +97,7 @@ Every generated config includes these explicit routes:
 
 1. **DNS Rebinding Protection**: All configurations include origin validation against authorized domains (including `claude.ai` and `anthropic.com`).
 2. **Standardized Headers**: Consistent `X-MCP-Version` and `Referrer-Policy` headers across the fleet.
-3. **Proxy OAuth Gate**: `/mcp` requests are checked by nginx via `auth_request /_oauth_verify` before reaching the MCP upstream.
+3. **Proxy OAuth Gate**: `/mcp`, `/session`, and `/sessions` requests are checked by nginx via `auth_request /_oauth_verify` before reaching the MCP upstream.
 4. **Internal AuthLayer**: The MCP service can still enforce its own AuthLayer after proxy verification for fine-grained, per-service permissions.
 
 The main application location (`/`) still uses the standard auth method (Authelia, Authentik, etc.), while MCP endpoints use proxy-level OAuth verification plus any service-level AuthLayer.
@@ -93,7 +107,7 @@ The main application location (`/`) still uses the standard auth method (Autheli
 The `/health` endpoint is always unauthenticated in both the MCP server and generated proxy configs. It returns:
 
 ```json
-{"status": "healthy", "service": "swag-mcp", "version": "1.0.1"}
+{"status": "healthy", "service": "swag-mcp", "version": "1.1.4"}
 ```
 
 This is required for Docker health checks and monitoring.

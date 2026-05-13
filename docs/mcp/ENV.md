@@ -47,9 +47,10 @@ SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:2222:/mnt/appdata/swag/nginx/proxy-co
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
 | `SWAG_MCP_HOST` | no | `127.0.0.1` | no | Bind interface. Docker overrides to `0.0.0.0` |
-| `SWAG_MCP_PORT` | no | `8000` | no | External port. Internal container port is fixed at 8000 |
-| `SWAG_MCP_TOKEN` | no | — | yes | Bearer token (logged, not enforced) |
-| `SWAG_MCP_NO_AUTH` | no | `false` | no | Suppress "no token" startup warning |
+| `SWAG_MCP_BIND_ADDRESS` | no | `127.0.0.1` | no | Docker host bind address for the published MCP port |
+| `SWAG_MCP_PORT` | no | `49152` | no | External port. Internal container port is fixed at 8000 |
+| `SWAG_MCP_TOKEN` | recommended | — | yes | Static bearer token enforced by FastMCP |
+| `SWAG_MCP_NO_AUTH` | no | `false` | no | Explicitly allow startup without server auth |
 | `SWAG_MCP_TEMPLATE_PATH` | no | `templates` | no | Jinja2 template directory |
 | `SWAG_MCP_LOG_DIRECTORY` | no | `/app/.swag-mcp/logs` | no | Server log file directory |
 

@@ -15,7 +15,7 @@ from swag_mcp.core.constants import (
     VALID_CONFIG_ONLY_PATTERN,
     VALID_UPSTREAM_PATTERN,
 )
-from swag_mcp.models.enums import BackupSubAction, SwagAction
+from swag_mcp.models.enums import BackupSubAction
 from swag_mcp.utils.validators import validate_domain_format, validate_mcp_path
 
 # Type alias for authentication methods - validated at runtime against AUTH_METHODS
@@ -55,11 +55,58 @@ def _validate_port_number(port_str: str) -> None:
         raise ValueError("Port number must be between 1 and 65535")
 
 
+def _normalize_model_text(value: str, *, lowercase: bool = False) -> str:
+    """Normalize user-provided model text with consistent Unicode handling."""
+    normalized = _ud.normalize("NFKC", value).strip()
+    return normalized.lower() if lowercase else normalized
+
+
+def _validate_config_name_value(value: str) -> str:
+    """Validate and normalize a SWAG configuration name."""
+    normalized = _normalize_model_text(value)
+    if not normalized:
+        raise ValueError("Config name cannot be empty")
+    if ".." in normalized or "/" in normalized or "\\" in normalized:
+        raise ValueError(f"Config name '{normalized[:50]}' contains invalid characters")
+    if normalized.startswith("-") or normalized.endswith("-"):
+        raise ValueError(f"Config name '{normalized[:50]}' cannot start or end with '-'")
+    return normalized
+
+
+def _validate_upstream_app_name(value: str, *, field_label: str, include_value: bool) -> str:
+    """Validate and normalize upstream app names shared by create and edit models."""
+    normalized = _normalize_model_text(value)
+    if not normalized:
+        raise ValueError(f"{field_label} cannot be empty")
+    if ".." in normalized or "/" in normalized or "\\" in normalized:
+        if include_value:
+            raise ValueError(
+                f"{field_label} '{_ud.normalize('NFKC', normalized[:50])}...' "
+                "contains invalid characters"
+            )
+        raise ValueError(f"{field_label} contains invalid characters")
+    return normalized
+
+
 class SwagBaseRequest(BaseModel):
-    """Base request model with common action field."""
+    """Base service request model.
+
+    The public MCP tool routes by `action`, but service command models should describe only
+    the action payload. Existing callers may still pass `action`; it is accepted and dropped
+    before normal extra-field validation.
+    """
 
     model_config = {"extra": "forbid"}
-    action: SwagAction = Field(description="The action to perform")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_transport_action(cls, data: typing.Any) -> typing.Any:
+        """Accept legacy transport action input without storing it on service models."""
+        if isinstance(data, dict) and "action" in data:
+            service_data = dict(data)
+            service_data.pop("action")
+            return service_data
+        return data
 
 
 class SwagListRequest(SwagBaseRequest):
@@ -73,7 +120,7 @@ class SwagListRequest(SwagBaseRequest):
     @field_validator("config_type", mode="before")
     @classmethod
     def _validate_config_type(cls, v: str) -> str:
-        v_norm = _ud.normalize("NFKC", v).strip().lower()
+        v_norm = _normalize_model_text(v, lowercase=True)
         if v_norm not in LIST_FILTERS:
             valid = ", ".join(sorted(LIST_FILTERS))
             # Normalize field name and value in error message
@@ -139,37 +186,20 @@ class SwagConfigRequest(SwagBaseRequest):
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         """Validate server name format."""
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = _normalize_model_text(v, lowercase=True)
         return validate_domain_format(v)
 
     @field_validator("config_name", mode="before")
     @classmethod
     def validate_config_name(cls, v: str) -> str:
         """Validate config name format."""
-        v = _ud.normalize("NFKC", v).strip()
-        if not v or ".." in v or "/" in v or "\\" in v:
-            raise ValueError(
-                f"Config name '{_ud.normalize('NFKC', v[:50])}...' contains invalid characters"
-            )
-        if v.startswith("-") or v.endswith("-"):
-            raise ValueError(
-                f"Config name '{_ud.normalize('NFKC', v[:50])}...' cannot start or end with '-'"
-            )
-        return v
+        return _validate_config_name_value(v)
 
     @field_validator("upstream_app", mode="before")
     @classmethod
     def validate_upstream_app(cls, v: str) -> str:
         """Validate upstream app name format."""
-        v = _ud.normalize("NFKC", v).strip()
-        if not v:
-            raise ValueError("Upstream app name cannot be empty")
-        if ".." in v or "/" in v or "\\" in v:
-            raise ValueError(
-                f"Upstream app name '{_ud.normalize('NFKC', v[:50])}...' "
-                f"contains invalid characters"
-            )
-        return v
+        return _validate_upstream_app_name(v, field_label="Upstream app name", include_value=True)
 
     @field_validator("mcp_upstream_app", mode="before")
     @classmethod
@@ -177,15 +207,11 @@ class SwagConfigRequest(SwagBaseRequest):
         """Validate MCP upstream app name format."""
         if v is None:
             return v
-        v = _ud.normalize("NFKC", v).strip()
-        if not v:
-            raise ValueError("MCP upstream app name cannot be empty")
-        if ".." in v or "/" in v or "\\" in v:
-            raise ValueError(
-                f"MCP upstream app name '{_ud.normalize('NFKC', v[:50])}...' "
-                f"contains invalid characters"
-            )
-        return v
+        return _validate_upstream_app_name(
+            v,
+            field_label="MCP upstream app name",
+            include_value=True,
+        )
 
     @field_validator("auth_method")
     @classmethod
@@ -340,7 +366,7 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate server name format for edit requests."""
         if v is None:
             return v
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = _normalize_model_text(v, lowercase=True)
         return validate_domain_format(v)
 
     @field_validator("upstream_app", mode="before")
@@ -349,12 +375,7 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate upstream app name format for edit requests."""
         if v is None:
             return v
-        v = _ud.normalize("NFKC", v).strip()
-        if not v:
-            raise ValueError("Upstream app name cannot be empty")
-        if ".." in v or "/" in v or "\\" in v:
-            raise ValueError("Upstream app name contains invalid characters")
-        return v
+        return _validate_upstream_app_name(v, field_label="Upstream app name", include_value=True)
 
     @field_validator("mcp_upstream_app", mode="before")
     @classmethod
@@ -362,12 +383,11 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate MCP upstream app name format for edit requests."""
         if v is None:
             return v
-        v = _ud.normalize("NFKC", v).strip()
-        if not v:
-            raise ValueError("MCP upstream app name cannot be empty")
-        if ".." in v or "/" in v or "\\" in v:
-            raise ValueError("MCP upstream app name contains invalid characters")
-        return v
+        return _validate_upstream_app_name(
+            v,
+            field_label="MCP upstream app name",
+            include_value=True,
+        )
 
 
 class SwagRemoveRequest(SwagBaseRequest):
@@ -421,7 +441,7 @@ class SwagHealthCheckRequest(SwagBaseRequest):
     @classmethod
     def validate_domain(cls, v: str) -> str:
         """Validate domain format."""
-        v = _ud.normalize("NFKC", v).strip().lower()
+        v = _normalize_model_text(v, lowercase=True)
         return validate_domain_format(v)
 
 
@@ -499,6 +519,11 @@ class SwagUpdateRequest(SwagBaseRequest):
             if not update_value:
                 raise ValueError("Upstream app name cannot be empty")
 
+            if ":" in update_value:
+                raise ValueError(
+                    "upstream field requires app/container/IP only; use app for app:port"
+                )
+
             if not _UPSTREAM_PATTERN.match(update_value):
                 raise ValueError(
                     "App name contains invalid characters. "
@@ -526,6 +551,22 @@ class SwagBackupRequest(SwagBaseRequest):
         return self
 
 
+class HealthEndpointResult(BaseModel):
+    """Per-endpoint result for health check attempts."""
+
+    endpoint: str = Field(..., description="Endpoint path that was checked")
+
+    url: str = Field(..., description="Full URL that was checked")
+
+    success: bool = Field(..., description="Whether this endpoint check succeeded")
+
+    status_code: int | None = Field(default=None, description="HTTP status code")
+
+    response_time_ms: int | None = Field(default=None, description="Response time in milliseconds")
+
+    error: str | None = Field(default=None, description="Endpoint-specific error")
+
+
 class SwagHealthCheckResult(BaseModel):
     """Result model for health check operations."""
 
@@ -542,3 +583,8 @@ class SwagHealthCheckResult(BaseModel):
     success: bool = Field(..., description="Whether the health check was successful")
 
     error: str | None = Field(default=None, description="Error message if check failed")
+
+    endpoint_results: list[HealthEndpointResult] = Field(
+        default_factory=list,
+        description="Per-endpoint health check attempt details",
+    )

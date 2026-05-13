@@ -1,5 +1,6 @@
 """Formatting utilities for SWAG MCP server."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -9,6 +10,67 @@ from swag_mcp.core.constants import (
     CONFIG_TYPES,
     SAMPLE_EXTENSION,
 )
+
+
+@dataclass(frozen=True)
+class _HealthCheckDisplayData:
+    """Normalized health check fields used by the rendering layer."""
+
+    success: bool
+    status_code: Any
+    response_time_ms: float | None
+    response_body: str | None
+    url: str
+    error: str | None
+    redirect_url: str | None
+
+
+def _get_health_result_value(result: Any, field_name: str, default: Any = None) -> Any:
+    """Read a health result field from dict or object inputs."""
+    if isinstance(result, dict):
+        return result.get(field_name, default)
+    return getattr(result, field_name, default)
+
+
+def _ensure_text(value: Any, default: str = "unknown") -> str:
+    """Convert text-like formatter input to a display-safe string."""
+    if value is None:
+        return default
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _extract_status_text(status_code: Any, fallback: str) -> str:
+    """Return the display status token without redundant reason text."""
+    if status_code is None:
+        return fallback
+    status_text = _ensure_text(status_code)
+    return status_text.split()[0] if " " in status_text else status_text
+
+
+def _extract_domain(url: Any) -> str:
+    """Return a display domain from a health check URL value."""
+    url_text = _ensure_text(url)
+    domain = urlsplit(url_text).netloc or url_text
+    return _ensure_text(domain)
+
+
+def _normalize_health_check_result(result: Any) -> _HealthCheckDisplayData:
+    """Normalize dict and object health check results before rendering."""
+    success = _get_health_result_value(result, "success")
+    if success is None:
+        success = _get_health_result_value(result, "accessible")
+
+    return _HealthCheckDisplayData(
+        success=bool(success),
+        status_code=_get_health_result_value(result, "status_code"),
+        response_time_ms=_get_health_result_value(result, "response_time_ms"),
+        response_body=_get_health_result_value(result, "response_body"),
+        url=_ensure_text(_get_health_result_value(result, "url", "unknown")),
+        error=_get_health_result_value(result, "error"),
+        redirect_url=_get_health_result_value(result, "redirect_url"),
+    )
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -115,122 +177,57 @@ def format_health_check_result(result: Any) -> tuple[str, str]:
         Tuple of (formatted_message, status_for_logging)
 
     """
-    # Handle both dict and object formats for backward compatibility
-    # Prefer 'success' over 'accessible' as per CodeRabbit suggestion
-    if isinstance(result, dict):
-        success = result.get("success")
-        if success is None:
-            success = result.get("accessible")
-    else:
-        success = getattr(result, "success", None)
-        if success is None:
-            success = getattr(result, "accessible", None)
-    success = bool(success)
+    normalized = _normalize_health_check_result(result)
+    domain = _extract_domain(normalized.url)
 
-    if success:
+    if normalized.success:
         status_icon = "✅"
-        status_code_value = (
-            result.get("status_code") if isinstance(result, dict) else result.status_code
+        status_text = _extract_status_text(normalized.status_code, "unknown")
+        time_text = (
+            f"({format_duration(normalized.response_time_ms)})"
+            if normalized.response_time_ms is not None
+            else ""
         )
-        status_code = status_code_value if status_code_value is not None else "unknown"
-        # Extract just the numeric status code, removing redundant text like "OK"
-        if isinstance(status_code, str) and " " in status_code:
-            status_text = status_code.split()[0]  # Take first part (e.g., "200" from "200 OK")
-        else:
-            status_text = str(status_code)
-        response_time_ms = (
-            result.get("response_time_ms") if isinstance(result, dict) else result.response_time_ms
-        )
-        # Use improved format_duration that handles None values internally
-        time_text = f"({format_duration(response_time_ms)})" if response_time_ms is not None else ""
 
         response_info = ""
-        response_body = (
-            result.get("response_body") if isinstance(result, dict) else result.response_body
-        )
-        if response_body:
+        if normalized.response_body:
             # Clean up response body for display
-            body = response_body.strip()
+            body = normalized.response_body.strip()
             if body:
                 response_info = f"\nResponse: {body}"
 
         # Handle redirects - add arrow if redirect_url is present and different from original URL
         redirect_info = ""
-        redirect_url = (
-            result.get("redirect_url")
-            if isinstance(result, dict)
-            else getattr(result, "redirect_url", None)
-        )
-        url = result.get("url") if isinstance(result, dict) else getattr(result, "url", "unknown")
-        # Ensure url is a string, not bytes
-        if isinstance(url, bytes):
-            url = url.decode("utf-8", errors="replace")
-        domain = urlsplit(url).netloc or url
-        # Ensure domain is a string (urlsplit can return bytes)
-        if isinstance(domain, bytes):
-            domain = domain.decode("utf-8", errors="replace")
-        if redirect_url and redirect_url != url:
-            redirect_info = f" -> {redirect_url}"
+        if normalized.redirect_url and normalized.redirect_url != normalized.url:
+            redirect_info = f" -> {normalized.redirect_url}"
 
         message = (
             f"{status_icon} {domain} - {status_text} {time_text}{redirect_info}{response_info}"
         )
         # Check if the status code indicates success (2xx or 3xx)
-        status_code_value = (
-            result.get("status_code")
-            if isinstance(result, dict)
-            else getattr(result, "status_code", None)
-        )
-        if status_code_value and isinstance(status_code_value, int):
+        if normalized.status_code and isinstance(normalized.status_code, int):
             # 2xx and 3xx are considered successful
-            status = "successful" if 200 <= status_code_value < 400 else "failed"
+            status = "successful" if 200 <= normalized.status_code < 400 else "failed"
         else:
             # If accessible but no status code, assume success
             status = "successful"
 
     else:
         status_icon = "❌"
-        status_code_value = (
-            result.get("status_code")
-            if isinstance(result, dict)
-            else getattr(result, "status_code", None)
-        )
-        if status_code_value:
-            # Extract just the numeric status code, removing redundant text like "OK"
-            if isinstance(status_code_value, str) and " " in status_code_value:
-                # Take first part (e.g., "404" from "404 Not Found")
-                status_text = status_code_value.split()[0]
-            else:
-                status_text = str(status_code_value)
-            response_time_ms = (
-                result.get("response_time_ms")
-                if isinstance(result, dict)
-                else getattr(result, "response_time_ms", None)
-            )
-            # Use improved format_duration that handles None values internally
+        if normalized.status_code:
+            status_text = _extract_status_text(normalized.status_code, "Failed")
             time_text = (
-                f"({format_duration(response_time_ms)})" if response_time_ms is not None else ""
+                f"({format_duration(normalized.response_time_ms)})"
+                if normalized.response_time_ms is not None
+                else ""
             )
         else:
             status_text = "Failed"
             time_text = ""
 
-        error_value = (
-            result.get("error") if isinstance(result, dict) else getattr(result, "error", None)
-        )
-        url_value = (
-            result.get("url") if isinstance(result, dict) else getattr(result, "url", "unknown")
-        )
-        # Ensure url_value is a string, not bytes
-        if isinstance(url_value, bytes):
-            url_value = url_value.decode("utf-8", errors="replace")
-        domain_value = urlsplit(url_value).netloc or url_value
-        # Ensure domain_value is a string (urlsplit can return bytes)
-        if isinstance(domain_value, bytes):
-            domain_value = domain_value.decode("utf-8", errors="replace")
-        error_info = f" - {error_value}" if error_value else ""
-        message = f"{status_icon} {domain_value} - {status_text} {time_text}{error_info}"
-        status = f"failed: {error_value}" if error_value else "failed"
+        error_info = f" - {normalized.error}" if normalized.error else ""
+        message = f"{status_icon} {domain} - {status_text} {time_text}{error_info}"
+        status = f"failed: {normalized.error}" if normalized.error else "failed"
 
     return message, status
 

@@ -18,6 +18,7 @@ from mcp.types import TextContent
 
 from swag_mcp.models.config import ListFilterType
 from swag_mcp.models.enums import BackupSubAction
+from swag_mcp.utils.error_codes import ErrorCode, SwagOperationError, SwagValidationError
 from swag_mcp.utils.formatters import format_duration, format_file_size, format_health_check_result
 from swag_mcp.utils.mcp_token_optimizer import MCPTokenOptimizer
 
@@ -204,17 +205,16 @@ class TokenEfficientFormatter:
         )
 
     def format_view_result(self, result: dict[str, Any], config_name: str) -> ToolResult:
-        """Format view result showing the entire file with line numbers.
-
-        Rationale: For configuration inspection, eliding lines is harmful.
-        Always render the full file content so users can review every line.
-        """
+        """Format view result with line numbers and compact large-file output."""
         content = result.get("content", "")
         character_count = result.get("character_count", len(content))
         success = result.get("success", True)  # Default to True for view operations
 
         lines = content.splitlines() if content else []
         line_count = len(lines)
+        max_inline_chars = 4000
+        max_inline_lines = 60
+        is_truncated = character_count > max_inline_chars or line_count > max_inline_lines
 
         # Build compact header with safe size formatting using canonical formatter
         size_bytes = result.get("size_bytes")
@@ -225,9 +225,26 @@ class TokenEfficientFormatter:
         )
         header = f"📄 {self._nfkc(config_name)} ({size_info}, {line_count} lines)"
 
-        # Always show the full file with line numbers
         output_lines = [header, ""]
-        output_lines.extend([f"  {i + 1:2d}│ {line}" for i, line in enumerate(lines)])
+        display_lines = lines
+        if is_truncated:
+            display_lines = lines[:20]
+
+        for i, line in enumerate(display_lines):
+            display_line = line
+            if is_truncated and len(display_line) > 100:
+                display_line = f"{display_line[:100]}..."
+            output_lines.append(f"  {i + 1:2d}│ {display_line}")
+
+        if is_truncated:
+            omitted_lines = max(line_count - len(display_lines), 0)
+            output_lines.extend(
+                [
+                    "",
+                    f"  ... content truncated in text output "
+                    f"({omitted_lines} lines omitted; full content in structured data)",
+                ]
+            )
 
         formatted_content = "\n".join(output_lines)
 
@@ -239,6 +256,7 @@ class TokenEfficientFormatter:
                 "config_name": config_name,
                 "content": content,
                 "character_count": character_count,
+                "truncated": is_truncated,
             }
         )
 
@@ -419,3 +437,20 @@ class TokenEfficientFormatter:
             structured_data.update(additional_data)
 
         return self._create_tool_result(formatted_content, structured_data)
+
+    def format_structured_error_result(
+        self,
+        error: SwagOperationError | SwagValidationError,
+        action: str,
+        additional_data: dict[str, Any] | None = None,
+    ) -> ToolResult:
+        """Format a structured SWAG error without losing its code or context."""
+        error_code: ErrorCode = error.code
+        structured_data: dict[str, Any] = {
+            "error_code": error_code.value,
+        }
+        if error.context is not None:
+            structured_data["details"] = error.context
+        if additional_data:
+            structured_data.update(additional_data)
+        return self.format_error_result(error.message, action, structured_data)

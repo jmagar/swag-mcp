@@ -48,15 +48,16 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
 | `SWAG_MCP_HOST` | no | `127.0.0.1` | no | Network interface to bind. Use `0.0.0.0` for Docker |
-| `SWAG_MCP_PORT` | no | `8000` | no | External port mapping. Internal container port is always 8000 |
-| `SWAG_MCP_TOKEN` | no | — | yes | Bearer token (informational; auth enforced externally) |
-| `SWAG_MCP_NO_AUTH` | no | `false` | no | Suppress auth warning at startup |
+| `SWAG_MCP_BIND_ADDRESS` | no | `127.0.0.1` | no | Docker host bind address for the published MCP port |
+| `SWAG_MCP_PORT` | no | `49152` | no | Docker host port mapping. Internal container port is always 8000 |
+| `SWAG_MCP_TOKEN` | recommended | — | yes | Static bearer token enforced by FastMCP for direct HTTP access |
+| `SWAG_MCP_NO_AUTH` | no | `false` | no | Explicitly allow startup without direct server auth |
 
 ### Default configuration
 
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
-| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | no | Default auth for new configs: none, basic, ldap, authelia, authentik, tinyauth |
+| `SWAG_MCP_DEFAULT_AUTH_METHOD` | no | `authelia` | no | Default auth for new configs: none, basic, ldap, authelia, authentik, tinyauth, oauth |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no | Enable QUIC/HTTP3 by default for new configurations |
 
 ### OAuth gateway
@@ -112,6 +113,24 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 | `PUID` | no | `1000` | no | UID for container process |
 | `PGID` | no | `1000` | no | GID for container process |
 | `DOCKER_NETWORK` | no | `swag-mcp` | no | External Docker network name |
+| `SWAG_MCP_IMAGE` | no | `ghcr.io/jmagar/swag-mcp:1.1.4` | no | Compose image reference. Pin to a release tag or digest in production |
+| `SWAG_MCP_PULL_POLICY` | no | `missing` | no | Compose image pull policy |
+| `SWAG_MCP_LOG_HOST_PATH` | no | `/tmp/swag-mcp/logs` | no | Host bind path for MCP server logs |
+| `SWAG_MCP_PROXY_CONFS_HOST_PATH` | no | `/mnt/appdata/swag/nginx/proxy-confs` | no | Host bind path for SWAG proxy configs |
+| `SWAG_MCP_NGINX_INCLUDES_HOST_PATH` | no | `./config/nginx` | no | Host bind path for nginx include snippets |
+| `SWAG_MCP_FASTMCP_DATA_HOST_PATH` | no | `/mnt/appdata/swag-mcp/data` | no | Host bind path for FastMCP runtime data |
+| `SWAG_MCP_SSH_HOST_PATH` | no | `./.cache/swag-mcp/ssh` | yes | Host bind path containing only the SSH key/config known_hosts needed by this service |
+
+## Dependency and image policy
+
+Runtime and dev dependencies in `pyproject.toml` use reviewed lower bounds plus
+upper bounds for direct dependencies. `uv.lock` pins transitive versions for
+reproducible installs. Scheduled dependency automation updates one direct
+dependency per pull request instead of broad lockfile upgrades.
+
+Docker base images can be digest-pinned at build time with `PYTHON_BASE_IMAGE`
+and `UV_IMAGE` build args. Production Compose deployments should pin
+`SWAG_MCP_IMAGE` to a reviewed release tag or digest.
 
 ## Plugin userConfig
 

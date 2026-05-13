@@ -12,7 +12,7 @@ executing it.
 server. It exercises the server end-to-end over the network, verifying:
 
 - The HTTP health endpoint responds correctly
-- Authentication behaviour matches the server's design (no built-in auth enforcement)
+- Authentication behaviour matches the server's design (`/health` open, `/mcp` protected when token auth is configured)
 - The MCP JSON-RPC protocol handshake works (initialize + tools/list)
 - Every exposed tool can be called and returns a structurally valid result
 
@@ -132,7 +132,7 @@ Every mode that reaches the test suite runs the same four phases in order:
 | Phase | Name | Purpose |
 |-------|------|---------|
 | 1 | Health | Prove the HTTP health endpoint is alive and returning the correct status |
-| 2 | Auth | Prove the server accepts unauthenticated requests (no built-in token enforcement) |
+| 2 | Auth | Prove `/health` stays open and `/mcp` rejects unauthenticated requests when token auth is configured |
 | 3 | Protocol | Prove the MCP JSON-RPC handshake works and the tool registry is correct |
 | 4 | Tool Calls | Exercise every exposed tool with read-only operations |
 
@@ -165,33 +165,27 @@ field equals `"ok"`.
 
 ### Phase 2 — Auth
 
-**Purpose:** Document and verify that `swag-mcp` intentionally has **no built-in
-bearer token authentication**. Auth is fully delegated to an upstream proxy (SWAG,
-Authelia, Authentik, etc.). The phase confirms the server returns HTTP 200 for a
-completely unauthenticated request to `/health`.
+**Purpose:** Verify unauthenticated readiness and authenticated MCP transport
+behavior. `/health` remains open for Docker/readiness checks, while `/mcp`
+requires a bearer token when `SWAG_MCP_TOKEN` is configured.
 
 **HTTP method:** `GET /health` with no `Authorization` header whatsoever.
 
 **curl flags:** `-s -o /dev/null -w "%{http_code}" --max-time 10`
 
-The script prints three `[WARN]` lines before the test, explicitly stating:
+In Docker mode, the script also sends an unauthenticated JSON-RPC initialize
+request to `/mcp` and expects HTTP 401 or 403.
 
-```
-swag-mcp does not enforce bearer token auth internally.
-Auth is delegated to the upstream proxy (SWAG, Authelia, etc.).
-Verifying server accepts unauthenticated requests (expected behaviour).
-```
-
-**Single test recorded:**
+**Tests recorded:**
 
 | Test label | PASS condition | FAIL condition |
 |------------|---------------|----------------|
-| `GET /health unauthenticated → 200 (no built-in auth)` | HTTP status code is `200` | Any status code other than `200` |
+| `GET /health unauthenticated → 200` | HTTP status code is `200` | Any status code other than `200` |
+| `POST /mcp unauthenticated → rejected` | HTTP status code is `401` or `403` when auth is expected | Any other status |
 
 **Note on `--token`:** The `TOKEN` variable (default `ci-integration-token`) is
-passed to the Docker container as `SWAG_MCP_TOKEN` (an env var the server reads) but
-is **never sent as an HTTP header** in any test. This is intentional — the server
-does not inspect `Authorization` headers.
+passed to the Docker container as `SWAG_MCP_TOKEN` and is sent as
+`Authorization: Bearer <token>` for authenticated MCP requests.
 
 ---
 
@@ -456,7 +450,8 @@ These are the precise claims the tests make — not just "endpoint responded":
 | Tool / action | Claim |
 |--------------|-------|
 | `GET /health` | Returns HTTP 200 with valid JSON body where `.status == "ok"` |
-| `GET /health` (no auth) | Returns HTTP 200 (server enforces no token auth) |
+| `GET /health` (no auth) | Returns HTTP 200 for readiness without an auth header |
+| `POST /mcp` (no auth) | Returns HTTP 401 or 403 when `SWAG_MCP_TOKEN` is configured |
 | `initialize` | Returns JSON-RPC result with a truthy `.result.protocolVersion` field |
 | `tools/list` | Returns JSON-RPC result where `.result.tools` is a JSON array |
 | `tools/list` | The tools array contains an entry with `.name == "swag"` |
@@ -476,23 +471,18 @@ log content — the environment under test may have zero proxy configs.
 
 ## 7. Authentication Design
 
-`swag-mcp` has **no built-in bearer token enforcement** at the HTTP layer. This is a
-deliberate architecture decision documented explicitly in Phase 2:
+`swag-mcp` enforces built-in bearer-token authentication for direct MCP transport
+access when `SWAG_MCP_TOKEN` is configured. This is documented explicitly in Phase 2:
 
-- The server trusts an upstream proxy (SWAG itself, Authelia, Authentik, etc.) to
-  reject unauthenticated requests before they reach the MCP server.
+- `/health` remains unauthenticated for readiness checks.
+- `/mcp` rejects unauthenticated requests when static bearer auth is configured.
 - Inside a Docker Compose stack, the MCP server is typically not port-forwarded to
   the internet; access goes through SWAG's nginx, which enforces the auth rules.
-- The `SWAG_MCP_TOKEN` environment variable exists as a configuration token for the
-  server's own settings (e.g., identifying itself to the upstream), not as an HTTP
-  bearer token it validates on incoming requests.
-- The `--token` flag / `SWAG_MCP_TOKEN` env var is accepted by the script for
-  compatibility with test harnesses that pass tokens generically, but the value is
-  never injected into any `Authorization` header.
+- The `--token` flag / `SWAG_MCP_TOKEN` env var is used by the script for
+  authenticated MCP JSON-RPC requests.
 
-**Test implication:** Phase 2 deliberately sends a request with **no** `Authorization`
-header and asserts HTTP 200. A 401 or 403 response would be a test *failure* because
-it would mean the server unexpectedly started enforcing its own auth.
+**Test implication:** Phase 2 deliberately checks both unauthenticated `/health`
+success and unauthenticated `/mcp` rejection in Docker mode.
 
 ---
 
@@ -517,7 +507,6 @@ docker run -d \
   -p 18082:8000 \
   -v <tmpdir>:/proxy-confs \
   -e SWAG_MCP_TOKEN=<token> \
-  -e SWAG_MCP_NO_AUTH=true \
   -e SWAG_MCP_LOG_FILE_ENABLED=false \
   -e SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs \
   -e SWAG_MCP_LOG_DIRECTORY=/tmp/swag-mcp-logs \

@@ -1,14 +1,17 @@
 """Unified FastMCP tool for SWAG configuration management."""
 
 import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastmcp import Context, FastMCP
 from fastmcp.tools import ToolResult
-from pydantic import BeforeValidator, Field
+from pydantic import BeforeValidator, Field, ValidationError
 
 from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.enums import BackupSubAction, SwagAction
+from swag_mcp.services.errors import SwagServiceError
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.tools.handlers.backups import _handle_backups_action
 from swag_mcp.tools.handlers.configs import (
@@ -21,6 +24,11 @@ from swag_mcp.tools.handlers.configs import (
 )
 from swag_mcp.tools.handlers.health import _handle_health_check_action
 from swag_mcp.tools.handlers.logs import _handle_logs_action
+from swag_mcp.utils.error_codes import (
+    ErrorCode,
+    SwagOperationError,
+    SwagValidationError,
+)
 from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
 from swag_mcp.utils.tool_decorators import handle_tool_errors
 
@@ -31,6 +39,99 @@ UpdateFieldType = Literal["port", "upstream", "app", "add_mcp"]
 
 # Pre-computed valid actions string for error messages
 _VALID_ACTIONS_STR: str = ", ".join(e.value for e in SwagAction)
+
+
+@dataclass(frozen=True)
+class ActionParameterSpec:
+    """Action-specific parameter contract for the unified FastMCP tool."""
+
+    allowed: frozenset[str]
+    required: frozenset[str] = frozenset()
+
+
+_PARAMETER_DEFAULTS: Mapping[str, object] = {
+    "list_filter": "all",
+    "offset": 0,
+    "limit": 50,
+    "sort_by": "name",
+    "sort_order": "asc",
+    "query": "",
+    "config_name": "",
+    "server_name": "",
+    "upstream_app": "",
+    "upstream_port": 0,
+    "upstream_proto": "http",
+    "mcp_upstream_app": "",
+    "mcp_upstream_port": 0,
+    "mcp_upstream_proto": None,
+    "auth_method": "authelia",
+    "enable_quic": False,
+    "new_content": "",
+    "create_backup": True,
+    "log_type": "nginx-error",
+    "lines": 50,
+    "backup_action": BackupSubAction.LIST,
+    "retention_days": 0,
+    "domain": "",
+    "timeout": 30,
+    "follow_redirects": True,
+    "update_field": "",
+    "update_value": "",
+}
+
+_ACTION_PARAMETER_SPECS: Mapping[SwagAction, ActionParameterSpec] = {
+    SwagAction.LIST: ActionParameterSpec(
+        allowed=frozenset(
+            {
+                "list_filter",
+                "offset",
+                "limit",
+                "sort_by",
+                "sort_order",
+                "query",
+            }
+        )
+    ),
+    SwagAction.CREATE: ActionParameterSpec(
+        allowed=frozenset(
+            {
+                "config_name",
+                "server_name",
+                "upstream_app",
+                "upstream_port",
+                "upstream_proto",
+                "mcp_upstream_app",
+                "mcp_upstream_port",
+                "mcp_upstream_proto",
+                "auth_method",
+                "enable_quic",
+            }
+        ),
+        required=frozenset({"config_name", "server_name", "upstream_app", "upstream_port"}),
+    ),
+    SwagAction.VIEW: ActionParameterSpec(
+        allowed=frozenset({"config_name"}),
+        required=frozenset({"config_name"}),
+    ),
+    SwagAction.EDIT: ActionParameterSpec(
+        allowed=frozenset({"config_name", "new_content", "create_backup"}),
+        required=frozenset({"config_name", "new_content"}),
+    ),
+    SwagAction.UPDATE: ActionParameterSpec(
+        allowed=frozenset({"config_name", "update_field", "update_value", "create_backup"}),
+        required=frozenset({"config_name", "update_field", "update_value"}),
+    ),
+    SwagAction.REMOVE: ActionParameterSpec(
+        allowed=frozenset({"config_name", "create_backup"}),
+        required=frozenset({"config_name"}),
+    ),
+    SwagAction.LOGS: ActionParameterSpec(allowed=frozenset({"log_type", "lines"})),
+    SwagAction.BACKUPS: ActionParameterSpec(allowed=frozenset({"backup_action", "retention_days"})),
+    SwagAction.HEALTH_CHECK: ActionParameterSpec(
+        allowed=frozenset({"domain", "timeout", "follow_redirects"}),
+        required=frozenset({"domain"}),
+    ),
+}
 
 
 def _coerce_action(v: object) -> str:
@@ -45,6 +146,72 @@ def _coerce_action(v: object) -> str:
             f"action must be a string, got boolean ({v}). Must be one of: {_VALID_ACTIONS_STR}"
         )
     return str(v)
+
+
+def _is_missing_required_value(value: object) -> bool:
+    """Return whether a tool argument is absent for an action-specific required field."""
+    return value is None or value == "" or value == 0
+
+
+def _is_non_default_value(name: str, value: object) -> bool:
+    """Return whether a tool argument carries a non-default value."""
+    return value != _PARAMETER_DEFAULTS[name]
+
+
+def _validate_action_parameters(
+    action: SwagAction,
+    parameters: Mapping[str, object],
+) -> SwagValidationError | None:
+    """Validate the strongest action-aware contract compatible with one FastMCP tool.
+
+    FastMCP exposes the unified function signature as one JSON schema, so unrelated action
+    fields must remain present in the public schema. This runtime guard prevents those fields
+    from leaking into action handling when they carry non-default values.
+    """
+    spec = _ACTION_PARAMETER_SPECS[action]
+    missing = [
+        name for name in sorted(spec.required) if _is_missing_required_value(parameters.get(name))
+    ]
+    unexpected = [
+        name
+        for name, value in sorted(parameters.items())
+        if name not in spec.allowed and _is_non_default_value(name, value)
+    ]
+    if not missing and not unexpected:
+        return None
+
+    context: dict[str, list[str]] = {}
+    message_parts: list[str] = []
+    if missing:
+        context["missing"] = missing
+        message_parts.append(f"missing required: {', '.join(missing)}")
+    if unexpected:
+        context["unexpected"] = unexpected
+        message_parts.append(f"unexpected for this action: {', '.join(unexpected)}")
+
+    return SwagValidationError(
+        code=ErrorCode.INVALID_ACTION_PARAMETERS,
+        message=f"Invalid parameters for {action.value}: {'; '.join(message_parts)}",
+        context=context,
+    )
+
+
+def _format_pydantic_validation_error(error: ValidationError) -> SwagValidationError:
+    """Convert Pydantic validation errors to the project's structured error shape."""
+    details = [
+        {
+            "field": ".".join(str(location) for location in validation_error["loc"]),
+            "message": str(validation_error["msg"]),
+            "type": str(validation_error["type"]),
+        }
+        for validation_error in error.errors()
+    ]
+    error_message = "; ".join(f"{detail['field']}: {detail['message']}" for detail in details)
+    return SwagValidationError(
+        code=ErrorCode.INVALID_ACTION_PARAMETERS,
+        message=f"Parameter validation failed: {error_message}",
+        context={"validation_errors": details},
+    )
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -148,7 +315,7 @@ def register_tools(mcp: FastMCP) -> None:
                 default="authelia",
                 description=(
                     "Authentication method: 'none' | 'basic' | 'ldap' | "
-                    "'authelia' | 'authentik' | 'tinyauth'"
+                    "'authelia' | 'authentik' | 'tinyauth' | 'oauth'"
                 ),
             ),
         ] = "authelia",
@@ -285,81 +452,147 @@ def register_tools(mcp: FastMCP) -> None:
           → Routes: / → jellyfin:8096, /mcp → ai-gpu-server:8080
 
         """
-        swag_service = SwagManagerService()
         formatter = TokenEfficientFormatter()
+        action_parameters: dict[str, object] = {
+            "list_filter": list_filter,
+            "offset": offset,
+            "limit": limit,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+            "query": query,
+            "config_name": config_name,
+            "server_name": server_name,
+            "upstream_app": upstream_app,
+            "upstream_port": upstream_port,
+            "upstream_proto": upstream_proto,
+            "mcp_upstream_app": mcp_upstream_app,
+            "mcp_upstream_port": mcp_upstream_port,
+            "mcp_upstream_proto": mcp_upstream_proto,
+            "auth_method": auth_method,
+            "enable_quic": enable_quic,
+            "new_content": new_content,
+            "create_backup": create_backup,
+            "log_type": log_type,
+            "lines": lines,
+            "backup_action": backup_action,
+            "retention_days": retention_days,
+            "domain": domain,
+            "timeout": timeout,
+            "follow_redirects": follow_redirects,
+            "update_field": update_field,
+            "update_value": update_value,
+        }
 
         try:
-            match action:
-                case SwagAction.LIST:
-                    return await _handle_list_action(
-                        ctx,
-                        swag_service,
-                        formatter,
-                        list_filter,
-                        offset,
-                        limit,
-                        sort_by,
-                        sort_order,
-                        query,
-                    )
-                case SwagAction.CREATE:
-                    # eqf.10: Emit note when mcp_upstream_port inherits from upstream_port
-                    effective_mcp_port = mcp_upstream_port or None
-                    if not mcp_upstream_port and mcp_upstream_app:
-                        await ctx.info(
-                            f"mcp_upstream_port not set — inheriting upstream_port: {upstream_port}"
-                        )
-                    return await _handle_create_action(
-                        ctx,
-                        swag_service,
-                        formatter,
-                        config_name,
-                        server_name,
-                        upstream_app,
-                        upstream_port,
-                        upstream_proto,
-                        auth_method,
-                        enable_quic,
-                        mcp_upstream_app or None,
-                        effective_mcp_port,
-                        mcp_upstream_proto or None,  # eqf.9: coerce → model-validator inherits
-                    )
-                case SwagAction.VIEW:
-                    return await _handle_view_action(ctx, swag_service, formatter, config_name)
-                case SwagAction.EDIT:
-                    return await _handle_edit_action(
-                        ctx, swag_service, formatter, config_name, new_content, create_backup
-                    )
-                case SwagAction.REMOVE:
-                    return await _handle_remove_action(
-                        ctx, swag_service, formatter, config_name, create_backup
-                    )
-                case SwagAction.LOGS:
-                    return await _handle_logs_action(ctx, swag_service, formatter, log_type, lines)
-                case SwagAction.BACKUPS:
-                    return await _handle_backups_action(
-                        ctx, swag_service, formatter, backup_action, retention_days
-                    )
-                case SwagAction.HEALTH_CHECK:
-                    return await _handle_health_check_action(
-                        ctx, swag_service, formatter, domain, timeout, follow_redirects
-                    )
-                case SwagAction.UPDATE:
-                    return await _handle_update_action(
-                        ctx,
-                        swag_service,
-                        formatter,
-                        config_name,
-                        update_field,
-                        update_value,
-                        create_backup,
-                    )
-                case _:
-                    raise ValueError(f"Unhandled action: {action}")
+            if parameter_error := _validate_action_parameters(action, action_parameters):
+                return formatter.format_structured_error_result(parameter_error, action.value)
 
+            async with SwagManagerService() as swag_service:
+                match action:
+                    case SwagAction.LIST:
+                        return await _handle_list_action(
+                            ctx,
+                            swag_service,
+                            formatter,
+                            list_filter,
+                            offset,
+                            limit,
+                            sort_by,
+                            sort_order,
+                            query,
+                        )
+                    case SwagAction.CREATE:
+                        # eqf.10: Emit note when mcp_upstream_port inherits from upstream_port
+                        effective_mcp_port = mcp_upstream_port or None
+                        if not mcp_upstream_port and mcp_upstream_app:
+                            await ctx.info(
+                                "mcp_upstream_port not set — inheriting "
+                                f"upstream_port: {upstream_port}"
+                            )
+                        return await _handle_create_action(
+                            ctx,
+                            swag_service,
+                            formatter,
+                            config_name,
+                            server_name,
+                            upstream_app,
+                            upstream_port,
+                            upstream_proto,
+                            auth_method,
+                            enable_quic,
+                            mcp_upstream_app or None,
+                            effective_mcp_port,
+                            mcp_upstream_proto or None,  # eqf.9: coerce → model-validator inherits
+                        )
+                    case SwagAction.VIEW:
+                        return await _handle_view_action(ctx, swag_service, formatter, config_name)
+                    case SwagAction.EDIT:
+                        return await _handle_edit_action(
+                            ctx, swag_service, formatter, config_name, new_content, create_backup
+                        )
+                    case SwagAction.REMOVE:
+                        return await _handle_remove_action(
+                            ctx, swag_service, formatter, config_name, create_backup
+                        )
+                    case SwagAction.LOGS:
+                        return await _handle_logs_action(
+                            ctx, swag_service, formatter, log_type, lines
+                        )
+                    case SwagAction.BACKUPS:
+                        return await _handle_backups_action(
+                            ctx, swag_service, formatter, backup_action, retention_days
+                        )
+                    case SwagAction.HEALTH_CHECK:
+                        return await _handle_health_check_action(
+                            ctx, swag_service, formatter, domain, timeout, follow_redirects
+                        )
+                    case SwagAction.UPDATE:
+                        return await _handle_update_action(
+                            ctx,
+                            swag_service,
+                            formatter,
+                            config_name,
+                            update_field,
+                            update_value,
+                            create_backup,
+                        )
+                    case _:
+                        raise ValueError(f"Unhandled action: {action}")
+
+        except (SwagOperationError, SwagValidationError) as e:
+            logger.warning(
+                "SWAG tool structured error - action: %s, code: %s, error: %s",
+                action.value,
+                e.code.value,
+                e.message,
+            )
+            return formatter.format_structured_error_result(e, action.value)
+        except ValidationError as e:
+            structured_error = _format_pydantic_validation_error(e)
+            logger.warning(
+                "SWAG tool validation error - action: %s, error: %s",
+                action.value,
+                structured_error.message,
+            )
+            return formatter.format_structured_error_result(structured_error, action.value)
+        except (SwagServiceError, ValueError, FileNotFoundError, OSError) as e:
+            logger.warning(
+                "SWAG tool operational error - action: %s, error: %s",
+                action.value,
+                str(e),
+            )
+            return formatter.format_error_result(str(e), action.value)
         except Exception as e:
-            logger.error(f"SWAG tool error - action: {action.value}, error: {str(e)}")
-            return formatter.format_error_result(f"Tool execution failed: {str(e)}", action.value)
+            logger.error(
+                "SWAG tool error - action: %s, error: %s",
+                action.value,
+                str(e),
+                exc_info=True,
+            )
+            return formatter.format_error_result(
+                "Tool execution failed due to an unexpected error. Check server logs for details.",
+                action.value,
+            )
 
     @mcp.tool
     async def swag_help() -> str:

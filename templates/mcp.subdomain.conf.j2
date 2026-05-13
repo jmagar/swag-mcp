@@ -10,7 +10,7 @@ server {
 
     include /config/nginx/ssl.conf;
 
-    client_max_body_size 0;
+    client_max_body_size 16m;
 
     set $upstream_app "{{ upstream_app }}";
     set $upstream_port "{{ upstream_port }}";
@@ -44,6 +44,7 @@ server {
     }
 
     location ~* ^/(session|sessions) {
+        auth_request /_oauth_verify;
         include /config/nginx/resolver.conf;
         include /config/nginx/proxy.conf;
         include /config/nginx/mcp-location.conf;

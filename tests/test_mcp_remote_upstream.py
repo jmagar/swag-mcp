@@ -60,6 +60,10 @@ class TestMCPRemoteUpstream:
             "proxy_pass $mcp_upstream_proto://$mcp_upstream_app:$mcp_upstream_port"
             in result.content
         )
+        assert "location ~* ^/(session|sessions)" in result.content
+        session_location = result.content.split("location ~* ^/(session|sessions)", 1)[1]
+        session_location = session_location.split("location / {", 1)[0]
+        assert "auth_request /_oauth_verify;" in session_location
 
     @pytest.mark.asyncio
     async def test_mcp_upstream_separate_from_main_upstream(self, swag_manager):

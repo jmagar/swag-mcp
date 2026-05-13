@@ -10,6 +10,7 @@ import asyncio
 import fnmatch
 import logging
 import os
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,22 @@ class FilesystemBackend(Protocol):
         ...
 
 
+@runtime_checkable
+class NginxValidationCapability(Protocol):
+    """Optional backend capability for nginx validation locality."""
+
+    def requires_remote_nginx_validation(self) -> bool:
+        """Return True when local nginx validation is not authoritative."""
+        ...
+
+
+def requires_remote_nginx_validation(fs: FilesystemBackend) -> bool:
+    """Return whether nginx validation must happen on the backend host."""
+    if isinstance(fs, NginxValidationCapability):
+        return fs.requires_remote_nginx_validation()
+    return False
+
+
 class LocalFilesystem:
     """Local filesystem implementation of FilesystemBackend."""
 
@@ -123,7 +140,9 @@ class LocalFilesystem:
     ) -> None:
         """Write text to file atomically via temp file + rename."""
         file_path = Path(path)
-        temp_path = file_path.with_suffix(f"{file_path.suffix}.tmp.{os.getpid()}")
+        temp_path = file_path.with_suffix(
+            f"{file_path.suffix}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
+        )
 
         try:
             # Ensure parent directory exists
@@ -222,3 +241,7 @@ class LocalFilesystem:
 
     async def close(self) -> None:
         """No-op for local filesystem."""
+
+    def requires_remote_nginx_validation(self) -> bool:
+        """Local files can be validated by the local nginx binary."""
+        return False

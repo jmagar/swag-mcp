@@ -2,7 +2,9 @@
 
 ## Overview
 
-Tool schemas define the input validation contract for MCP tools. swag-mcp defines schemas using Pydantic models with annotated `Field()` descriptors in the tool function signature. FastMCP automatically exports these as JSON Schema for client-side validation.
+Tool schemas define the transport-level input contract for MCP tools. swag-mcp defines the public `swag` tool schema using annotated `Field()` descriptors in the tool function signature. FastMCP exports that single broad function as JSON Schema for client-side validation.
+
+Action-specific requirements are enforced after dispatch by handler checks and Pydantic request models. The exported JSON Schema can validate universal types, defaults, enum values, ranges, and string patterns, but it does not express conditional requirements such as "`config_name` is required only when `action=view`" or "`update_value` format depends on `update_field`".
 
 ## Schema definition pattern
 
@@ -19,14 +21,16 @@ async def swag(
 ) -> ToolResult:
 ```
 
-### Validation constraints
+### Transport-level constraints
 
 | Constraint | Used on | Purpose |
 | --- | --- | --- |
 | `max_length` | config_name (255), server_name (253), upstream_app (100) | Prevent oversized inputs |
 | `ge`, `le` | upstream_port (0-65535), lines (1-1000), limit (1-200) | Range validation |
 | `pattern` | upstream_app | Regex for valid container names/IPs |
-| `BeforeValidator` | action | Coerce non-string types (booleans, nulls) before enum validation |
+| `BeforeValidator` | action | Reject null/boolean actions before enum validation and coerce other values to strings |
+
+These constraints are always present in the FastMCP tool schema. They are intentionally permissive for fields that belong to other actions, because the unified `swag` tool exposes one parameter set for all actions.
 
 ## Enum types
 
@@ -55,7 +59,7 @@ class BackupSubAction(StrEnum):
 
 ## Request models
 
-Pydantic models in `swag_mcp/models/config.py` provide secondary validation for service-layer operations:
+Pydantic models in `swag_mcp/models/config.py` provide action-level validation after the handler has selected an action:
 
 | Model | Used by | Key validations |
 | --- | --- | --- |
@@ -75,5 +79,7 @@ FastMCP automatically exposes tool schemas via the MCP protocol's `tools/list` m
 - Default values
 - Enum options
 - Required fields
+
+For `swag`, the only universally required field is `action`. Per-action required fields are documented in [TOOLS.md](TOOLS.md) and validated at runtime by the corresponding handler/model. Clients should not assume the exported schema will reject a missing `config_name`, `domain`, or `new_content` before the tool call reaches the server.
 
 No manual schema export is needed.

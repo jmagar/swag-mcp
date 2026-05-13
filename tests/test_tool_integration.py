@@ -2,14 +2,35 @@
 
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 from swag_mcp.models.enums import SwagAction
+from swag_mcp.utils.error_codes import ErrorCode, SwagOperationError
+from swag_mcp.utils.token_efficient_formatter import TokenEfficientFormatter
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_format_view_result_truncates_large_human_content() -> None:
+    """Large view responses keep full content only in structured data."""
+    formatter = TokenEfficientFormatter()
+    repeated_line = "proxy_set_header X-Test " + ("x" * 120)
+    content = "\n".join(repeated_line for _ in range(80))
+
+    result = formatter.format_view_result(
+        {"filename": "large.subdomain.conf", "content": content},
+        "large.subdomain.conf",
+    )
+
+    assert result.structured_content is not None
+    assert result.structured_content["content"] == content
+    assert isinstance(result.content[0], TextContent)
+    assert repeated_line not in result.content[0].text
+    assert "content truncated" in result.content[0].text
 
 
 class TestSwagToolIntegration:
@@ -51,6 +72,82 @@ class TestSwagToolIntegration:
         assert result.structured_content is not None
         list_filter = result.structured_content["list_filter"]
         assert list_filter == "all", f"Expected list_filter 'all', got '{list_filter}'"
+
+    async def test_tool_call_cleans_up_manager_resources(self, mcp_client: Client) -> None:
+        """Tool-created manager services are closed after each invocation."""
+        with patch("swag_mcp.tools.swag.SwagManagerService") as service_class:
+            service = service_class.return_value
+            service.__aenter__ = AsyncMock(return_value=service)
+            service.__aexit__ = AsyncMock(return_value=None)
+            service.list_configs = AsyncMock(
+                return_value=Mock(configs=[], total_count=0, list_filter="all")
+            )
+
+            result = await mcp_client.call_tool(
+                "swag", {"action": SwagAction.LIST, "list_filter": "all"}
+            )
+
+            assert result.is_error is False
+            service.__aenter__.assert_awaited_once()
+            service.__aexit__.assert_awaited_once()
+
+    async def test_structured_operation_errors_preserve_code_and_details(
+        self, mcp_client: Client
+    ) -> None:
+        """Structured service errors keep their error code and context in tool output."""
+        with patch("swag_mcp.tools.swag.SwagManagerService") as service_class:
+            service = service_class.return_value
+            service.__aenter__ = AsyncMock(return_value=service)
+            service.__aexit__ = AsyncMock(return_value=None)
+            service.list_configs = AsyncMock(
+                side_effect=SwagOperationError(
+                    code=ErrorCode.FILE_READ_ERROR,
+                    message="Unable to read proxy configuration directory",
+                    context={"path": "/config/nginx/proxy-confs"},
+                )
+            )
+
+            result = await mcp_client.call_tool(
+                "swag", {"action": SwagAction.LIST, "list_filter": "all"}
+            )
+
+            assert result.is_error is False
+            assert result.structured_content is not None
+            assert result.structured_content["success"] is False
+            assert result.structured_content["error"] == (
+                "Unable to read proxy configuration directory"
+            )
+            assert result.structured_content["error_code"] == ErrorCode.FILE_READ_ERROR.value
+            assert result.structured_content["details"] == {"path": "/config/nginx/proxy-confs"}
+
+    async def test_action_specific_validation_rejects_irrelevant_parameters(
+        self, mcp_client: Client
+    ) -> None:
+        """Action validation rejects fields that belong to another action."""
+        with patch("swag_mcp.tools.swag.SwagManagerService") as service_class:
+            service = service_class.return_value
+            service.__aenter__ = AsyncMock(return_value=service)
+            service.__aexit__ = AsyncMock(return_value=None)
+            service.list_configs = AsyncMock(
+                return_value=Mock(configs=[], total_count=0, list_filter="all")
+            )
+
+            result = await mcp_client.call_tool(
+                "swag",
+                {
+                    "action": SwagAction.LIST,
+                    "list_filter": "all",
+                    "config_name": "unrelated.subdomain.conf",
+                },
+            )
+
+            assert result.is_error is False
+            assert result.structured_content is not None
+            assert result.structured_content["success"] is False
+            assert result.structured_content["action"] == SwagAction.LIST.value
+            assert result.structured_content["error_code"] == "E011"
+            assert result.structured_content["details"] == {"unexpected": ["config_name"]}
+            service.list_configs.assert_not_awaited()
 
     async def test_list_active_configurations(self, mcp_client: Client) -> None:
         """Test listing active configurations only."""
@@ -391,6 +488,12 @@ class TestSwagToolIntegration:
         assert has_backup_indicator, (
             f"Backup filename should contain timestamp or backup indicator, got: {backup_created}"
         )
+        edited_view = await mcp_client.call_tool(
+            "swag", {"action": SwagAction.VIEW, "config_name": config_name}
+        )
+        assert edited_view.structured_content is not None
+        edited_content = edited_view.structured_content["content"]
+        assert edited_content.startswith("# Modified by test")
 
     async def test_edit_missing_parameters(self, mcp_client: Client) -> None:
         """Test editing with missing parameters."""
@@ -453,8 +556,13 @@ class TestSwagToolIntegration:
         assert update_result.structured_content is not None
         assert update_result.structured_content.get("success")
         assert "backup_created" in update_result.structured_content
-        # Should have health_check field for domains or other update-specific data
-        # The exact structure may vary, but success and backup_created are standard
+        updated_view = await mcp_client.call_tool(
+            "swag", {"action": SwagAction.VIEW, "config_name": config_name}
+        )
+        assert updated_view.structured_content is not None
+        updated_content = updated_view.structured_content["content"]
+        assert 'set $upstream_port "9090";' in updated_content
+        assert 'set $upstream_port "8080";' not in updated_content
 
     async def test_update_upstream_field(
         self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]
@@ -495,7 +603,13 @@ class TestSwagToolIntegration:
         assert update_result.structured_content is not None
         assert update_result.structured_content.get("success")
         assert "backup_created" in update_result.structured_content
-        # Should have health_check field for domains or other update-specific data
+        updated_view = await mcp_client.call_tool(
+            "swag", {"action": SwagAction.VIEW, "config_name": config_name}
+        )
+        assert updated_view.structured_content is not None
+        updated_content = updated_view.structured_content["content"]
+        assert 'set $upstream_app "new-app";' in updated_content
+        assert 'set $upstream_app "old-app";' not in updated_content
 
     async def test_update_add_mcp_location(
         self, mcp_client: Client, test_config_name: str, test_config_cleanup: Callable[[str], None]

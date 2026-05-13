@@ -3,6 +3,7 @@
 import asyncio
 import errno
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,16 @@ from swag_mcp.utils.error_handlers import handle_os_error
 from swag_mcp.utils.validators import detect_and_handle_encoding, normalize_unicode_text
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RollbackFailure:
+    """Structured detail for a rollback operation that could not complete."""
+
+    operation: str
+    path: Path
+    error_type: str
+    message: str
 
 
 class AtomicTransaction:
@@ -29,6 +40,7 @@ class AtomicTransaction:
         self.created_files: list[Path] = []
         self.modified_files: list[tuple[Path, str]] = []  # (file_path, original_content)
         self.deleted_files: list[tuple[Path, str]] = []  # (file_path, original_content)
+        self.rollback_errors: list[RollbackFailure] = []
         self._completed = False
 
     @property
@@ -56,7 +68,13 @@ class AtomicTransaction:
             try:
                 if exc_type is not None and not self._completed:
                     # Exception occurred, rollback changes
-                    await self._rollback()
+                    self.rollback_errors = await self._rollback()
+                    if self.rollback_errors and exc_val is not None:
+                        exc_val.__dict__["rollback_errors"] = self.rollback_errors
+                        exc_val.add_note(
+                            f"Rollback for transaction {self.transaction_id} had "
+                            f"{len(self.rollback_errors)} error(s)."
+                        )
                     logger.info(
                         f"Rolled back transaction {self.transaction_id} due to error: {exc_val}"
                     )
@@ -100,9 +118,9 @@ class AtomicTransaction:
         """Explicitly commit the transaction (optional - auto-commits on successful exit)."""
         self._completed = True
 
-    async def _rollback(self) -> None:
+    async def _rollback(self) -> list[RollbackFailure]:
         """Rollback all changes made in this transaction with per-file locking for safety."""
-        rollback_errors = []
+        rollback_errors: list[RollbackFailure] = []
 
         # Remove created files with per-file locking
         for file_path in reversed(self.created_files):  # Reverse order for safety
@@ -113,7 +131,14 @@ class AtomicTransaction:
                         await self.fs.unlink(str(file_path))
                         logger.debug(f"Rollback: removed created file {file_path}")
             except Exception as e:
-                rollback_errors.append(f"Failed to remove created file {file_path}: {e}")
+                rollback_errors.append(
+                    RollbackFailure(
+                        operation="remove_created",
+                        path=file_path,
+                        error_type=type(e).__name__,
+                        message=str(e),
+                    )
+                )
 
         # Restore modified files with per-file locking
         for file_path, original_content in reversed(self.modified_files):
@@ -125,7 +150,14 @@ class AtomicTransaction:
                     )
                     logger.debug(f"Rollback: restored modified file {file_path}")
             except Exception as e:
-                rollback_errors.append(f"Failed to restore modified file {file_path}: {e}")
+                rollback_errors.append(
+                    RollbackFailure(
+                        operation="restore_modified",
+                        path=file_path,
+                        error_type=type(e).__name__,
+                        message=str(e),
+                    )
+                )
 
         # Restore deleted files with per-file locking
         for file_path, original_content in self.deleted_files:
@@ -140,13 +172,25 @@ class AtomicTransaction:
                     )
                     logger.debug(f"Rollback: restored deleted file {file_path}")
             except Exception as e:
-                rollback_errors.append(f"Failed to restore deleted file {file_path}: {e}")
+                rollback_errors.append(
+                    RollbackFailure(
+                        operation="restore_deleted",
+                        path=file_path,
+                        error_type=type(e).__name__,
+                        message=str(e),
+                    )
+                )
 
         if rollback_errors:
+            rollback_error_summary = "; ".join(
+                f"{error.operation} {error.path}: {error.message}" for error in rollback_errors
+            )
             logger.error(
                 f"Rollback of transaction {self.transaction_id} had errors: "
-                f"{'; '.join(rollback_errors)}"
+                f"{rollback_error_summary}"
             )
+
+        return rollback_errors
 
 
 class FileOperations:
@@ -326,6 +370,9 @@ class FileOperations:
             OSError: For filesystem errors
 
         """
+        if await self.fs.is_symlink(path):
+            raise ValueError(f"{context} is a symlink and is unsafe to read")
+
         raw_content = await self.fs.read_bytes(path)
         if b"\0" in raw_content[:512]:
             raise ValueError(f"{context} contains binary content or is unsafe to read")

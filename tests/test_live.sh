@@ -17,7 +17,7 @@
 #
 # Environment variables (alternatives to flags):
 #   SWAG_MCP_URL    Base URL of the running server (http mode)
-#   SWAG_MCP_TOKEN  Bearer token (unused by swag-mcp itself, kept for compat)
+#   SWAG_MCP_TOKEN  Bearer token for authenticated MCP requests
 #
 # Exit codes:
 #   0 — all tests passed (or skipped)
@@ -49,6 +49,7 @@ DOCKER_CONTAINER="swag-mcp-ci-test-$$"
 DOCKER_HOST_PORT=18082
 DOCKER_BASE_URL="http://localhost:${DOCKER_HOST_PORT}"
 DOCKER_PROXY_CONFS_DIR=""
+EXPECT_MCP_AUTH=false
 
 # Counters (global, updated by run_test/skip_test)
 PASS_COUNT=0
@@ -193,9 +194,16 @@ skip_test() {
 # mcp_call extracts the JSON payload from either format.
 # An optional session ID is forwarded when MCP_SESSION_ID is set.
 MCP_SESSION_ID=""
+MCP_SESSION_ID_FILE="${TMPDIR:-/tmp}/swag-mcp-live-session-${$}.txt"
+trap 'rm -f "${MCP_SESSION_ID_FILE}"' EXIT
+DOCKER_CLEANUP_REGISTERED=false
 
 mcp_call() {
   local url="${1:?}" payload="${2:?}"
+  local current_session_id=""
+  if [[ -s "${MCP_SESSION_ID_FILE}" ]]; then
+    current_session_id="$(<"${MCP_SESSION_ID_FILE}")"
+  fi
 
   # Build curl args array — add session header when we have one
   local -a curl_args=(
@@ -204,8 +212,11 @@ mcp_call() {
     -H "Accept: application/json, text/event-stream"
     --max-time 30
   )
-  if [[ -n "${MCP_SESSION_ID}" ]]; then
-    curl_args+=(-H "Mcp-Session-Id: ${MCP_SESSION_ID}")
+  if [[ -n "${TOKEN}" ]]; then
+    curl_args+=(-H "Authorization: Bearer ${TOKEN}")
+  fi
+  if [[ -n "${current_session_id}" ]]; then
+    curl_args+=(-H "Mcp-Session-Id: ${current_session_id}")
   fi
 
   # Capture response headers so we can extract session ID
@@ -216,12 +227,13 @@ mcp_call() {
   raw_response="$(curl "${curl_args[@]}" -D "${tmp_headers}" -d "${payload}" "${url}/mcp" 2>&1)"
 
   # Persist session ID from first response that carries one
-  if [[ -z "${MCP_SESSION_ID}" ]]; then
+  if [[ -z "${current_session_id}" ]]; then
     local new_sid
     new_sid="$(grep -i "^mcp-session-id:" "${tmp_headers}" 2>/dev/null \
       | head -1 | tr -d '\r\n' | sed 's/^[^:]*: *//')"
     if [[ -n "${new_sid}" ]]; then
       MCP_SESSION_ID="${new_sid}"
+      printf '%s' "${new_sid}" > "${MCP_SESSION_ID_FILE}"
     fi
   fi
   rm -f "${tmp_headers}"
@@ -330,17 +342,14 @@ phase_health() {
 # ---------------------------------------------------------------------------
 # Phase 2 — Auth
 #
-# swag-mcp does NOT enforce bearer token auth internally.
-# Auth is expected to be handled by an upstream proxy (e.g., SWAG itself).
-# We verify the server responds to requests without requiring a token.
+# /health remains unauthenticated for readiness. When SWAG_MCP_TOKEN is
+# configured, streamable-http MCP requests must require Bearer authentication.
 # ---------------------------------------------------------------------------
 phase_auth() {
   local base_url="${1:?}"
   log_section "Phase 2: Auth"
 
-  log_warn "swag-mcp does not enforce bearer token auth internally."
-  log_warn "Auth is delegated to the upstream proxy (SWAG, Authelia, etc.)."
-  log_warn "Verifying server accepts unauthenticated requests (expected behaviour)."
+  log_info "Verifying unauthenticated readiness and MCP auth behavior."
 
   local t0 response http_code ms
   t0="$(date +%s%N 2>/dev/null || date +%s)000000"
@@ -348,10 +357,32 @@ phase_auth() {
   ms="$(( ( $(date +%s%N 2>/dev/null || date +%s)000000 - t0 ) / 1000000 ))"
 
   if [[ "${http_code}" == "200" ]]; then
-    pass_test "GET /health unauthenticated → 200 (no built-in auth)" "${ms}"
+    pass_test "GET /health unauthenticated → 200" "${ms}"
   else
-    fail_test "GET /health unauthenticated → 200 (no built-in auth)" "got HTTP ${http_code}" "${ms}"
+    fail_test "GET /health unauthenticated → 200" "got HTTP ${http_code}" "${ms}"
     return 1
+  fi
+
+  if [[ "${EXPECT_MCP_AUTH}" == true ]]; then
+    local init_payload
+    init_payload='{"jsonrpc":"2.0","id":100,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test_live_auth","version":"1.0.0"}}}'
+    t0="$(date +%s%N 2>/dev/null || date +%s)000000"
+    http_code="$(
+      curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        --max-time 10 \
+        -d "${init_payload}" \
+        "${base_url}/mcp"
+    )" || http_code="000"
+    ms="$(( ( $(date +%s%N 2>/dev/null || date +%s)000000 - t0 ) / 1000000 ))"
+
+    if [[ "${http_code}" == "401" || "${http_code}" == "403" ]]; then
+      pass_test "POST /mcp unauthenticated → rejected" "${ms}"
+    else
+      fail_test "POST /mcp unauthenticated → rejected" "got HTTP ${http_code}" "${ms}"
+      return 1
+    fi
   fi
 
   return 0
@@ -581,14 +612,14 @@ run_docker_mode() {
   log_info "Using proxy-confs dir: ${DOCKER_PROXY_CONFS_DIR}"
 
   # Ensure Docker cleanup on exit
-  local docker_cleanup_registered=false
   cleanup_docker() {
-    if [[ "${docker_cleanup_registered}" == true ]]; then
+    if [[ "${DOCKER_CLEANUP_REGISTERED}" == true ]]; then
       log_info "Tearing down Docker container ${DOCKER_CONTAINER}..."
       docker stop "${DOCKER_CONTAINER}" >/dev/null 2>&1 || true
       docker rm "${DOCKER_CONTAINER}" >/dev/null 2>&1 || true
       docker rmi "${DOCKER_IMAGE}" >/dev/null 2>&1 || true
       rm -rf -- "${DOCKER_PROXY_CONFS_DIR}" 2>/dev/null || true
+      rm -f -- "${MCP_SESSION_ID_FILE}" 2>/dev/null || true
     fi
   }
   trap cleanup_docker EXIT
@@ -604,7 +635,7 @@ run_docker_mode() {
     return 1
   fi
   log_info "Docker image built."
-  docker_cleanup_registered=true
+  DOCKER_CLEANUP_REGISTERED=true
 
   # Run container
   log_info "Starting container ${DOCKER_CONTAINER} on port ${DOCKER_HOST_PORT}..."
@@ -613,7 +644,6 @@ run_docker_mode() {
     -p "${DOCKER_HOST_PORT}:8000" \
     -v "${DOCKER_PROXY_CONFS_DIR}:/proxy-confs" \
     -e "SWAG_MCP_TOKEN=${TOKEN}" \
-    -e "SWAG_MCP_NO_AUTH=true" \
     -e "SWAG_MCP_LOG_FILE_ENABLED=false" \
     -e "SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs" \
     -e "SWAG_MCP_LOG_DIRECTORY=/tmp/swag-mcp-logs" \
@@ -630,6 +660,8 @@ run_docker_mode() {
   fi
 
   MCP_SESSION_ID=""  # Reset session for docker mode
+  : > "${MCP_SESSION_ID_FILE}"
+  EXPECT_MCP_AUTH=true
   phase_health "${DOCKER_BASE_URL}"
   phase_auth "${DOCKER_BASE_URL}"
   phase_protocol "${DOCKER_BASE_URL}"
