@@ -1,5 +1,6 @@
 """Configuration field updater module for SWAG MCP."""
 
+import ipaddress
 import logging
 import re
 import tempfile
@@ -39,12 +40,24 @@ def _replace_set_value(content: str, variable_name: str, value: str | int) -> tu
 
 def _validate_service_identifier(value: str, label: str) -> str:
     """Validate a service/upstream identifier used in nginx upstream settings."""
-    if not re.match(r"^[A-Za-z0-9_.-]+$", value):
+    normalized = value.strip()
+    ip_candidate = (
+        normalized[1:-1] if normalized.startswith("[") and normalized.endswith("]") else normalized
+    )
+
+    is_ip_address = False
+    try:
+        ipaddress.ip_address(ip_candidate)
+        is_ip_address = True
+    except ValueError:
+        pass
+
+    if not is_ip_address and not re.match(r"^[A-Za-z0-9_.-]+$", normalized):
         raise create_validation_error(
             ErrorCode.INVALID_SERVICE_NAME,
             f"Invalid {label}: {value}",
         )
-    return value
+    return normalized
 
 
 def _parse_port_value(value: str | int, label: str = "port value") -> int:

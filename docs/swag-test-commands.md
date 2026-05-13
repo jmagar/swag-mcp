@@ -341,6 +341,7 @@ swag logs nginx-error -1
 ## 9. BACKUPS Action Commands
 
 ### Basic Cleanup Commands
+
 ```bash
 # Cleanup with default retention (uses config default)
 swag backups cleanup
@@ -357,6 +358,7 @@ swag backups cleanup 365
 ```
 
 ### Cleanup Edge Cases
+
 ```bash
 # Very large retention period
 swag backups cleanup 9999

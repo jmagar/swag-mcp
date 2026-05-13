@@ -270,25 +270,35 @@ async def test_health_check_rejects_localhost_targets() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_handler_schedules_health_check_without_blocking() -> None:
+async def test_create_handler_schedules_health_check_without_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Create returns after the write; health verification runs out of band."""
     health_started = asyncio.Event()
     health_release = asyncio.Event()
     health_done = asyncio.Event()
+    service = SwagManagerService(config_path=tmp_path, template_path=Path("templates"))
 
-    class Service:
-        async def create_config(self, request: Any) -> SwagConfigResult:
-            return SwagConfigResult(filename=request.config_name, content="server {}")
+    async def create_config(request: Any) -> SwagConfigResult:
+        return SwagConfigResult(filename=request.config_name, content="server {}")
 
-        async def health_check(self, request: Any) -> Any:
-            health_started.set()
-            await health_release.wait()
-            health_done.set()
-            return None
+    async def health_check(self: Any, request: Any) -> Any:
+        _ = self, request
+        health_started.set()
+        await health_release.wait()
+        health_done.set()
+        return type(
+            "HealthResult",
+            (),
+            {"success": True, "status_code": 200, "response_time_ms": 1},
+        )()
+
+    monkeypatch.setattr(service, "create_config", create_config)
+    monkeypatch.setattr(SwagManagerService, "health_check", health_check)
 
     result = await _handle_create_action(
         _ContextStub(),  # type: ignore[arg-type]
-        Service(),  # type: ignore[arg-type]
+        service,
         TokenEfficientFormatter(),
         "fast.subdomain.conf",
         "fast.example.com",
@@ -307,29 +317,40 @@ async def test_create_handler_schedules_health_check_without_blocking() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_handler_schedules_health_check_without_blocking() -> None:
+async def test_update_handler_schedules_health_check_without_blocking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Update returns after the write; post-update health verification is out of band."""
     health_started = asyncio.Event()
     health_release = asyncio.Event()
     health_done = asyncio.Event()
+    service = SwagManagerService(config_path=tmp_path, template_path=Path("templates"))
 
-    class Service:
-        async def update_config_field(self, request: Any) -> SwagConfigResult:
-            return SwagConfigResult(filename=request.config_name, content="server {}")
+    async def update_config_field(request: Any) -> SwagConfigResult:
+        return SwagConfigResult(filename=request.config_name, content="server {}")
 
-        async def read_config(self, config_name: str) -> str:
-            _ = config_name
-            return "server_name updated.example.com;"
+    async def read_config(config_name: str) -> str:
+        _ = config_name
+        return "server_name updated.example.com;"
 
-        async def health_check(self, request: Any) -> Any:
-            health_started.set()
-            await health_release.wait()
-            health_done.set()
-            return None
+    async def health_check(self: Any, request: Any) -> Any:
+        _ = self, request
+        health_started.set()
+        await health_release.wait()
+        health_done.set()
+        return type(
+            "HealthResult",
+            (),
+            {"success": True, "status_code": 200, "response_time_ms": 1},
+        )()
+
+    monkeypatch.setattr(service, "update_config_field", update_config_field)
+    monkeypatch.setattr(service, "read_config", read_config)
+    monkeypatch.setattr(SwagManagerService, "health_check", health_check)
 
     result = await _handle_update_action(
         _ContextStub(),  # type: ignore[arg-type]
-        Service(),  # type: ignore[arg-type]
+        service,
         TokenEfficientFormatter(),
         "fast.subdomain.conf",
         "port",

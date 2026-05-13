@@ -171,8 +171,9 @@ docker build \
   -t swag-mcp .
 ```
 
-Without network access, do not invent digests. Record the reviewed digest in
-deployment notes once it has been resolved from the registry.
+Note: Digest values must be obtained from the registry; placeholder or example
+digests will not work. Record the reviewed digest in deployment notes once it
+has been resolved from the registry.
 
 ## Rollback and restore
 

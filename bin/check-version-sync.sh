@@ -40,6 +40,11 @@ if [ -f "gemini-extension.json" ]; then
   [ -n "$v" ] && versions+=("gemini-extension.json=$v") && files_checked+=("gemini-extension.json")
 fi
 
+if [ -f ".env.example" ]; then
+  v=$(grep -m1 '^SWAG_MCP_VERSION=' .env.example | cut -d= -f2-)
+  [ -n "$v" ] && versions+=(".env.example:SWAG_MCP_VERSION=$v") && files_checked+=(".env.example")
+fi
+
 # Need at least one version source
 if [ ${#versions[@]} -eq 0 ]; then
   echo "[version-sync] No version-bearing files found — skipping"

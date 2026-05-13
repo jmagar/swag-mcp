@@ -644,7 +644,6 @@ run_docker_mode() {
     -p "${DOCKER_HOST_PORT}:8000" \
     -v "${DOCKER_PROXY_CONFS_DIR}:/proxy-confs" \
     -e "SWAG_MCP_TOKEN=${TOKEN}" \
-    -e "SWAG_MCP_NO_AUTH=true" \
     -e "SWAG_MCP_LOG_FILE_ENABLED=false" \
     -e "SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs" \
     -e "SWAG_MCP_LOG_DIRECTORY=/tmp/swag-mcp-logs" \

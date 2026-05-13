@@ -25,10 +25,16 @@ ensure_runtime_user() {
 prepare_directory() {
     local path="$1"
     local required="${2:-false}"
+    local required_normalized="${required,,}"
+    local is_required=false
+
+    case "${required_normalized}" in
+        true|1|yes) is_required=true ;;
+    esac
 
     mkdir -p "${path}"
     if ! chown -R "${PUID}:${PGID}" "${path}" 2>/dev/null; then
-        if [ "${required}" = "true" ]; then
+        if [ "${is_required}" = "true" ]; then
             echo "Error: Could not set ownership for required directory ${path}" >&2
             exit 1
         fi
@@ -36,7 +42,7 @@ prepare_directory() {
     fi
 
     if ! gosu "${PUID}:${PGID}" test -w "${path}"; then
-        if [ "${required}" = "true" ]; then
+        if [ "${is_required}" = "true" ]; then
             echo "Error: Required directory ${path} is not writable by ${PUID}:${PGID}" >&2
             exit 1
         fi
@@ -63,7 +69,7 @@ if [ "$(id -u)" = "0" ]; then
     prepare_directory "${SWAG_MCP_LOG_DIRECTORY}" "${require_log_directory}"
     prepare_directory "/app/logs" true
     prepare_directory "/home/${APP_USER}/.local/share/fastmcp" true
-    prepare_directory "/proxy-confs" true
+    prepare_directory "${SWAG_MCP_PROXY_CONFS_PATH:-/proxy-confs}" true
 
     exec gosu "${PUID}:${PGID}" "$@"
 fi

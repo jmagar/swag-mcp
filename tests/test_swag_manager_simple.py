@@ -181,7 +181,7 @@ class TestSwagManagerServiceBasic:
             )
 
             result = await service.health_check(request)
-        assert result.success is False
+            assert result.success is False
 
     def test_create_secure_template_environment(self, service):
         """Test that template environment is properly secured."""

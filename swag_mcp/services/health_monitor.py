@@ -6,9 +6,12 @@ import logging
 import socket
 import ssl
 import time
+from collections.abc import Callable
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
+from aiohttp.abc import AbstractResolver, ResolveResult
+from aiohttp.resolver import DefaultResolver
 
 from swag_mcp.models.config import (
     HealthEndpointResult,
@@ -23,6 +26,56 @@ logger = logging.getLogger(__name__)
 
 _EndpointCheckOutcome = tuple[HealthEndpointResult, str | None]
 _MAX_HEALTH_REDIRECTS = 5
+
+
+class _PinnedPublicResolver(AbstractResolver):
+    """Resolver that only returns public IPs approved by health target validation."""
+
+    def __init__(
+        self,
+        allowed_host_ips: dict[str, set[str]],
+        validate_public_ip: Callable[
+            [ipaddress.IPv4Address | ipaddress.IPv6Address],
+            str | None,
+        ],
+    ) -> None:
+        self._resolver: AbstractResolver = DefaultResolver()
+        self._allowed_host_ips = allowed_host_ips
+        self._validate_public_ip = validate_public_ip
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[ResolveResult]:
+        """Resolve a host and reject DNS-rebinding or non-public responses."""
+        results = await self._resolver.resolve(host, port, family)
+        allowed_ips = self._allowed_host_ips.get(host.lower())
+        resolved_ips: set[str] = set()
+
+        for result in results:
+            try:
+                resolved_ip = ipaddress.ip_address(result["host"])
+            except ValueError as e:
+                raise OSError(f"Resolver returned a non-IP address for {host}") from e
+
+            ip_error = self._validate_public_ip(resolved_ip)
+            if ip_error is not None:
+                raise OSError(ip_error)
+            resolved_ips.add(str(resolved_ip))
+
+        if allowed_ips is not None and not resolved_ips.issubset(allowed_ips):
+            unexpected_ips = sorted(resolved_ips - allowed_ips)
+            raise OSError(
+                f"Health check DNS response changed after validation: {', '.join(unexpected_ips)}"
+            )
+
+        return results
+
+    async def close(self) -> None:
+        """Close the wrapped aiohttp resolver."""
+        await self._resolver.close()
 
 
 class HealthMonitor:
@@ -48,6 +101,7 @@ class HealthMonitor:
         self.fs: FilesystemBackend = fs or LocalFilesystem()
         self.swag_log_base_path = swag_log_base_path
         self.health_check_insecure = health_check_insecure
+        self._validated_health_ips: dict[str, set[str]] = {}
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session with connection pooling.
@@ -69,6 +123,10 @@ class HealthMonitor:
                 # Create connector with connection pooling
                 connector = aiohttp.TCPConnector(
                     ssl=ssl_context,
+                    resolver=_PinnedPublicResolver(
+                        self._validated_health_ips,
+                        self._validate_public_ip,
+                    ),
                     limit=10,  # Connection pool size
                     limit_per_host=5,  # Max connections per host
                     ttl_dns_cache=300,  # DNS cache TTL in seconds
@@ -161,7 +219,10 @@ class HealthMonitor:
         except ValueError:
             literal_ip = None
         if literal_ip is not None:
-            return self._validate_public_ip(literal_ip)
+            ip_error = self._validate_public_ip(literal_ip)
+            if ip_error is None:
+                self._validated_health_ips[host.lower()] = {str(literal_ip)}
+            return ip_error
 
         try:
             address_infos = await asyncio.get_running_loop().getaddrinfo(
@@ -184,6 +245,9 @@ class HealthMonitor:
             ip_error = self._validate_public_ip(resolved_ip)
             if ip_error is not None:
                 return ip_error
+        self._validated_health_ips[host.lower()] = {
+            str(resolved_ip) for resolved_ip in resolved_ips
+        }
         return None
 
     def _validate_public_ip(
@@ -312,12 +376,13 @@ class HealthMonitor:
             return "Health check redirect target is invalid"
         if parsed.hostname.lower() != original_domain:
             return "Health check redirects must stay on the original host"
-        return await self._validate_health_check_host(parsed.hostname.lower())
+        return None
 
     def _is_successful_health_response(self, endpoint: str, status_code: int) -> bool:
         """Return whether an endpoint HTTP status proves the proxy is reachable."""
         if 200 <= status_code < 300:
             return True
+        # A 406 from /mcp means the streamable-HTTP endpoint is reachable but rejected a GET.
         return status_code == 406 and endpoint == "/mcp"
 
     async def get_swag_logs(self, logs_request: SwagLogsRequest) -> str:

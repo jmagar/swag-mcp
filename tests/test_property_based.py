@@ -518,5 +518,7 @@ class TestSharedModelValidation:
         with pytest.raises(ValueError):
             SwagConfigRequest(**create_payload)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as edit_error:
             SwagEditRequest(**edit_payload)
+
+        assert "../app" in str(edit_error.value)

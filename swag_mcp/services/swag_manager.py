@@ -361,7 +361,7 @@ class SwagManagerService:
 
         Delegates to: TemplateManager
         """
-        self.template_manager._set_template_hooks(
+        self.template_manager.register_test_hooks(
             pre_render_hook, post_render_hook, template_vars_hook
         )
 
@@ -370,4 +370,4 @@ class SwagManagerService:
 
         Delegates to: TemplateManager
         """
-        self.template_manager._clear_template_hooks()
+        self.template_manager.clear_test_hooks()

@@ -320,10 +320,15 @@ class SSHFilesystem:
 
         Uses SSH command execution (tail) for efficiency on large
         files, falling back to a bounded SFTP read if command execution fails.
+        The fallback reads at most MAX_TAIL_FALLBACK_BYTES, so very long final
+        lines may return fewer than the requested line count and emit a debug log.
         """
         line_count = max(0, min(int(n), self.MAX_TAIL_LINES))
         if line_count == 0:
             return []
+
+        if self._conn is None:
+            await self._get_sftp()
 
         # Try efficient tail via SSH command first
         if self._conn is not None:
@@ -341,7 +346,16 @@ class SSHFilesystem:
                 logger.debug(f"SSH tail command failed for {path}, falling back to SFTP read")
 
         try:
-            return await self._read_tail_lines_bounded(path, line_count)
+            lines = await self._read_tail_lines_bounded(path, line_count)
+            if len(lines) < line_count:
+                logger.debug(
+                    "Bounded SFTP tail for %s returned %d/%d lines; fallback window is %d bytes",
+                    path,
+                    len(lines),
+                    line_count,
+                    self.MAX_TAIL_FALLBACK_BYTES,
+                )
+            return lines
         except Exception as e:
             logger.warning(f"Failed to read tail lines from {path}: {e}")
             return []

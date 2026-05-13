@@ -64,15 +64,12 @@ def _normalize_model_text(value: str, *, lowercase: bool = False) -> str:
 def _validate_config_name_value(value: str) -> str:
     """Validate and normalize a SWAG configuration name."""
     normalized = _normalize_model_text(value)
-    if not normalized or ".." in normalized or "/" in normalized or "\\" in normalized:
-        raise ValueError(
-            f"Config name '{_ud.normalize('NFKC', normalized[:50])}...' contains invalid characters"
-        )
+    if not normalized:
+        raise ValueError("Config name cannot be empty")
+    if ".." in normalized or "/" in normalized or "\\" in normalized:
+        raise ValueError(f"Config name '{normalized[:50]}' contains invalid characters")
     if normalized.startswith("-") or normalized.endswith("-"):
-        raise ValueError(
-            f"Config name '{_ud.normalize('NFKC', normalized[:50])}...' "
-            "cannot start or end with '-'"
-        )
+        raise ValueError(f"Config name '{normalized[:50]}' cannot start or end with '-'")
     return normalized
 
 
@@ -378,7 +375,7 @@ class SwagEditRequest(SwagBaseRequest):
         """Validate upstream app name format for edit requests."""
         if v is None:
             return v
-        return _validate_upstream_app_name(v, field_label="Upstream app name", include_value=False)
+        return _validate_upstream_app_name(v, field_label="Upstream app name", include_value=True)
 
     @field_validator("mcp_upstream_app", mode="before")
     @classmethod
@@ -389,7 +386,7 @@ class SwagEditRequest(SwagBaseRequest):
         return _validate_upstream_app_name(
             v,
             field_label="MCP upstream app name",
-            include_value=False,
+            include_value=True,
         )
 
 

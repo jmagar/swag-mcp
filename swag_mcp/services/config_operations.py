@@ -99,7 +99,9 @@ class ConfigOperations:
         if requires_remote_nginx_validation(self.file_ops.fs):
             raise ValueError(
                 "Cannot validate nginx syntax for remote filesystem backend without "
-                "authoritative remote nginx validation"
+                "authoritative remote nginx validation. Create and update operations on SSH "
+                "backends require nginx syntax validation to run on the remote SWAG host; "
+                "use a local SWAG config mount or add a backend-supported remote validation hook."
             )
 
     @property
@@ -199,11 +201,12 @@ class ConfigOperations:
             cache_key, _list_uncached, ttl=CONFIG_LIST_CACHE_TTL_SECONDS
         )
 
-    async def read_config(self, config_name: str) -> str:
+    async def read_config(self, config_name: str, *, use_cache: bool = True) -> str:
         """Read configuration file content.
 
         Args:
             config_name: Name of configuration file to read
+            use_cache: Whether to use the short-lived read cache
 
         Returns:
             Configuration file content as string
@@ -215,28 +218,29 @@ class ConfigOperations:
 
         """
         validated_name = validate_config_filename(config_name)
+        await self._ensure_config_directory()
+        config_file = self.config_path / validated_name
+
+        if not await self.fs.exists(str(config_file)):
+            raise FileNotFoundError(f"Configuration file {validated_name} not found")
+
+        if await self.fs.is_symlink(str(config_file)):
+            raise ValueError(
+                f"Configuration file {validated_name} is a symlink — "
+                "reading symlinks is not permitted for security reasons"
+            )
 
         async def _read_uncached() -> str:
             logger.info(f"Reading configuration: {config_name}")
-            await self._ensure_config_directory()
-
-            config_file = self.config_path / validated_name
-
-            if not await self.fs.exists(str(config_file)):
-                raise FileNotFoundError(f"Configuration file {validated_name} not found")
-
-            if await self.fs.is_symlink(str(config_file)):
-                raise ValueError(
-                    f"Configuration file {validated_name} is a symlink — "
-                    "reading symlinks is not permitted for security reasons"
-                )
-
             content = await self.file_ops.read_text_safe(
                 str(config_file), f"configuration file {validated_name}"
             )
 
             logger.info(f"Successfully read {len(content)} characters from {validated_name}")
             return content
+
+        if not use_cache:
+            return await _read_uncached()
 
         return await get_cache().get_or_set(
             self._config_read_cache_key(validated_name),
@@ -298,30 +302,26 @@ class ConfigOperations:
             if await self.fs.exists(str(config_file)):
                 raise ValueError(f"Configuration {filename} already exists")
 
-            try:
-                # Prepare template variables
-                template_vars = {
-                    "service_name": validated_service_name,
-                    "server_name": validated_server_name,
-                    "upstream_app": request.upstream_app,
-                    "upstream_port": validated_port,
-                    "upstream_proto": request.upstream_proto,
-                    # MCP upstream variables (with defaults from model validator)
-                    "mcp_upstream_app": request.mcp_upstream_app,
-                    "mcp_upstream_port": request.mcp_upstream_port,
-                    "mcp_upstream_proto": request.mcp_upstream_proto,
-                    "auth_method": request.auth_method,
-                    "enable_quic": request.enable_quic,
-                    # OAuth gateway variables
-                    "oauth_upstream": self.oauth_upstream,
-                    "auth_server_url": self.auth_server_url,
-                }
+            # Prepare template variables
+            template_vars = {
+                "service_name": validated_service_name,
+                "server_name": validated_server_name,
+                "upstream_app": request.upstream_app,
+                "upstream_port": validated_port,
+                "upstream_proto": request.upstream_proto,
+                # MCP upstream variables (with defaults from model validator)
+                "mcp_upstream_app": request.mcp_upstream_app,
+                "mcp_upstream_port": request.mcp_upstream_port,
+                "mcp_upstream_proto": request.mcp_upstream_proto,
+                "auth_method": request.auth_method,
+                "enable_quic": request.enable_quic,
+                # OAuth gateway variables
+                "oauth_upstream": self.oauth_upstream,
+                "auth_server_url": self.auth_server_url,
+            }
 
-                # Render template with validated variables
-                content = await self.template_manager.render_template(template_name, template_vars)
-            except ValueError:
-                # Template rendering already handles TemplateNotFound and other exceptions
-                raise
+            # Render template with validated variables
+            content = await self.template_manager.render_template(template_name, template_vars)
 
             # CRITICAL SAFETY FEATURE: Validate nginx syntax before writing
             # Write to temporary file first for validation
@@ -428,7 +428,7 @@ class ConfigOperations:
         logger.info(f"Updating {update_request.update_field} in {update_request.config_name}")
 
         # Read existing config
-        content = await self.read_config(update_request.config_name)
+        content = await self.read_config(update_request.config_name, use_cache=False)
 
         # Create backup if requested (pass content to avoid double read)
         backup_name = None

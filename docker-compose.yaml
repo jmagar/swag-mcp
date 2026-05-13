@@ -55,7 +55,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import json, os, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)); assert data.get('status') == 'healthy'; assert os.access(os.environ['SWAG_MCP_LOG_DIRECTORY'], os.W_OK); assert os.path.isdir(os.environ['SWAG_MCP_PROXY_CONFS_PATH'])\"",
+          "python -c \"import json, os, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)); assert data.get('status') == 'healthy'; log_dir=os.environ.get('SWAG_MCP_LOG_DIRECTORY'); assert log_dir and os.access(log_dir, os.W_OK); proxy_path=os.environ.get('SWAG_MCP_PROXY_CONFS_PATH'); assert (not proxy_path) or os.path.isdir(proxy_path)\"",
         ]
       interval: 30s
       timeout: 10s

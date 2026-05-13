@@ -164,6 +164,13 @@ class TestServiceNameValidation:
         """Test documented homograph policy remains non-blocking."""
         assert validate_service_name("арр", allow_emoji=False) == "арр"
 
+    def test_service_name_logs_mixed_script_spoofing_signal(self, caplog):
+        """Mixed Latin/non-Latin service names remain allowed but visible in logs."""
+        with caplog.at_level("DEBUG", logger="swag_mcp.utils.validators"):
+            assert validate_service_name("app-арр", allow_emoji=False) == "app-арр"
+
+        assert "mixed-script spoofing signals" in caplog.text
+
 
 class TestConfigFilenameValidation:
     """Test configuration filename validation."""

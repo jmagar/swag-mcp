@@ -132,7 +132,7 @@ Every mode that reaches the test suite runs the same four phases in order:
 | Phase | Name | Purpose |
 |-------|------|---------|
 | 1 | Health | Prove the HTTP health endpoint is alive and returning the correct status |
-| 2 | Auth | Prove the server accepts unauthenticated requests (no built-in token enforcement) |
+| 2 | Auth | Prove `/health` stays open and `/mcp` rejects unauthenticated requests when token auth is configured |
 | 3 | Protocol | Prove the MCP JSON-RPC handshake works and the tool registry is correct |
 | 4 | Tool Calls | Exercise every exposed tool with read-only operations |
 
@@ -450,7 +450,8 @@ These are the precise claims the tests make — not just "endpoint responded":
 | Tool / action | Claim |
 |--------------|-------|
 | `GET /health` | Returns HTTP 200 with valid JSON body where `.status == "ok"` |
-| `GET /health` (no auth) | Returns HTTP 200 (server enforces no token auth) |
+| `GET /health` (no auth) | Returns HTTP 200 for readiness without an auth header |
+| `POST /mcp` (no auth) | Returns HTTP 401 or 403 when `SWAG_MCP_TOKEN` is configured |
 | `initialize` | Returns JSON-RPC result with a truthy `.result.protocolVersion` field |
 | `tools/list` | Returns JSON-RPC result where `.result.tools` is a JSON array |
 | `tools/list` | The tools array contains an entry with `.name == "swag"` |
@@ -506,7 +507,6 @@ docker run -d \
   -p 18082:8000 \
   -v <tmpdir>:/proxy-confs \
   -e SWAG_MCP_TOKEN=<token> \
-  -e SWAG_MCP_NO_AUTH=true \
   -e SWAG_MCP_LOG_FILE_ENABLED=false \
   -e SWAG_MCP_PROXY_CONFS_PATH=/proxy-confs \
   -e SWAG_MCP_LOG_DIRECTORY=/tmp/swag-mcp-logs \

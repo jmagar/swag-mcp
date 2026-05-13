@@ -27,6 +27,7 @@ from swag_mcp.utils.tool_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+_BACKGROUND_TASKS: set[asyncio.Task[str]] = set()
 
 # Type alias for update field values
 UpdateFieldType = Literal["port", "upstream", "app", "add_mcp"]
@@ -55,21 +56,18 @@ async def _extract_server_name_from_config(
     return None
 
 
-async def _run_health_check(
-    swag_service: SwagManagerService, ctx: Context, server_name: str
-) -> str:
+async def _run_health_check(swag_service: SwagManagerService, server_name: str) -> str:
     """Run health check for a domain and return formatted status.
 
     Args:
         swag_service: Service instance for health check operations
-        ctx: FastMCP context for logging
         server_name: Domain name to check
 
     Returns:
         Formatted health check status
 
     """
-    await ctx.info(f"Running health check for {server_name}...")
+    logger.info("Running post-write health check for %s", server_name)
 
     try:
         health_request = SwagHealthCheckRequest(
@@ -84,30 +82,33 @@ async def _run_health_check(
             status_code = health_result.status_code or "unknown"
             response_time = health_result.response_time_ms or 0
             health_status = f"✅ Health check passed: {status_code} ({response_time}ms)"
-            await ctx.info(f"Health check successful for {server_name}")
+            logger.info("Post-write health check successful for %s", server_name)
         else:
             health_status = f"⚠️ Health check failed: {health_result.error or 'Unknown error'}"
-            await ctx.info(f"Health check failed for {server_name}: {health_result.error}")
+            logger.info(
+                "Post-write health check failed for %s: %s",
+                server_name,
+                health_result.error,
+            )
 
         return health_status
 
     except Exception as e:
         health_status = f"⚠️ Health check error: {str(e)}"
-        await ctx.info(f"Health check encountered an error: {str(e)}")
+        logger.info("Post-write health check encountered an error: %s", e)
         return health_status
 
 
 async def _run_post_create_health_check(
-    swag_service: SwagManagerService, ctx: Context, server_name: str, filename: str
+    swag_service: SwagManagerService, server_name: str, filename: str
 ) -> str:
     """Run health check after config creation and format results."""
-    health_status = await _run_health_check(swag_service, ctx, server_name)
+    health_status = await _run_health_check(swag_service, server_name)
     return f"Created configuration: {filename}\n{health_status}"
 
 
 async def _run_post_update_health_check(
     swag_service: SwagManagerService,
-    ctx: Context,
     server_name: str | None,
     config_name: str,
     field: str,
@@ -117,29 +118,25 @@ async def _run_post_update_health_check(
     if not server_name:
         return f"Updated {field} in {config_name} to {new_value}"
 
-    health_status = await _run_health_check(swag_service, ctx, server_name)
+    health_status = await _run_health_check(swag_service, server_name)
     return f"Updated {field} in {config_name} to {new_value}\n{health_status}"
 
 
 async def _run_post_create_health_check_in_background(
-    ctx: Context,
     source_service: SwagManagerService,
     server_name: str,
     filename: str,
 ) -> str:
     """Run post-create health check with a service lifetime owned by the background task."""
-    if isinstance(source_service, SwagManagerService):
-        async with SwagManagerService(
-            config_path=source_service.config_path,
-            template_path=source_service.template_path,
-            settings=source_service.settings,
-        ) as health_service:
-            return await _run_post_create_health_check(health_service, ctx, server_name, filename)
-    return await _run_post_create_health_check(source_service, ctx, server_name, filename)
+    async with SwagManagerService(
+        config_path=source_service.config_path,
+        template_path=source_service.template_path,
+        settings=source_service.settings,
+    ) as health_service:
+        return await _run_post_create_health_check(health_service, server_name, filename)
 
 
 async def _run_post_update_health_check_in_background(
-    ctx: Context,
     source_service: SwagManagerService,
     server_name: str | None,
     config_name: str,
@@ -147,25 +144,23 @@ async def _run_post_update_health_check_in_background(
     new_value: str,
 ) -> str:
     """Run post-update health check with a service lifetime owned by the background task."""
-    if isinstance(source_service, SwagManagerService):
-        async with SwagManagerService(
-            config_path=source_service.config_path,
-            template_path=source_service.template_path,
-            settings=source_service.settings,
-        ) as health_service:
-            return await _run_post_update_health_check(
-                health_service, ctx, server_name, config_name, field, new_value
-            )
-    return await _run_post_update_health_check(
-        source_service, ctx, server_name, config_name, field, new_value
-    )
+    async with SwagManagerService(
+        config_path=source_service.config_path,
+        template_path=source_service.template_path,
+        settings=source_service.settings,
+    ) as health_service:
+        return await _run_post_update_health_check(
+            health_service, server_name, config_name, field, new_value
+        )
 
 
 def _schedule_post_write_health_check(coro: Coroutine[Any, Any, str], description: str) -> None:
     """Schedule post-write health verification without blocking tool responses."""
     task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
 
     def _log_background_result(done_task: asyncio.Task[str]) -> None:
+        _BACKGROUND_TASKS.discard(done_task)
         try:
             done_task.result()
         except asyncio.CancelledError:
@@ -297,9 +292,7 @@ async def _handle_create_action(
         await ctx.info("Scheduling health verification...")
         health_check_result = f"Health verification scheduled for {server_name}"
         _schedule_post_write_health_check(
-            _run_post_create_health_check_in_background(
-                ctx, swag_service, server_name, result.filename
-            ),
+            _run_post_create_health_check_in_background(swag_service, server_name, result.filename),
             f"create:{result.filename}",
         )
 
@@ -492,7 +485,7 @@ async def _handle_update_action(
         health_check_result = f"Health verification scheduled for {config_name}"
         _schedule_post_write_health_check(
             _run_post_update_health_check_in_background(
-                ctx, swag_service, server_name, config_name, update_field, update_value
+                swag_service, server_name, config_name, update_field, update_value
             ),
             f"update:{config_name}:{update_field}",
         )

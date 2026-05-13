@@ -37,6 +37,8 @@ async def bounded_gather(*coros: Awaitable[T], limit: int = 10) -> list[T]:
     semaphore = asyncio.Semaphore(limit)
 
     async def bounded_coro(coro: Awaitable[T]) -> T:
+        # If cancelled before semaphore acquisition, close an unstarted coroutine
+        # to avoid "coroutine was never awaited" resource warnings.
         started = False
         try:
             async with semaphore:

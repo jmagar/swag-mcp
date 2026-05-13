@@ -71,7 +71,8 @@ def _warn_on_service_name_homographs(service_name: str) -> None:
     mixed-script and lookalike characters. These checks intentionally do not
     reject names; they provide a single place to tighten policy later.
     """
-    if any(char in _ASCII_LOOKALIKE_CHARS for char in service_name):
+    has_ascii_lookalike = any(char in _ASCII_LOOKALIKE_CHARS for char in service_name)
+    if has_ascii_lookalike:
         logger.debug("Service name contains Unicode lookalike characters: %r", service_name)
 
     scripts = {
@@ -80,9 +81,10 @@ def _warn_on_service_name_homographs(service_name: str) -> None:
         if char.isalpha()
     }
     non_latin_scripts = scripts - {"LATIN", "UNKNOWN"}
-    if len(non_latin_scripts) > 2:
+    is_mixed_script = ("LATIN" in scripts and bool(non_latin_scripts)) or len(non_latin_scripts) > 1
+    if is_mixed_script or has_ascii_lookalike:
         logger.debug(
-            "Service name contains multiple non-Latin scripts %s: %r",
+            "Service name contains mixed-script spoofing signals %s: %r",
             sorted(non_latin_scripts),
             service_name,
         )

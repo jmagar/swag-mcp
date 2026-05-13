@@ -194,7 +194,7 @@ class BackupManager:
 
     def _cleanup_backup_pattern(self) -> Pattern[str]:
         """Return the accepted backup filename pattern for cleanup deletion."""
-        return re.compile(r"^.+\.backup\.\d{8}_\d{6}_\d{6}_[a-f0-9]{8}$")
+        return re.compile(r"^.+\.backup\.\d{8}_\d{6}_\d{6}_[a-f0-9]{8}(?:\.\d+)?$")
 
     async def _scan_backup_candidates(self) -> list[_BackupCleanupCandidate]:
         """Scan backup files and capture metadata once for cleanup processing."""
@@ -268,6 +268,9 @@ class BackupManager:
                             return True
             except TimeoutError:
                 logger.debug(f"Timeout acquiring lock for cleanup of {candidate.filename}")
+                return False
+            except FileNotFoundError:
+                logger.debug(f"Backup disappeared during cleanup: {candidate.filename}")
                 return False
             except (PermissionError, OSError) as e:
                 logger.warning(f"Failed to delete backup {candidate.filename}: {e}")

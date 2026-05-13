@@ -110,13 +110,13 @@ class TemplateManager:
             None  # Called to modify template variables
         )
 
-    def _set_template_hooks(
+    def register_test_hooks(
         self,
         pre_render_hook: Callable[[str, dict], None] | None = None,
         post_render_hook: Callable[[str, dict, str], None] | None = None,
         template_vars_hook: Callable[[dict], dict] | None = None,
     ) -> None:
-        """Set internal template rendering hooks for tests.
+        """Register template rendering hooks for tests.
 
         Args:
             pre_render_hook: Called before template rendering with (template_name, variables)
@@ -129,8 +129,8 @@ class TemplateManager:
         self._post_render_hook = post_render_hook
         self._template_vars_hook = template_vars_hook
 
-    def _clear_template_hooks(self) -> None:
-        """Clear internal template rendering hooks."""
+    def clear_test_hooks(self) -> None:
+        """Clear template rendering hooks registered for tests."""
         self._pre_render_hook = None
         self._post_render_hook = None
         self._template_vars_hook = None
