@@ -38,3 +38,12 @@
 - Version: `1.1.4`
 - Status: Healthy; `https://swag.tootie.tv/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.4"}`
 - Notes: Redeployed after fixing FastMCP protected-resource metadata from `https://swag.tootie.tv/mcp/mcp` to `https://swag.tootie.tv/mcp`. Enabled combined bearer-token and Google OAuth auth. Updated SWAG proxy upstream for `swag.tootie.tv` to `swag-mcp:8000`, validated with `docker exec swag nginx -t`, reloaded SWAG, and verified mcporter HTTP smoke tests with `PASS 7`, `FAIL 0`, `SKIP 1`.
+
+## 11:24:01 | 05/13/2026 EST - swag-mcp
+
+- Service: `swag-mcp`
+- Deployment method: `docker build --no-cache -t ghcr.io/jmagar/swag-mcp:1.1.5 .` then `docker compose up -d --force-recreate swag-mcp`
+- Port: `127.0.0.1:8012 -> 8000`
+- Version: `1.1.5`
+- Status: Healthy; `http://127.0.0.1:8012/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.5"}`
+- Notes: Recreated only `swag-mcp` after stabilizing FastMCP consent CSRF reuse and nginx OAuth helper rewrites. Verified duplicate consent GETs keep the same CSRF token and the first rendered form POST returns `302` instead of `400`.

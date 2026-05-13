@@ -113,7 +113,7 @@ The main application location (`/`) still uses the standard auth method (Autheli
 The `/health` endpoint is always unauthenticated in both the MCP server and generated proxy configs. It returns:
 
 ```json
-{"status": "healthy", "service": "swag-mcp", "version": "1.1.4"}
+{"status": "healthy", "service": "swag-mcp", "version": "1.1.5"}
 ```
 
 This is required for Docker health checks and monitoring.

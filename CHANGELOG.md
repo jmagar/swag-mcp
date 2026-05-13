@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-05-13
+
+### Fixed
+
+- **OAuth consent flow** — Reused unexpired consent CSRF tokens across duplicate consent page loads so browser preloads or refreshes no longer invalidate the first rendered approval form.
+- **OAuth discovery routing** — Added nginx contract coverage for path-scoped metadata and `/mcp`-prefixed OAuth helper endpoints.
+
 ## [1.1.4] - 2026-05-12
 
 ### Fixed

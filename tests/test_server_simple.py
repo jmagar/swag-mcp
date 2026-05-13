@@ -10,6 +10,7 @@ from swag_mcp.server import (
     _build_auth_provider,
     _derive_resource_base_url,
     _extract_service_name,
+    _get_stable_consent_csrf,
     _validate_bearer_token,
     cleanup_old_backups,
     create_mcp_server,
@@ -92,6 +93,26 @@ class TestServerFunctions:
         assert _derive_resource_base_url("https://swag.tootie.tv/mcp") == "https://swag.tootie.tv"
         assert _derive_resource_base_url("https://swag.tootie.tv/mcp/") == "https://swag.tootie.tv"
         assert _derive_resource_base_url("https://swag.tootie.tv") == "https://swag.tootie.tv"
+
+    def test_stable_consent_csrf_reuses_unexpired_transaction_token(self):
+        """Repeated consent page GETs must not invalidate the first rendered form."""
+        txn = {"csrf_token": "existing-token", "csrf_expires_at": 200.0}
+
+        csrf_token, expires_at, should_store = _get_stable_consent_csrf(txn, now=100.0)
+
+        assert csrf_token == "existing-token"
+        assert expires_at == 200.0
+        assert should_store is False
+
+    def test_stable_consent_csrf_rotates_expired_transaction_token(self):
+        """Expired consent CSRF tokens are replaced."""
+        txn = {"csrf_token": "expired-token", "csrf_expires_at": 50.0}
+
+        csrf_token, expires_at, should_store = _get_stable_consent_csrf(txn, now=100.0)
+
+        assert csrf_token != "expired-token"
+        assert expires_at == 100.0 + (15 * 60)
+        assert should_store is True
 
     async def test_composite_auth_provider_accepts_static_token_before_oauth(self):
         """Combined auth accepts static bearer tokens and falls through to OAuth."""

@@ -6,11 +6,14 @@ import logging
 import os
 import secrets
 import sys
+import time
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as metadata_version
 from pathlib import Path
+from types import MethodType
 from typing import Any
+from urllib.parse import urlencode, urlparse
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
@@ -18,7 +21,7 @@ from fastmcp.resources import DirectoryResource
 from fastmcp.server.auth import AccessToken, AuthProvider
 from pydantic import AnyUrl
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from swag_mcp.core.config import SwagConfig as SwagConfig  # re-export for tests
 from swag_mcp.core.config import config
@@ -71,6 +74,7 @@ __all__ = [
     "cleanup_old_backups",
     "StaticBearerTokenProvider",
     "CompositeAuthProvider",
+    "_get_stable_consent_csrf",
     "main",
     "main_sync",
     "detect_execution_context",
@@ -148,6 +152,117 @@ class CompositeAuthProvider(AuthProvider):
     def get_routes(self, mcp_path: str | None = None) -> list:
         """Expose routes from the provider that owns OAuth/discovery endpoints."""
         return self._route_provider.get_routes(mcp_path)
+
+
+def _get_stable_consent_csrf(
+    transaction: dict[str, Any], now: float | None = None
+) -> tuple[str, float, bool]:
+    """Return an active consent CSRF token, only rotating expired or missing values."""
+    current_time = time.time() if now is None else now
+    csrf_token = str(transaction.get("csrf_token") or "")
+    csrf_expires_at = float(transaction.get("csrf_expires_at") or 0)
+
+    if csrf_token and current_time <= csrf_expires_at:
+        return csrf_token, csrf_expires_at, False
+
+    return secrets.token_urlsafe(32), current_time + (15 * 60), True
+
+
+async def _show_stable_consent_page(self: Any, request: Request) -> HTMLResponse | RedirectResponse:
+    """Display consent without invalidating an already rendered consent form."""
+    from fastmcp.server.auth.oauth_proxy.models import ProxyDCRClient
+    from fastmcp.server.auth.oauth_proxy.ui import create_consent_html
+    from fastmcp.utilities.ui import create_secure_html_response
+
+    txn_id = request.query_params.get("txn_id")
+    if not txn_id:
+        return create_secure_html_response(
+            "<h1>Error</h1><p>Invalid or expired transaction</p>", status_code=400
+        )
+
+    txn_model = await self._transaction_store.get(key=txn_id)
+    if not txn_model:
+        return create_secure_html_response(
+            "<h1>Error</h1><p>Invalid or expired transaction</p>", status_code=400
+        )
+
+    txn = txn_model.model_dump()
+    client_key = self._make_client_key(txn["client_id"], txn["client_redirect_uri"])
+
+    approved = set(self._decode_list_cookie(request, "MCP_APPROVED_CLIENTS"))
+    denied = set(self._decode_list_cookie(request, "MCP_DENIED_CLIENTS"))
+
+    if client_key in approved:
+        consent_token = secrets.token_urlsafe(32)
+        txn_model.consent_token = consent_token
+        await self._transaction_store.put(key=txn_id, value=txn_model, ttl=15 * 60)
+        upstream_url = self._build_upstream_authorize_url(txn_id, txn)
+        response = RedirectResponse(url=upstream_url, status_code=302)
+        self._set_consent_binding_cookie(request, response, txn_id, consent_token)
+        return response
+
+    if client_key in denied:
+        callback_params = {
+            "error": "access_denied",
+            "state": txn.get("client_state") or "",
+        }
+        sep = "&" if "?" in txn["client_redirect_uri"] else "?"
+        return RedirectResponse(
+            url=f"{txn['client_redirect_uri']}{sep}{urlencode(callback_params)}",
+            status_code=302,
+        )
+
+    csrf_token, csrf_expires_at, should_store = _get_stable_consent_csrf(txn)
+    if should_store:
+        txn_model.csrf_token = csrf_token
+        txn_model.csrf_expires_at = csrf_expires_at
+        await self._transaction_store.put(key=txn_id, value=txn_model, ttl=15 * 60)
+
+    client = await self.get_client(txn["client_id"])
+    client_name = getattr(client, "client_name", None) if client else None
+
+    is_cimd_client = False
+    cimd_domain: str | None = None
+    if isinstance(client, ProxyDCRClient) and client.cimd_document is not None:
+        is_cimd_client = True
+        cimd_domain = urlparse(txn["client_id"]).hostname
+
+    fastmcp = getattr(request.app.state, "fastmcp_server", None)
+    if isinstance(fastmcp, FastMCP):
+        server_name = fastmcp.name
+        icons = fastmcp.icons
+        server_icon_url = icons[0].src if icons else None
+        server_website_url = fastmcp.website_url
+    else:
+        server_name = None
+        server_icon_url = None
+        server_website_url = None
+
+    html = create_consent_html(
+        client_id=txn["client_id"],
+        redirect_uri=txn["client_redirect_uri"],
+        scopes=txn.get("scopes") or [],
+        txn_id=txn_id,
+        csrf_token=csrf_token,
+        client_name=client_name,
+        server_name=server_name,
+        server_icon_url=server_icon_url,
+        server_website_url=server_website_url,
+        csp_policy=self._consent_csp_policy,
+        is_cimd_client=is_cimd_client,
+        cimd_domain=cimd_domain,
+    )
+    response = create_secure_html_response(html)
+    existing_tokens = self._decode_list_cookie(request, "MCP_CONSENT_STATE")
+    if csrf_token not in existing_tokens:
+        existing_tokens.append(csrf_token)
+    self._set_list_cookie(
+        response,
+        "MCP_CONSENT_STATE",
+        self._encode_list_cookie(existing_tokens),
+        max_age=15 * 60,
+    )
+    return response
 
 
 def _derive_resource_base_url(base_url: str, mcp_path: str = "/mcp") -> str:
@@ -368,6 +483,11 @@ def _build_auth_provider() -> AuthProvider | None:
                 resource_base_url=resource_base_url,
                 required_scopes=scopes,
                 redirect_path=redirect_path,
+            )
+            setattr(  # noqa: B010
+                auth_provider,
+                "_show_consent_page",
+                MethodType(_show_stable_consent_page, auth_provider),
             )
             providers.append(auth_provider)
             logger.info("✅ Google OAuth authentication enabled")

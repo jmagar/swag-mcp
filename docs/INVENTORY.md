@@ -79,7 +79,7 @@ Complete listing of all plugin components.
 
 | Component | Value |
 | --- | --- |
-| Image | `ghcr.io/jmagar/swag-mcp:1.1.4` |
+| Image | `ghcr.io/jmagar/swag-mcp:1.1.5` |
 | Internal port | `8000` |
 | Health endpoint | `GET /health` (unauthenticated) |
 | Compose file | `docker-compose.yaml` |
