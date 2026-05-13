@@ -30,6 +30,19 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     apt-get clean
 
+# Runtime only executes the prebuilt virtualenv; remove unused packaging tools
+# inherited from the base image so image scans cover the actual runtime surface.
+RUN rm -rf \
+    /usr/local/bin/pip \
+    /usr/local/bin/pip3 \
+    /usr/local/bin/pip3.11 \
+    /usr/local/lib/python3.11/site-packages/pip \
+    /usr/local/lib/python3.11/site-packages/pip-*.dist-info \
+    /usr/local/lib/python3.11/site-packages/setuptools \
+    /usr/local/lib/python3.11/site-packages/setuptools-*.dist-info \
+    /usr/local/lib/python3.11/site-packages/wheel \
+    /usr/local/lib/python3.11/site-packages/wheel-*.dist-info
+
 # Create non-root user with fixed UID/GID
 RUN groupadd -g 1000 swagmcp && \
     useradd -u 1000 -g swagmcp -m -s /bin/bash swagmcp
