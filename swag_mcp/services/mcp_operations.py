@@ -148,6 +148,12 @@ class MCPOperations:
         if dup_pat.search(content):
             raise ValueError(f"MCP location {mcp_path} already exists in configuration")
 
+        if requires_remote_nginx_validation(self.fs):
+            raise ValueError(
+                "Cannot add MCP location in remote filesystem mode without "
+                "authoritative remote nginx validation"
+            )
+
         try:
             # Create backup if requested
             backup_name = None
@@ -170,11 +176,6 @@ class MCPOperations:
                 )
 
                 # Validate nginx syntax before committing (abort on failure).
-                if requires_remote_nginx_validation(self.fs):
-                    raise ValueError(
-                        "Cannot add MCP location in remote filesystem mode without "
-                        "authoritative remote nginx validation"
-                    )
                 if not await self.validation.validate_nginx_syntax(config_file):
                     raise ValueError("Generated configuration contains invalid nginx syntax")
 

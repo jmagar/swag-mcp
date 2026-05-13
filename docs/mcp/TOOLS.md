@@ -40,9 +40,9 @@ Create a new nginx proxy configuration from the Jinja2 template.
 | `config_name` | string | — | yes | Filename (e.g., `jellyfin.subdomain.conf`) |
 | `server_name` | string (max 253) | — | yes | Domain (e.g., `media.example.com`) |
 | `upstream_app` | string (max 100) | — | yes | Container name or IP |
-| `upstream_port` | int (0-65535) | — | yes | Service port |
+| `upstream_port` | int (1-65535) | — | yes | Service port |
 | `upstream_proto` | `"http"` / `"https"` | `"http"` | no | Upstream protocol |
-| `auth_method` | string | `"authelia"` | no | Auth: none, basic, ldap, authelia, authentik, tinyauth |
+| `auth_method` | string | `"authelia"` | no | Auth: none, basic, ldap, authelia, authentik, tinyauth, oauth |
 | `enable_quic` | bool | `false` | no | Enable QUIC/HTTP3 |
 | `mcp_upstream_app` | string (max 100) | `""` | no | Separate MCP container/IP (enables split routing) |
 | `mcp_upstream_port` | int (0-65535) | `0` | no | MCP service port (inherits upstream_port if 0) |

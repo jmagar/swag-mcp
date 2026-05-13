@@ -1,9 +1,12 @@
 """Health monitoring module for SWAG MCP."""
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import ssl
 import time
+from urllib.parse import urljoin, urlparse
 
 import aiohttp
 
@@ -19,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 _EndpointCheckOutcome = tuple[HealthEndpointResult, str | None]
+_MAX_HEALTH_REDIRECTS = 5
 
 
 class HealthMonitor:
@@ -90,6 +94,26 @@ class HealthMonitor:
         """Perform health check on a service endpoint."""
         logger.info("Performing health check for domain: %s", request.domain)
 
+        validation_error = await self._validate_health_check_host(request.domain)
+        if validation_error is not None:
+            return SwagHealthCheckResult(
+                domain=request.domain,
+                url=f"https://{request.domain}/health",
+                status_code=None,
+                response_time_ms=None,
+                response_body=None,
+                success=False,
+                error=validation_error,
+                endpoint_results=[
+                    HealthEndpointResult(
+                        endpoint="/health",
+                        url=f"https://{request.domain}/health",
+                        success=False,
+                        error=validation_error,
+                    )
+                ],
+            )
+
         # Try multiple endpoints to test if the reverse proxy is working
         endpoints_to_try = ["/health", "/mcp", "/"]
         urls_to_try = [f"https://{request.domain}{endpoint}" for endpoint in endpoints_to_try]
@@ -127,6 +151,56 @@ class HealthMonitor:
             endpoint_results=endpoint_results,
         )
 
+    async def _validate_health_check_host(self, host: str) -> str | None:
+        """Return an error message when a health-check host resolves internally."""
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
+            return "Health check target must not be localhost"
+
+        try:
+            literal_ip = ipaddress.ip_address(host)
+        except ValueError:
+            literal_ip = None
+        if literal_ip is not None:
+            return self._validate_public_ip(literal_ip)
+
+        try:
+            address_infos = await asyncio.get_running_loop().getaddrinfo(
+                host,
+                None,
+                type=socket.SOCK_STREAM,
+            )
+        except socket.gaierror as e:
+            return f"Could not resolve health check target: {e}"
+
+        resolved_ips: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+        for address_info in address_infos:
+            sockaddr = address_info[4]
+            resolved_ips.add(ipaddress.ip_address(sockaddr[0]))
+
+        if not resolved_ips:
+            return "Health check target did not resolve to an IP address"
+
+        for resolved_ip in resolved_ips:
+            ip_error = self._validate_public_ip(resolved_ip)
+            if ip_error is not None:
+                return ip_error
+        return None
+
+    def _validate_public_ip(
+        self, ip_address: ipaddress.IPv4Address | ipaddress.IPv6Address
+    ) -> str | None:
+        """Return an error message when an IP address is unsafe for health checks."""
+        if (
+            ip_address.is_loopback
+            or ip_address.is_private
+            or ip_address.is_link_local
+            or ip_address.is_multicast
+            or ip_address.is_reserved
+            or ip_address.is_unspecified
+        ):
+            return f"Health check target resolves to a non-public address: {ip_address}"
+        return None
+
     async def _check_health_endpoint(
         self, request: SwagHealthCheckRequest, endpoint: str, url: str
     ) -> _EndpointCheckOutcome:
@@ -137,37 +211,55 @@ class HealthMonitor:
             session = await self.get_session()
             start_time = time.perf_counter()
             timeout = aiohttp.ClientTimeout(total=request.timeout)
+            current_url = url
 
-            async with session.get(
-                url, allow_redirects=request.follow_redirects, timeout=timeout
-            ) as response:
-                response_time_ms = int((time.perf_counter() - start_time) * 1000)
-                response_text = await response.text()
-                response_body = response_text[:1000]
-                if len(response_text) > 1000:
-                    response_body += "... (truncated)"
+            for _ in range(_MAX_HEALTH_REDIRECTS + 1):
+                async with session.get(
+                    current_url, allow_redirects=False, timeout=timeout
+                ) as response:
+                    if (
+                        request.follow_redirects
+                        and response.status in {301, 302, 303, 307, 308}
+                        and response.headers.get("Location")
+                    ):
+                        redirect_url = urljoin(current_url, response.headers["Location"])
+                        redirect_error = await self._validate_redirect_target(
+                            request.domain, redirect_url
+                        )
+                        if redirect_error is not None:
+                            raise ValueError(redirect_error)
+                        current_url = redirect_url
+                        continue
 
-                success = self._is_successful_health_response(endpoint, response.status)
-                logger.info(
-                    "Health check for %s - URL: %s, Status: %s, Time: %dms, Success: %s",
-                    request.domain,
-                    url,
-                    response.status,
-                    response_time_ms,
-                    success,
-                )
+                    response_time_ms = int((time.perf_counter() - start_time) * 1000)
+                    response_text = await response.text()
+                    response_body = response_text[:1000]
+                    if len(response_text) > 1000:
+                        response_body += "... (truncated)"
 
-                return (
-                    HealthEndpointResult(
-                        endpoint=endpoint,
-                        url=url,
-                        success=success,
-                        status_code=response.status,
-                        response_time_ms=response_time_ms,
-                        error=None if success else f"HTTP status {response.status}",
-                    ),
-                    response_body,
-                )
+                    success = self._is_successful_health_response(endpoint, response.status)
+                    logger.info(
+                        "Health check for %s - URL: %s, Status: %s, Time: %dms, Success: %s",
+                        request.domain,
+                        current_url,
+                        response.status,
+                        response_time_ms,
+                        success,
+                    )
+
+                    return (
+                        HealthEndpointResult(
+                            endpoint=endpoint,
+                            url=current_url,
+                            success=success,
+                            status_code=response.status,
+                            response_time_ms=response_time_ms,
+                            error=None if success else f"HTTP status {response.status}",
+                        ),
+                        response_body,
+                    )
+
+            raise ValueError("Too many redirects during health check")
 
         except TimeoutError:
             error_msg = f"Timeout after {request.timeout} seconds"
@@ -196,6 +288,13 @@ class HealthMonitor:
                 ),
                 None,
             )
+        except ValueError as e:
+            error_msg = str(e)
+            logger.warning("Health check validation error for %s: %s", url, error_msg)
+            return (
+                HealthEndpointResult(endpoint=endpoint, url=url, success=False, error=error_msg),
+                None,
+            )
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
             logger.warning("Health check unexpected error for %s: %s", url, error_msg)
@@ -203,6 +302,17 @@ class HealthMonitor:
                 HealthEndpointResult(endpoint=endpoint, url=url, success=False, error=error_msg),
                 None,
             )
+
+    async def _validate_redirect_target(
+        self, original_domain: str, redirect_url: str
+    ) -> str | None:
+        """Validate that redirects stay on the original public health-check host."""
+        parsed = urlparse(redirect_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return "Health check redirect target is invalid"
+        if parsed.hostname.lower() != original_domain:
+            return "Health check redirects must stay on the original host"
+        return await self._validate_health_check_host(parsed.hostname.lower())
 
     def _is_successful_health_response(self, endpoint: str, status_code: int) -> bool:
         """Return whether an endpoint HTTP status proves the proxy is reachable."""

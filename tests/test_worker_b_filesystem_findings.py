@@ -88,6 +88,50 @@ class BoundedTailSFTP:
         return self.file
 
 
+class CapturingWriteFile:
+    """Async write file stub that records bytes written."""
+
+    def __init__(self, sftp: "CapturingWriteSFTP", path: str) -> None:
+        """Initialize capture target."""
+        self.sftp = sftp
+        self.path = path
+
+    async def __aenter__(self) -> "CapturingWriteFile":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Exit async context manager."""
+        return None
+
+    async def write(self, data: bytes) -> None:
+        """Record written data."""
+        self.sftp.writes[self.path] = data
+
+
+class CapturingWriteSFTP:
+    """SFTP stub that captures write and rename paths."""
+
+    def __init__(self) -> None:
+        """Initialize capture state."""
+        self.writes: dict[str, bytes] = {}
+        self.renames: list[tuple[str, str]] = []
+        self.removes: list[str] = []
+
+    def open(self, path: str, mode: str) -> CapturingWriteFile:
+        """Open a remote temp file for writing."""
+        _ = mode
+        return CapturingWriteFile(self, path)
+
+    async def rename(self, src: str, dst: str) -> None:
+        """Capture atomic rename operation."""
+        self.renames.append((src, dst))
+
+    async def remove(self, path: str) -> None:
+        """Capture cleanup operation."""
+        self.removes.append(path)
+
+
 @pytest.fixture
 def temp_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
     """Create isolated config, template, and log paths."""
@@ -155,6 +199,7 @@ server {
         await service.add_mcp_location("remote.subdomain.conf", "/mcp")
 
     assert "location /mcp" not in config_file.read_text()
+    assert not list(config_path.glob("*.backup.*"))
     service.validation_service.validate_nginx_syntax.assert_not_awaited()
 
 
@@ -229,3 +274,18 @@ async def test_ssh_tail_fallback_reads_bounded_window():
 
     assert lines == [f"line {index}\n" for index in range(line_count - 5, line_count)]
     assert 0 < sftp.file.max_read_length <= SSHFilesystem.MAX_TAIL_FALLBACK_BYTES
+
+
+async def test_ssh_write_uses_uuid_suffixed_temp_path():
+    """SSH writes use unique temp paths for concurrent requests in one process."""
+    fs = SSHFilesystem("example.test")
+    sftp = CapturingWriteSFTP()
+    fs._sftp = sftp
+
+    await fs.write_text("/remote/app.subdomain.conf", "content")
+
+    assert len(sftp.renames) == 1
+    temp_path, destination_path = sftp.renames[0]
+    assert destination_path == "/remote/app.subdomain.conf"
+    assert temp_path.startswith(f"/remote/app.subdomain.conf.tmp.{os.getpid()}.")
+    assert temp_path != f"/remote/app.subdomain.conf.tmp.{os.getpid()}"

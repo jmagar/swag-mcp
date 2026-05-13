@@ -49,6 +49,7 @@ class TestSwagManagerService:
         async with SwagManagerService(
             config_path=temp_config.proxy_confs_path, template_path=temp_config.template_path
         ) as service:
+            service.health_monitor._validate_health_check_host = AsyncMock(return_value=None)
             yield service
 
     @pytest_asyncio.fixture

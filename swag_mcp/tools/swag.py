@@ -11,6 +11,7 @@ from pydantic import BeforeValidator, Field, ValidationError
 
 from swag_mcp.core.constants import VALID_UPSTREAM_PATTERN
 from swag_mcp.models.enums import BackupSubAction, SwagAction
+from swag_mcp.services.errors import SwagServiceError
 from swag_mcp.services.swag_manager import SwagManagerService
 from swag_mcp.tools.handlers.backups import _handle_backups_action
 from swag_mcp.tools.handlers.configs import (
@@ -314,7 +315,7 @@ def register_tools(mcp: FastMCP) -> None:
                 default="authelia",
                 description=(
                     "Authentication method: 'none' | 'basic' | 'ldap' | "
-                    "'authelia' | 'authentik' | 'tinyauth'"
+                    "'authelia' | 'authentik' | 'tinyauth' | 'oauth'"
                 ),
             ),
         ] = "authelia",
@@ -574,6 +575,13 @@ def register_tools(mcp: FastMCP) -> None:
                 structured_error.message,
             )
             return formatter.format_structured_error_result(structured_error, action.value)
+        except (SwagServiceError, ValueError, FileNotFoundError, OSError) as e:
+            logger.warning(
+                "SWAG tool operational error - action: %s, error: %s",
+                action.value,
+                str(e),
+            )
+            return formatter.format_error_result(str(e), action.value)
         except Exception as e:
             logger.error(
                 "SWAG tool error - action: %s, error: %s",

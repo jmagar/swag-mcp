@@ -13,6 +13,7 @@ import inspect
 import logging
 import os
 import shlex
+import uuid
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 if TYPE_CHECKING:
@@ -178,7 +179,7 @@ class SSHFilesystem:
         encoding: str = "utf-8",
     ) -> None:
         """Write text to file atomically via SFTP."""
-        temp_path = f"{path}.tmp.{os.getpid()}"
+        temp_path = f"{path}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
         encoded = content.encode(encoding)
 
         async def _write(sftp: Any) -> None:

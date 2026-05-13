@@ -111,7 +111,7 @@ Input validation
 - Config names must match `^[a-zA-Z0-9_.-]+\.(conf|sample)$`
 - Upstream app names must match `^[a-zA-Z0-9_.\[\]:-]+$` (supports IPv6)
 - Server names validated against RFC-compliant domain patterns
-- Port numbers validated as integers in range 0-65535
+- Create upstream ports are validated as integers in range 1-65535; optional MCP upstream ports use 0 only as an omitted/default sentinel.
 - Path traversal blocked via regex validation
 
 Unicode and homograph policy
@@ -142,7 +142,7 @@ HTTPS in production
 
 Authentication architecture
 
-SWAG MCP does not enforce authentication internally. Security is handled at the proxy/network layer:
+SWAG MCP enforces bearer-token authentication for direct `/mcp` access when `SWAG_MCP_TOKEN` is configured. Proxy-layer authentication is still required for internet-facing deployments:
 
 - Place the MCP server behind SWAG with Authelia or OAuth
 - Use Docker network isolation to restrict access

@@ -79,7 +79,7 @@ jobs:
           --tb=short
 
     - name: Upload coverage reports to Codecov
-      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
+      if: matrix.python-version == '3.12'
       uses: codecov/codecov-action@v4
       with:
         files: ./.cache/coverage/coverage.xml

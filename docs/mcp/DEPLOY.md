@@ -153,8 +153,8 @@ just health
 ## Image pinning
 
 Compose uses `SWAG_MCP_IMAGE` and defaults to
-`ghcr.io/jmagar/swag-mcp:latest` for convenience. Production deployments should
-pin this to an immutable release tag or digest, for example:
+`ghcr.io/jmagar/swag-mcp:1.1.4`. Production deployments can pin this to an
+immutable digest for stricter provenance, for example:
 
 ```env
 SWAG_MCP_IMAGE=ghcr.io/jmagar/swag-mcp:1.1.4

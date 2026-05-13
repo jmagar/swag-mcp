@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from swag_mcp.models.config import (
@@ -236,6 +237,7 @@ async def test_health_check_short_circuits_after_first_success() -> None:
         return Session()
 
     service.health_monitor.get_session = get_session  # type: ignore[method-assign]
+    service.health_monitor._validate_health_check_host = AsyncMock(return_value=None)
     request = SwagHealthCheckRequest(
         action=SwagAction.HEALTH_CHECK,
         domain="parallel.example.com",
@@ -246,6 +248,25 @@ async def test_health_check_short_circuits_after_first_success() -> None:
 
     assert result.success is True
     assert requested == ["/health", "/mcp"]
+
+
+@pytest.mark.asyncio
+async def test_health_check_rejects_localhost_targets() -> None:
+    """Health checks reject localhost targets before any outbound request."""
+    service = SwagManagerService(config_path=Path("/tmp"), template_path=Path("templates"))
+    session = AsyncMock()
+    service.health_monitor.get_session = AsyncMock(return_value=session)  # type: ignore[method-assign]
+    request = SwagHealthCheckRequest(
+        action=SwagAction.HEALTH_CHECK,
+        domain="localhost",
+        timeout=10,
+    )
+
+    result = await service.health_check(request)
+
+    assert result.success is False
+    assert "localhost" in (result.error or "")
+    session.get.assert_not_called()
 
 
 @pytest.mark.asyncio

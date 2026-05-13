@@ -17,7 +17,7 @@
 #
 # Environment variables (alternatives to flags):
 #   SWAG_MCP_URL    Base URL of the running server (http mode)
-#   SWAG_MCP_TOKEN  Bearer token (unused by swag-mcp itself, kept for compat)
+#   SWAG_MCP_TOKEN  Bearer token for authenticated MCP requests
 #
 # Exit codes:
 #   0 — all tests passed (or skipped)
@@ -49,6 +49,7 @@ DOCKER_CONTAINER="swag-mcp-ci-test-$$"
 DOCKER_HOST_PORT=18082
 DOCKER_BASE_URL="http://localhost:${DOCKER_HOST_PORT}"
 DOCKER_PROXY_CONFS_DIR=""
+EXPECT_MCP_AUTH=false
 
 # Counters (global, updated by run_test/skip_test)
 PASS_COUNT=0
@@ -341,17 +342,14 @@ phase_health() {
 # ---------------------------------------------------------------------------
 # Phase 2 — Auth
 #
-# swag-mcp does NOT enforce bearer token auth internally.
-# Auth is expected to be handled by an upstream proxy (e.g., SWAG itself).
-# We verify the server responds to requests without requiring a token.
+# /health remains unauthenticated for readiness. When SWAG_MCP_TOKEN is
+# configured, streamable-http MCP requests must require Bearer authentication.
 # ---------------------------------------------------------------------------
 phase_auth() {
   local base_url="${1:?}"
   log_section "Phase 2: Auth"
 
-  log_warn "swag-mcp does not enforce bearer token auth internally."
-  log_warn "Auth is delegated to the upstream proxy (SWAG, Authelia, etc.)."
-  log_warn "Verifying server accepts unauthenticated requests (expected behaviour)."
+  log_info "Verifying unauthenticated readiness and MCP auth behavior."
 
   local t0 response http_code ms
   t0="$(date +%s%N 2>/dev/null || date +%s)000000"
@@ -359,10 +357,32 @@ phase_auth() {
   ms="$(( ( $(date +%s%N 2>/dev/null || date +%s)000000 - t0 ) / 1000000 ))"
 
   if [[ "${http_code}" == "200" ]]; then
-    pass_test "GET /health unauthenticated → 200 (no built-in auth)" "${ms}"
+    pass_test "GET /health unauthenticated → 200" "${ms}"
   else
-    fail_test "GET /health unauthenticated → 200 (no built-in auth)" "got HTTP ${http_code}" "${ms}"
+    fail_test "GET /health unauthenticated → 200" "got HTTP ${http_code}" "${ms}"
     return 1
+  fi
+
+  if [[ "${EXPECT_MCP_AUTH}" == true ]]; then
+    local init_payload
+    init_payload='{"jsonrpc":"2.0","id":100,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test_live_auth","version":"1.0.0"}}}'
+    t0="$(date +%s%N 2>/dev/null || date +%s)000000"
+    http_code="$(
+      curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        --max-time 10 \
+        -d "${init_payload}" \
+        "${base_url}/mcp"
+    )" || http_code="000"
+    ms="$(( ( $(date +%s%N 2>/dev/null || date +%s)000000 - t0 ) / 1000000 ))"
+
+    if [[ "${http_code}" == "401" || "${http_code}" == "403" ]]; then
+      pass_test "POST /mcp unauthenticated → rejected" "${ms}"
+    else
+      fail_test "POST /mcp unauthenticated → rejected" "got HTTP ${http_code}" "${ms}"
+      return 1
+    fi
   fi
 
   return 0
@@ -642,6 +662,7 @@ run_docker_mode() {
 
   MCP_SESSION_ID=""  # Reset session for docker mode
   : > "${MCP_SESSION_ID_FILE}"
+  EXPECT_MCP_AUTH=true
   phase_health "${DOCKER_BASE_URL}"
   phase_auth "${DOCKER_BASE_URL}"
   phase_protocol "${DOCKER_BASE_URL}"

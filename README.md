@@ -383,7 +383,7 @@ swag action=health_check domain=jellyfin.example.com timeout=10 follow_redirects
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `success` | boolean | `true` if the probe reached the service. 2xx is always success; 406 on `/mcp` is treated as success (MCP endpoint exists but requires POST); any non-404 response is also treated as success. |
+| `success` | boolean | `true` only for 2xx responses, plus 406 on `/mcp` because that confirms the MCP endpoint exists but requires POST. Other statuses fail and are reported in `endpoint_results`. |
 | `domain` | string | Domain that was checked |
 | `status_code` | integer or null | HTTP status code returned |
 | `response_time_ms` | integer or null | Round-trip time in milliseconds |

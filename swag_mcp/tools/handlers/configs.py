@@ -106,10 +106,14 @@ async def _run_post_create_health_check(
 
 
 async def _run_post_update_health_check(
-    swag_service: SwagManagerService, ctx: Context, config_name: str, field: str, new_value: str
+    swag_service: SwagManagerService,
+    ctx: Context,
+    server_name: str | None,
+    config_name: str,
+    field: str,
+    new_value: str,
 ) -> str:
     """Run health check after config update and format results."""
-    server_name = await _extract_server_name_from_config(swag_service, config_name)
     if not server_name:
         return f"Updated {field} in {config_name} to {new_value}"
 
@@ -128,6 +132,7 @@ async def _run_post_create_health_check_in_background(
         async with SwagManagerService(
             config_path=source_service.config_path,
             template_path=source_service.template_path,
+            settings=source_service.settings,
         ) as health_service:
             return await _run_post_create_health_check(health_service, ctx, server_name, filename)
     return await _run_post_create_health_check(source_service, ctx, server_name, filename)
@@ -136,6 +141,7 @@ async def _run_post_create_health_check_in_background(
 async def _run_post_update_health_check_in_background(
     ctx: Context,
     source_service: SwagManagerService,
+    server_name: str | None,
     config_name: str,
     field: str,
     new_value: str,
@@ -145,11 +151,14 @@ async def _run_post_update_health_check_in_background(
         async with SwagManagerService(
             config_path=source_service.config_path,
             template_path=source_service.template_path,
+            settings=source_service.settings,
         ) as health_service:
             return await _run_post_update_health_check(
-                health_service, ctx, config_name, field, new_value
+                health_service, ctx, server_name, config_name, field, new_value
             )
-    return await _run_post_update_health_check(source_service, ctx, config_name, field, new_value)
+    return await _run_post_update_health_check(
+        source_service, ctx, server_name, config_name, field, new_value
+    )
 
 
 def _schedule_post_write_health_check(coro: Coroutine[Any, Any, str], description: str) -> None:
@@ -464,6 +473,7 @@ async def _handle_update_action(
         validated_update_field: UpdateFieldType = cast("UpdateFieldType", update_field)
 
         await ctx.info(f"Preparing to update {update_field} field...")
+        server_name = await _extract_server_name_from_config(swag_service, config_name)
 
         update_request = SwagUpdateRequest(
             config_name=config_name,
@@ -482,7 +492,7 @@ async def _handle_update_action(
         health_check_result = f"Health verification scheduled for {config_name}"
         _schedule_post_write_health_check(
             _run_post_update_health_check_in_background(
-                ctx, swag_service, config_name, update_field, update_value
+                ctx, swag_service, server_name, config_name, update_field, update_value
             ),
             f"update:{config_name}:{update_field}",
         )

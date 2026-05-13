@@ -109,6 +109,7 @@ class SwagManagerService:
 
         """
         runtime_config = settings if settings is not None else _load_default_config()
+        self.settings = runtime_config
 
         # Determine filesystem backend and config path
         if fs is not None:
