@@ -65,11 +65,11 @@ Published automatically by `docker-publish.yml` on tag push. Multi-platform: lin
 
 ### MCP Registry
 
-Registry entry: `tv.tootie/swag-mcp`
+Registry entry: `tv.nashost/swag-mcp`
 
 The `server.json` file defines the MCP registry entry with PyPI as the package source and stdio as the transport.
 
-DNS verification via `tootie.tv` domain.
+DNS verification via `nashost.tv` domain.
 
 ## CHANGELOG
 

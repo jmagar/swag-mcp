@@ -1,6 +1,6 @@
 # SWAG MCP
 
-<!-- mcp-name: tv.tootie/swag-mcp -->
+<!-- mcp-name: tv.nashost/swag-mcp -->
 
 [![PyPI](https://img.shields.io/pypi/v/swag-mcp)](https://pypi.org/project/swag-mcp/) [![ghcr.io](https://img.shields.io/badge/ghcr.io-jmagar%2Fswag--mcp-blue?logo=docker)](https://github.com/jmagar/swag-mcp/pkgs/container/swag-mcp)
 

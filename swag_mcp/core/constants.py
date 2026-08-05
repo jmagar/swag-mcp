@@ -56,7 +56,7 @@ AUTH_METHODS = (
 
 # OAuth gateway defaults
 DEFAULT_OAUTH_UPSTREAM = "http://mcp-oauth:8000"  # Docker network name for OAuth gateway
-DEFAULT_AUTH_SERVER_URL = "https://mcp-auth.tootie.tv"  # Public OAuth authorization server
+DEFAULT_AUTH_SERVER_URL = "https://mcp-auth.example.internal"  # Public OAuth authorization server
 
 # List filter options
 LIST_FILTERS = ("all", "active", "samples")  # Tuple for immutability

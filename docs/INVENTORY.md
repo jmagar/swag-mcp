@@ -44,7 +44,7 @@ Complete listing of all plugin components.
 | `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | no |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no |
 | `SWAG_MCP_OAUTH_UPSTREAM` | no | `http://mcp-oauth:8000` | no |
-| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.tootie.tv` | no |
+| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.example.internal` | no |
 | `SWAG_MCP_BACKUP_RETENTION_DAYS` | no | `30` | no |
 | `SWAG_MCP_LOG_LEVEL` | no | `INFO` | no |
 | `SWAG_MCP_LOG_FILE_ENABLED` | no | `true` | no |

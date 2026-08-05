@@ -19,10 +19,10 @@ class TestParseSwagUri:
 
     def test_remote_simple(self):
         """Test parsing simple remote URI."""
-        result = parse_swag_uri("squirts:/mnt/appdata/swag/nginx/proxy-confs")
+        result = parse_swag_uri("edgehost:/mnt/appdata/swag/nginx/proxy-confs")
         assert result == ParsedURI(
             is_remote=True,
-            host="squirts",
+            host="edgehost",
             port=22,
             username=None,
             path="/mnt/appdata/swag/nginx/proxy-confs",
@@ -52,10 +52,10 @@ class TestParseSwagUri:
 
     def test_remote_full(self):
         """Test parsing fully qualified remote URI."""
-        result = parse_swag_uri("jmagar@squirts:2222:/mnt/appdata/swag/nginx/proxy-confs")
+        result = parse_swag_uri("jmagar@edgehost:2222:/mnt/appdata/swag/nginx/proxy-confs")
         assert result == ParsedURI(
             is_remote=True,
-            host="squirts",
+            host="edgehost",
             port=2222,
             username="jmagar",
             path="/mnt/appdata/swag/nginx/proxy-confs",
