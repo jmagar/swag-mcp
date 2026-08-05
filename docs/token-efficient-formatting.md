@@ -60,7 +60,7 @@ class ServiceName:
 
 **After (Formatted)**:
 ```
-Port Usage on squirts
+Port Usage on edgehost
 Found 82 exposed ports across 41 containers
 
 Protocols: TCP: 78, UDP: 4
@@ -98,12 +98,12 @@ def _format_port_mapping_details(self, port_mappings: list[dict[str, Any]]) -> l
 **Formatted Output**:
 ```
 Docker Hosts (7 configured)
-Host         Address              ZFS Dataset
------------- -------------------- --- --------------------
-tootie       tootie:29229         ✓   cache/appdata
-shart        SHART:22             ✓   backup/appdata
-squirts      squirts:22           ✓   rpool/appdata
-vivobook-wsl vivobook-wsl:22      ✗   -
+Host            Address              ZFS Dataset
+--------------- -------------------- --- --------------------
+nashost         nashost:29229        ✓   cache/appdata
+backuphost      BACKUPHOST:22        ✓   backup/appdata
+edgehost        edgehost:22          ✓   rpool/appdata
+laptophost-wsl  laptophost-wsl:22    ✗   -
 ```
 
 **Implementation**:
@@ -139,7 +139,7 @@ def list_docker_hosts(self) -> dict[str, Any]:
 
 **Formatted Output**:
 ```
-Docker Containers on squirts
+Docker Containers on edgehost
 Showing 20 of 41 containers
 
   Container                 Ports                Project
@@ -187,7 +187,7 @@ def _format_container_summary(self, container: dict[str, Any]) -> list[str]:
 
 **Formatted Output**:
 ```
-Docker Compose Stacks on squirts (28 total)
+Docker Compose Stacks on edgehost (28 total)
 Status breakdown: running: 27, partial: 1
 
   Stack                     Status     Services
@@ -243,7 +243,7 @@ Token Efficiency Strategy: Provide a compact header with counts and a small prev
 
 Formatted Output (container logs):
 ```
-Container Logs for swag on squirts
+Container Logs for swag on edgehost
 Lines returned: 100 (requested: 100)
 truncated: False | follow: False
 
@@ -284,7 +284,7 @@ Token Efficiency Strategy: Top‑level counts and suggested path with short prev
 
 Formatted Output:
 ```
-Compose Discovery on squirts
+Compose Discovery on edgehost
 Stacks found: 12 | Locations: 2
 Suggested compose_path: /mnt/user/compose
 
@@ -304,7 +304,7 @@ Token Efficiency Strategy: For check, show reclaimable totals and level estimate
 
 Formatted Output:
 ```
-Docker Cleanup (check) on squirts
+Docker Cleanup (check) on edgehost
 Total reclaimable: 5.2 GB (23%)
 
 Levels:
@@ -312,7 +312,7 @@ Levels:
   moderate: 3.7 GB (16%)
   aggressive: 5.2 GB (23%)
 
-Docker Cleanup (safe) on squirts
+Docker Cleanup (safe) on edgehost
 
 Reclaimed:
   containers: 512MB
@@ -337,7 +337,7 @@ Token Efficiency Strategy: Aligned table for multi‑host discovery and compact 
 
 Formatted Output (single host):
 ```
-Host Discovery on squirts
+Host Discovery on edgehost
 Compose paths: 3 | Appdata paths: 2 | ZFS: ✓
 ZFS dataset: rpool/appdata
 
@@ -473,28 +473,28 @@ Apply the same formatting conventions across all tools:
 ### Port Management
 ```bash
 # See all ports in grouped format
-docker_hosts ports squirts
+docker_hosts ports edgehost
 
 # Check specific port availability
-docker_hosts ports squirts --port 8080
+docker_hosts ports edgehost --port 8080
 ```
 
 ### Container Operations
 ```bash
 # List containers with status and ports
-docker_container list squirts
+docker_container list edgehost
 
 # Get detailed container info (still returns ToolResult)
-docker_container info squirts container_id
+docker_container info edgehost container_id
 ```
 
 ### Stack Management
 ```bash
 # View all stacks with status breakdown
-docker_compose list squirts
+docker_compose list edgehost
 
 # Deploy with formatted feedback
-docker_compose deploy squirts my-stack "$(cat docker-compose.yml)"
+docker_compose deploy edgehost my-stack "$(cat docker-compose.yml)"
 ```
 
 ## Development Guidelines
@@ -522,7 +522,7 @@ def test_format_port_mappings():
 
 # Integration test ToolResult preservation
 async def test_list_containers_returns_toolresult():
-    result = await container_service.list_containers("squirts")
+    result = await container_service.list_containers("edgehost")
     assert isinstance(result, ToolResult)
     assert result.content  # Human-readable
     assert result.structured_content  # Machine-readable

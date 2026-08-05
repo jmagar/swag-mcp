@@ -9,7 +9,7 @@ Registration and publishing patterns for Claude, Codex, and Gemini marketplaces.
 | Claude Code | `.claude-plugin/plugin.json` | `jmagar/claude-homelab` marketplace |
 | Codex CLI | `.codex-plugin/plugin.json` | `jmagar/claude-homelab` marketplace |
 | Gemini | `gemini-extension.json` | Gemini extension registry |
-| MCP Registry | `server.json` | `tv.tootie/swag-mcp` |
+| MCP Registry | `server.json` | `tv.nashost/swag-mcp` |
 
 ## Claude Code marketplace
 
@@ -26,11 +26,11 @@ The marketplace entry is defined in `claude-homelab/.claude-plugin/marketplace.j
 
 The `server.json` file defines the public MCP registry entry:
 
-- **Name**: `tv.tootie/swag-mcp`
+- **Name**: `tv.nashost/swag-mcp`
 - **Registry**: PyPI
 - **Identifier**: `swag-mcp`
 - **Transport**: stdio (via `uvx swag-mcp`)
-- **DNS verification**: `tootie.tv` domain
+- **DNS verification**: `nashost.tv` domain
 
 ## PyPI
 

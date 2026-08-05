@@ -64,7 +64,7 @@ The configuration system uses Pydantic Settings with the `SWAG_MCP_` prefix. All
 | Variable | Required | Default | Sensitive | Description |
 | --- | --- | --- | --- | --- |
 | `SWAG_MCP_OAUTH_UPSTREAM` | no | `http://mcp-oauth:8000` | no | OAuth gateway upstream (Docker container name or IP:port) |
-| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.tootie.tv` | no | Public OAuth authorization server URL for Protected Resource Metadata |
+| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.example.internal` | no | Public OAuth authorization server URL for Protected Resource Metadata |
 
 ### Backup settings
 

@@ -430,7 +430,7 @@ class SwagHealthCheckRequest(SwagBaseRequest):
     domain: str = Field(
         ...,
         max_length=253,
-        description="Domain to check health for (e.g., docker-mcp.tootie.tv)",
+        description="Domain to check health for (e.g., docker-mcp.example.internal)",
     )
 
     timeout: int = Field(default=30, ge=1, le=300, description="Request timeout in seconds")
