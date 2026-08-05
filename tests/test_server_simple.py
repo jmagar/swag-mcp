@@ -90,9 +90,18 @@ class TestServerFunctions:
 
     def test_derive_resource_base_url_strips_mcp_mount(self):
         """Configured public MCP URLs advertise the MCP resource without duplicating /mcp."""
-        assert _derive_resource_base_url("https://swag.example.internal/mcp") == "https://swag.example.internal"
-        assert _derive_resource_base_url("https://swag.example.internal/mcp/") == "https://swag.example.internal"
-        assert _derive_resource_base_url("https://swag.example.internal") == "https://swag.example.internal"
+        assert (
+            _derive_resource_base_url("https://swag.example.internal/mcp")
+            == "https://swag.example.internal"
+        )
+        assert (
+            _derive_resource_base_url("https://swag.example.internal/mcp/")
+            == "https://swag.example.internal"
+        )
+        assert (
+            _derive_resource_base_url("https://swag.example.internal")
+            == "https://swag.example.internal"
+        )
 
     def test_stable_consent_csrf_reuses_unexpired_transaction_token(self):
         """Repeated consent page GETs must not invalidate the first rendered form."""
@@ -145,7 +154,9 @@ class TestServerFunctions:
         )
         monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_ID", "client-id")
         monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_CLIENT_SECRET", "client-secret")
-        monkeypatch.setenv("FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "https://swag.example.internal/mcp")
+        monkeypatch.setenv(
+            "FASTMCP_SERVER_AUTH_GOOGLE_BASE_URL", "https://swag.example.internal/mcp"
+        )
 
         with patch("fastmcp.server.auth.providers.google.GoogleProvider") as google_provider:
             google_instance = google_provider.return_value
@@ -158,7 +169,9 @@ class TestServerFunctions:
         assert isinstance(provider, CompositeAuthProvider)
         google_provider.assert_called_once()
         assert google_provider.call_args.kwargs["base_url"] == "https://swag.example.internal/mcp"
-        assert google_provider.call_args.kwargs["resource_base_url"] == "https://swag.example.internal"
+        assert (
+            google_provider.call_args.kwargs["resource_base_url"] == "https://swag.example.internal"
+        )
 
     def test_validate_bearer_token_fails_closed_without_auth(self, monkeypatch):
         """Startup refuses unauthenticated mode unless explicitly requested."""
