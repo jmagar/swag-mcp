@@ -12,7 +12,7 @@ Install from the homelab marketplace:
 ```
 
 Configure userConfig when prompted:
-- **SWAG MCP Server URL**: `https://swag.tootie.tv/mcp` (or your server URL)
+- **SWAG MCP Server URL**: `https://swag.example.internal/mcp` (or your server URL)
 - **SWAG Proxy Configs Path**: `/mnt/appdata/swag/nginx/proxy-confs`
 - **SWAG Proxy Configs URI**: `admin@swag-server:/path/to/proxy-confs` (for SSH mode)
 

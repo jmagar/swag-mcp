@@ -557,14 +557,14 @@ assert_not_contains "$OUT" "error" "no error on backup cleanup"
 
 # =============================================================================
 section "9. HEALTH CHECK — reachable domain"
-OUT=$(mcp '{"action":"health_check","domain":"swag.tootie.tv","timeout":10}')
+OUT=$(mcp '{"action":"health_check","domain":"swag.example.internal","timeout":10}')
 assert_not_contains "$OUT" "\"error\":" "health_check call completes"
 # bead .4: assert response contains ✅ and parse 2xx/3xx status code
 if echo "$OUT" | grep -q '✅'; then
     pass "health_check — domain returned success indicator"
-    assert_http_success "$OUT" "swag.tootie.tv returns 2xx/3xx"
+    assert_http_success "$OUT" "swag.example.internal returns 2xx/3xx"
 else
-    skip "health_check swag.tootie.tv — domain unreachable from this host (✅ not in response)"
+    skip "health_check swag.example.internal — domain unreachable from this host (✅ not in response)"
 fi
 
 section "9a. HEALTH CHECK — invalid domain (graceful failure)"
@@ -634,7 +634,7 @@ section "11. SUBFOLDER — path-based routing via .subfolder.conf"
 OUT=$(mcp "{
   \"action\": \"create\",
   \"config_name\": \"smoke-subfolder.subfolder.conf\",
-  \"server_name\": \"swag.tootie.tv\",
+  \"server_name\": \"swag.example.internal\",
   \"upstream_app\": \"smoke-subfolder-app\",
   \"upstream_port\": 9998,
   \"upstream_proto\": \"http\",
@@ -669,7 +669,7 @@ mcp "{\"action\":\"remove\",\"config_name\":\"${MCP_SUBFOLDER_CONFIG}\",\"create
 OUT=$(mcp "{
   \"action\": \"create\",
   \"config_name\": \"${MCP_SUBFOLDER_CONFIG}\",
-  \"server_name\": \"swag.tootie.tv\",
+  \"server_name\": \"swag.example.internal\",
   \"upstream_app\": \"smoke-mcp-sf-app\",
   \"upstream_port\": 9992,
   \"upstream_proto\": \"http\",

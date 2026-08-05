@@ -57,7 +57,7 @@ jobs:
           ' server.json > server.tmp && mv server.tmp server.json
 
       - name: Authenticate to MCP Registry
-        run: ./mcp-publisher login dns --domain tootie.tv --private-key ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain nashost.tv --private-key ${{ secrets.MCP_PRIVATE_KEY }}
 
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish

@@ -50,7 +50,7 @@ Pre-release and quality checklist. Complete all items before tagging a release.
 
 ## Registry (if publishing)
 
-- [ ] `server.json` for MCP registry is valid (tv.tootie/swag-mcp)
+- [ ] `server.json` for MCP registry is valid (tv.nashost/swag-mcp)
 - [ ] Package published to PyPI (`swag-mcp`)
 - [ ] Docker image published to GHCR (`ghcr.io/jmagar/swag-mcp`)
 

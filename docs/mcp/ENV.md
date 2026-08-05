@@ -64,7 +64,7 @@ SWAG_MCP_PROXY_CONFS_URI=admin@swag-server:2222:/mnt/appdata/swag/nginx/proxy-co
 | `SWAG_MCP_DEFAULT_WEB_AUTH_METHOD` | no | `authelia` | no | Default SWAG/nginx auth for generated web endpoints; this is not MCP server auth |
 | `SWAG_MCP_DEFAULT_QUIC_ENABLED` | no | `false` | no | Default QUIC/HTTP3 setting |
 | `SWAG_MCP_OAUTH_UPSTREAM` | no | `http://mcp-oauth:8000` | no | OAuth gateway upstream address |
-| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.tootie.tv` | no | Public OAuth authorization server URL |
+| `SWAG_MCP_AUTH_SERVER_URL` | no | `https://mcp-auth.example.internal` | no | Public OAuth authorization server URL |
 | `SWAG_MCP_BACKUP_RETENTION_DAYS` | no | `30` | no | Backup retention period in days |
 
 ## Logging

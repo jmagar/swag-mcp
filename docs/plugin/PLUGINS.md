@@ -9,7 +9,7 @@ Structure and conventions for plugin manifest files.
 | `.claude-plugin/plugin.json` | Claude Code | Plugin metadata, userConfig, MCP server |
 | `.codex-plugin/plugin.json` | Codex CLI | Plugin metadata, skills, MCP, apps |
 | `gemini-extension.json` | Gemini | Extension metadata, MCP server, settings |
-| `server.json` | MCP Registry | Registry entry (`tv.tootie/swag-mcp`) |
+| `server.json` | MCP Registry | Registry entry (`tv.nashost/swag-mcp`) |
 
 ## Claude Code manifest
 

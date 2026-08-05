@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "tv.tootie/swag-mcp",
+  "name": "tv.nashost/swag-mcp",
   "title": "SWAG MCP",
   "description": "MCP server for SWAG reverse proxy configuration generation and management.",
   "repository": {

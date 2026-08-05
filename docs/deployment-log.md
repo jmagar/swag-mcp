@@ -36,8 +36,8 @@
 - Deployment method: `docker build -t ghcr.io/jmagar/swag-mcp:1.1.4 .` then `docker compose up -d --force-recreate swag-mcp`
 - Port: `127.0.0.1:8012 -> 8000`
 - Version: `1.1.4`
-- Status: Healthy; `https://swag.tootie.tv/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.4"}`
-- Notes: Redeployed after fixing FastMCP protected-resource metadata from `https://swag.tootie.tv/mcp/mcp` to `https://swag.tootie.tv/mcp`. Enabled combined bearer-token and Google OAuth auth. Updated SWAG proxy upstream for `swag.tootie.tv` to `swag-mcp:8000`, validated with `docker exec swag nginx -t`, reloaded SWAG, and verified mcporter HTTP smoke tests with `PASS 7`, `FAIL 0`, `SKIP 1`.
+- Status: Healthy; `https://swag.example.internal/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.4"}`
+- Notes: Redeployed after fixing FastMCP protected-resource metadata from `https://swag.example.internal/mcp/mcp` to `https://swag.example.internal/mcp`. Enabled combined bearer-token and Google OAuth auth. Updated SWAG proxy upstream for `swag.example.internal` to `swag-mcp:8000`, validated with `docker exec swag nginx -t`, reloaded SWAG, and verified mcporter HTTP smoke tests with `PASS 7`, `FAIL 0`, `SKIP 1`.
 
 ## 11:24:01 | 05/13/2026 EST - swag-mcp
 
@@ -55,4 +55,4 @@
 - Port: `127.0.0.1:8012 -> 8000`
 - Version: `1.1.6`
 - Status: Healthy; `http://127.0.0.1:8012/health` returned `{"status":"healthy","service":"swag-mcp","version":"1.1.6"}`
-- Notes: Recreated only `swag-mcp` after treating authenticated MCP `/mcp` responses (`401`, `403`) as successful reachability probes. Verified `health_check` for `axon.tootie.tv` now succeeds on `/mcp` with `401` while preserving `/health` `502` endpoint detail for the down web upstream.
+- Notes: Recreated only `swag-mcp` after treating authenticated MCP `/mcp` responses (`401`, `403`) as successful reachability probes. Verified `health_check` for `axon.example.internal` now succeeds on `/mcp` with `401` while preserving `/health` `502` endpoint detail for the down web upstream.
